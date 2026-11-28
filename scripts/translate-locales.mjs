@@ -31,7 +31,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Anthropic } from '@anthropic-ai/sdk';
 import { localePathTokens } from './_locale-keys.mjs';
 
-export const LOCALES = ['ar', 'bg', 'cs', 'de', 'el', 'es', 'fa', 'fr', 'hi', 'hr', 'hu', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ro', 'ru', 'sv', 'sw', 'th', 'tr', 'uk', 'vi', 'zh', 'zh-TW'];
+export const LOCALES = ['ar', 'bg', 'cs', 'de', 'el', 'es', 'fa', 'fr', 'hi', 'hr', 'hu', 'id', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ro', 'ru', 'sv', 'sw', 'th', 'tr', 'uk', 'vi', 'zh', 'zh-TW'];
+
+// Locales only pro-test/src/locales ships. A landing-only language has a
+// marketing dictionary for its prerendered homepage and no dashboard one, so
+// the app root's gates leave it out and the pro root's gates cover it.
+export const PRO_ONLY_LOCALES = new Set(['id']);
 
 // Locales produced by another generator, which this script must not write.
 //
@@ -51,7 +56,7 @@ export const GENERATED_LOCALES = new Set(['zh-TW']);
 export const TRANSLATABLE_LOCALES = LOCALES.filter((loc) => !GENERATED_LOCALES.has(loc));
 const LANG_NAMES = {
   ar: 'Arabic', bg: 'Bulgarian', cs: 'Czech', de: 'German', el: 'Greek',
-  es: 'Spanish', fa: 'Persian (Farsi)', fr: 'French', hi: 'Hindi', hr: 'Croatian', hu: 'Hungarian', it: 'Italian', ja: 'Japanese',
+  es: 'Spanish', fa: 'Persian (Farsi)', fr: 'French', hi: 'Hindi', hr: 'Croatian', hu: 'Hungarian', id: 'Indonesian', it: 'Italian', ja: 'Japanese',
   ko: 'Korean', nl: 'Dutch', pl: 'Polish', pt: 'Portuguese (Brazil)',
   ro: 'Romanian', ru: 'Russian', sv: 'Swedish', th: 'Thai', tr: 'Turkish',
   sw: 'Swahili (Kiswahili)', uk: 'Ukrainian', vi: 'Vietnamese', zh: 'Simplified Chinese',
@@ -148,6 +153,7 @@ const DOMAIN_GLOSSARY = [
   'story = a news item, not a work of fiction',
   'cancelled (flight) = the airline annulled the flight, not a customer cancelling an order',
   'staged (settings) = queued, awaiting save, never theatrical staging',
+  'seat (Business Seats, Enterprise seats) = a paid user place on a shared team subscription, as in SaaS licensing, never a chair; use one word for it in every string',
   'dismiss (a banner, alert, finding) = hide it, never reject or repudiate it',
   'default = the standard preset value, not a financial default',
   'spot, spread, long, short, hedge, perp, open interest, drawdown = finance terms; keep the established term of the target language, which is often the English one',
@@ -224,7 +230,7 @@ function canonicalPluralOrder(categories) {
   return [...categories].sort((a, b) => {
     const ia = CLDR_PLURAL_ORDER.indexOf(a);
     const ib = CLDR_PLURAL_ORDER.indexOf(b);
-    return (ia === -1 ? CLDR_PLURAL_ORDER.length : ia) - (ib === -1 ? CLDR_PLURAL_ORDER.length : ib) || a.localeCompare(b);
+    return (ia === -1 ? CLDR_PLURAL_ORDER.length : ia) - (ib === -1 ? CLDR_PLURAL_ORDER.length : ib) || a.localeCompare(b, 'en-US');
   });
 }
 export function getPluralCategories(loc) {

@@ -47,7 +47,7 @@ responses private and the CDN never stores them.
 The gateway sets it for `wm_` user keys on every route, for MCP OAuth (signed
 internal calls), and for Clerk sessions on tier-gated and quota routes.
 `summarize-article` also falls back to the identity it resolves itself, which
-covers a Clerk session in free translate mode.
+covers a Clerk session in translate mode, which skips the gateway's quota.
 
 ## What it does not cover
 

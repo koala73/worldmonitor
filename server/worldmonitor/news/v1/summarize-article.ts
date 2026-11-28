@@ -33,6 +33,7 @@ import {
 import { callLlm, isDefaultChainProvider, resolveProviderChain, stripThinkingTags } from '../../../_shared/llm';
 import { aiRoutingCacheSuffix, resolveAiRouting, toLlmRoutingPolicy } from '../../../_shared/ai-routing-policy';
 import { buildLlmCallEvent, deliverUsageEvents } from '../../../_shared/usage';
+import { isFreeAlertTranslation } from '../../../../src/utils/free-translation';
 
 // Best-effort llm_call telemetry (#4895). This handler bypasses callLlm (the
 // client picks the provider), so it emits its own events.
@@ -72,11 +73,19 @@ export function hasReasoningPreamble(text: string): boolean {
   return TASK_NARRATION.test(trimmed) || PROMPT_ECHO.test(trimmed);
 }
 
-// Translate mode is free and skips the gateway's direct-LLM quota, and its
-// `variant` is the target language interpolated into the prompt. Accept only
-// the dashboard's UI languages (the digest set plus Traditional Chinese, which
-// the digest folds into `zh`) so an anonymous caller cannot turn translate into
-// an unmetered general-purpose prompt with a cache-busting key.
+// A summary that talks about the headlines instead of the story they report
+// ("The most important headline is about a study...") is task commentary.
+const HEADLINE_COMMENTARY_RE = /^(?:the|this|these|both|each|all) (?:\w+ ){0,2}headlines? (?:is|are|was|were|describes?|reports?|focus\w*|highlights?|discuss\w*|mentions?|says?|suggests?)\b|^(?:the|this|these) (?:\w+ ){0,2}(?:stor(?:y|ies)|articles?) (?:describes?|reports?|focus\w*|highlights?|discuss\w*|mentions?|(?:is|are) about)\b|\bmost (?:important|significant) (?:headline|story)\b|\bheadlines? (?:is|are|was|were) (?:about|describing|reporting)\b/i;
+
+export function describesHeadlines(text: string): boolean {
+  return HEADLINE_COMMENTARY_RE.test(text);
+}
+
+// Translate mode skips the gateway's direct-LLM quota, and its `variant` is
+// the target language interpolated into the prompt. Accept only the
+// dashboard's UI languages (the digest set plus Traditional Chinese, which the
+// digest folds into `zh`) so translate cannot become an unmetered
+// general-purpose prompt with a cache-busting key.
 export const TRANSLATE_TARGET_LANGUAGES: ReadonlySet<string> = SUMMARY_OUTPUT_LANGUAGES;
 
 // Translate reads one headline; longer text is refused rather than silently
@@ -90,7 +99,9 @@ export function maxTranslateOutputChars(inputChars: number): number {
   return inputChars * 4 + 120;
 }
 
-// Anonymous translate spends provider tokens with no account behind it and
+// Translation requires Pro, except Hebrew alerts into English
+// (isFreeAlertTranslation) and the desktop app's local model. That free alert
+// translation spends provider tokens with no account behind it and
 // skips the gateway's direct-LLM quota, so each provider call it causes (a
 // cache miss) is charged against a daily per-IP budget and a global daily
 // ceiling. Cache hits are free. Sized from Axiom wm_api_usage, 2026-09-27 to
@@ -184,8 +195,9 @@ export async function summarizeArticle(
   // never reached (ai-routing-policy.ts). An unrestricted caller may name only
   // a default-chain provider: opt-in providers (anthropic) are reachable
   // through a policy, never on a request's say-so.
-  // Translate mode is free, so the gateway may not have resolved a Clerk
-  // session; the identity this handler resolved covers that case.
+  // Translate mode skips the gateway's direct-LLM quota, so the gateway may not
+  // have resolved a Clerk session; the identity this handler resolved covers
+  // that case.
   const aiRouting = await resolveAiRouting(ctx.request, premiumIdentity.userId);
   const routingPolicy = toLlmRoutingPolicy(aiRouting);
   const policyChain = routingPolicy ? resolveProviderChain({ routingPolicy }) : null;
@@ -199,7 +211,13 @@ export async function summarizeArticle(
   // free text that the sanitizer scans and the system prompt carries.
   const MAX_SYSTEM_APPEND_LEN = 2000;
   const systemAppend = isPremium && typeof req.systemAppend === 'string' ? req.systemAppend.slice(0, MAX_SYSTEM_APPEND_LEN) : '';
+  // Translate is Pro too, but whether a translate request qualifies for the
+  // free alert path depends on the sanitized text, so it is decided below.
   const requiresPremium = mode !== 'translate';
+  // The desktop sidecar's local Ollama spends no shared provider budget.
+  const isDesktopLocalTranslation = mode === 'translate'
+    && process.env.LOCAL_API_MODE === 'tauri-sidecar'
+    && provider === 'ollama';
   // Every empty-summary envelope below (denied, skipped, rejected, failed)
   // serves no LLM output; the gateway reserved a daily-quota slot for this
   // call and releases it on this marker. The served and cached paths do not
@@ -209,8 +227,8 @@ export async function summarizeArticle(
     return payload;
   };
 
-  if (requiresPremium && !isPremium) {
-    const billingDenial = premiumIdentity.billingDenial;
+  const denyWithoutPremium = (): SummarizeArticleResponse => {
+    const billingDenial = premiumIdentity.isPremium ? undefined : premiumIdentity.billingDenial;
     if (billingDenial) {
       if (billingDenial.retryable) {
         markRetryableResponse(ctx.request);
@@ -240,7 +258,9 @@ export async function summarizeArticle(
       status: 'SUMMARIZE_STATUS_ERROR',
       statusDetail: 'Pro subscription required',
     });
-  }
+  };
+
+  if (requiresPremium && !isPremium) return denyWithoutPremium();
 
   if (mode === 'translate' && !TRANSLATE_TARGET_LANGUAGES.has(variant)) {
     return unserved({
@@ -381,6 +401,21 @@ export async function summarizeArticle(
     });
   }
 
+  // Translation is Pro. The free alert rule classifies exactly the text the
+  // prompt sends: headlines[0], the first entry that survived light
+  // sanitization, after the prompt's full sanitization (which drops whole
+  // role-prefixed lines, Hebrew included). Decided before the cache read, so
+  // a free caller is not served a cached Pro translation either.
+  if (mode === 'translate' && !isPremium && !isDesktopLocalTranslation
+    && !isFreeAlertTranslation(neutralizeTranslateText(sanitizeForPromptLine(headlines[0] ?? '')), variant)) {
+    return denyWithoutPremium();
+  }
+  // A free caller let through by the desktop exemption stays on the local
+  // model: an account policy chain must not fall through to a cloud provider.
+  const llmRoutingPolicy = routingPolicy && !isPremium && isDesktopLocalTranslation
+    ? { allowedProviders: ['ollama'] }
+    : routingPolicy;
+
   try {
     const cacheKey = `${await getCacheKey(headlines, mode, sanitizedGeoContext, variant, lang, systemAppend || undefined, bodies)}${aiRoutingCacheSuffix(aiRouting)}`;
 
@@ -471,8 +506,8 @@ export async function summarizeArticle(
           : systemPrompt;
 
         const translateOutputCap = maxTranslateOutputChars(uniqueHeadlines[0]?.length ?? 0);
-        const rejectsSummary = (text: string): boolean => (['brief', 'analysis'].includes(mode)
-          && (text.length < 20 || hasReasoningPreamble(text)))
+        const rejectsSummary = (text: string): boolean => (['brief', 'analysis', 'article'].includes(mode)
+          && (text.length < 20 || hasReasoningPreamble(text) || describesHeadlines(text)))
           || (mode === 'translate' && (text.length === 0 || text.length > translateOutputCap));
         // Echoed data-block markers are dropped on every provider path before
         // the answer is validated, served or cached.
@@ -496,7 +531,7 @@ export async function summarizeArticle(
             ],
             maxTokens: 100,
             timeoutMs: 25_000,
-            routingPolicy,
+            routingPolicy: llmRoutingPolicy,
             stage: 'summarize-article',
             validate: (text) => !rejectsSummary(cleanAnswer(text)),
           });
@@ -544,13 +579,13 @@ export async function summarizeArticle(
         const rawText = typeof message?.content === 'string' ? message.content.trim() : '';
         const rawContent = cleanAnswer(stripThinkingTags(rawText));
 
-        if (['brief', 'analysis'].includes(mode) && rawContent.length < 20) {
+        if (['brief', 'analysis', 'article'].includes(mode) && rawContent.length < 20) {
           console.warn(`[SummarizeArticle:${provider}] Output too short after stripping (${rawContent.length} chars), rejecting`);
           await emitSummarizeLlmEvent({ provider, model, mode, ok: false, durationMs: Date.now() - llmStartMs, promptChars: llmPromptChars, usage, reason: 'stripped_empty' });
           return null;
         }
 
-        if (['brief', 'analysis'].includes(mode) && hasReasoningPreamble(rawContent)) {
+        if (['brief', 'analysis', 'article'].includes(mode) && (hasReasoningPreamble(rawContent) || describesHeadlines(rawContent))) {
           console.warn(`[SummarizeArticle:${provider}] Reasoning preamble detected, rejecting`);
           await emitSummarizeLlmEvent({ provider, model, mode, ok: false, durationMs: Date.now() - llmStartMs, promptChars: llmPromptChars, usage, reason: 'validate_reject' });
           return null;

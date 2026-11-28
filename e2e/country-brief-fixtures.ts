@@ -1,3 +1,4 @@
+import { evidenceScreenshot } from './evidence-screenshot';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
@@ -63,22 +64,26 @@ export async function captureImfPeriods(page: Page, card: Locator, scenario: Imf
     sparse: ['GDP / Capita', 'Public Spending', 'Gov Revenue'],
   };
   const prefix = scenario === 'sparse' ? [] : ['Stock Index', 'Weekly Momentum', ...(surface === 'website' && scenario === 'mixed' ? ['Instability Regime'] : [])];
-  await expect(card.locator('.cdp-economic-label')).toHaveText([...prefix, ...metricLabels[scenario]]);
-  const rows = await card.locator('.cdp-economic-item').evaluateAll(items => items.map(item => ({ label: item.querySelector('.cdp-economic-label')?.textContent ?? '', value: item.querySelector('.cdp-economic-value')?.textContent, source: item.querySelector('.cdp-economic-source')?.textContent, width: item.getBoundingClientRect().width, overflow: item.scrollWidth > item.clientWidth + 1 })));
-  for (const row of rows.filter(row => row.label in years)) {
-    const missing = scenario === 'legacy' || scenario === 'partial' && ['CPI Inflation', 'Primary Balance'].includes(row.label);
-    expect(row.source).toBe(`IMF WEO · ${missing ? 'Year not supplied' : `Year ${years[row.label]}`} · IMF release not supplied`);
-    expect(row.value).toBe(values[row.label]);
-    expect(row.overflow).toBe(false);
+  const viewport = page.viewportSize()!;
+  for (const width of [viewport.width, viewport.width === 390 ? 1280 : 390]) {
+    if (width !== viewport.width) await page.setViewportSize({ width, height: viewport.height });
+    await expect(card.locator('.cdp-economic-label')).toHaveText([...prefix, ...metricLabels[scenario]]);
+    const rows = await card.locator('.cdp-economic-item').evaluateAll(items => items.map(item => ({ label: item.querySelector('.cdp-economic-label')?.textContent ?? '', value: item.querySelector('.cdp-economic-value')?.textContent, source: item.querySelector('.cdp-economic-source')?.textContent, width: item.getBoundingClientRect().width, overflow: item.scrollWidth > item.clientWidth + 1 })));
+    for (const row of rows.filter(row => row.label in years)) {
+      const missing = scenario === 'legacy' || scenario === 'partial' && ['CPI Inflation', 'Primary Balance'].includes(row.label);
+      expect(row.source).toBe(`IMF WEO · ${missing ? 'Year not supplied' : `Year ${years[row.label]}`} · IMF release not supplied`);
+      expect(row.value).toBe(values[row.label]);
+      expect(row.overflow).toBe(false);
+    }
+    expect(rows.length).toBeLessThanOrEqual(6);
+    const clipped = await card.locator('.cdp-economic-source').evaluateAll(lines => lines.some(line => line.scrollWidth > line.clientWidth + 1 || line.scrollHeight > line.clientHeight + 1));
+    expect(clipped).toBe(false);
+    if (process.env.WM_E2E_EVIDENCE !== '1') continue;
+    await card.scrollIntoViewIfNeeded();
+    await evidenceScreenshot(card, { path: testInfo.outputPath(`economic-section-${width}.png`) });
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`economic-viewport-${width}.png`) });
+    await writeFile(testInfo.outputPath(`economic-rows-${width}.json`), JSON.stringify({ scenario, observedAt: new Date().toISOString(), rows }, null, 2));
   }
-  if (scenario === 'sparse') expect(rows.map(row => row.label)).toEqual(expect.arrayContaining(['GDP / Capita', 'Public Spending', 'Gov Revenue']));
-  expect(rows.length).toBeLessThanOrEqual(6);
-  const clipped = await card.locator('.cdp-economic-source').evaluateAll(lines => lines.some(line => line.scrollWidth > line.clientWidth + 1 || line.scrollHeight > line.clientHeight + 1));
-  expect(clipped).toBe(false);
-  await card.scrollIntoViewIfNeeded();
-  await card.screenshot({ path: testInfo.outputPath('economic-section.png') });
-  await page.screenshot({ path: testInfo.outputPath('economic-viewport.png') });
-  await writeFile(testInfo.outputPath('economic-rows.json'), JSON.stringify({ scenario, observedAt: new Date().toISOString(), rows }, null, 2));
 }
 
 export const test = base.extend<{ countryBrief: CountryBriefFixture }>({

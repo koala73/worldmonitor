@@ -17,6 +17,8 @@ import { getCurrentLanguage } from './i18n';
 import type { SummarizeArticleResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { buildSummaryCacheKey } from '@/utils/summary-cache-key';
+import { isFreeAlertTranslation } from '@/utils/free-translation';
+import { isDesktopRuntime } from '@/services/desktop-runtime';
 import { NewsServiceClient } from '@/services/generated-rpc-clients';
 import { premiumFetch } from '@/services/premium-fetch';
 import {
@@ -59,6 +61,8 @@ export interface SummarizeOptions {
    * headline-only behavior (R6). Bodies are pre-sanitised server-side.
    */
   bodies?: string[];
+  /** 'article' summarizes the single story in headlines[0], grounded on bodies[0]. */
+  mode?: 'brief' | 'article';
 }
 
 // ── Sebuf client (replaces direct fetch to /api/{provider}-summarize) ──
@@ -87,9 +91,9 @@ const premiumNewsClient = new NewsServiceClient(getRpcBaseUrl(), {
 // network attempts — before this gate, every summarize attempt fanned out up
 // to 2 doomed RPCs (ollama→openrouter through the same gated endpoint).
 // panel-gating's hasPremiumAccess is the dual-signal source of truth.
-// translateText is deliberately NOT gated: it uses mode='translate' via the
-// plain newsClient, which the server allows for non-premium callers.
+// translateText has its own gate (below): translation is Pro too.
 configureSummarizeGate(() => hasPremiumAccess());
+
 const summaryBreaker = createCircuitBreaker<SummarizeArticleResponse>({ name: 'News Summarization', cacheTtlMs: 0 });
 
 const summaryResultBreaker = createCircuitBreaker<SummarizationResult | null>({
@@ -125,6 +129,7 @@ async function tryApiProvider(
   geoContext?: string,
   lang?: string,
   bodies?: string[],
+  mode: 'brief' | 'article' = 'brief',
 ): Promise<SummarizationResult | null> {
   if (!isFeatureAvailable(providerDef.featureId)) return null;
   // Entitlement/suppression gate BEFORE any network dispatch (#4913) — a
@@ -149,7 +154,7 @@ async function tryApiProvider(
         return await premiumNewsClient.summarizeArticle({
           provider: providerDef.provider,
           headlines,
-          mode: 'brief',
+          mode,
           geoContext: geoContext || '',
           variant: SITE_VARIANT,
           lang: lang || 'en',
@@ -200,11 +205,15 @@ async function tryApiProvider(
 
 // ── Browser T5 provider (different interface -- no API call) ──
 
+// The browser model never reaches server-side output validation.
+const ARTICLE_COMMENTARY_RE = /\bheadlines?\b|^(?:the|this) (?:story|article|title)\b|^(?:let me|i need to|i'll |i will |we need to|here is|here's|the task)|\btitres? (?:le plus|principa)|^(?:cet(?:te)?|ce|l['’]) ?(?:article|histoire|récit|texte)\b/i;
+
 async function tryBrowserT5(
   attemptState: SummarizationAttemptState,
   headlines: string[],
   modelId?: string,
   bodies?: string[],
+  mode: 'brief' | 'article' = 'brief',
 ): Promise<SummarizationResult | null> {
   try {
     if (!mlWorker.isAvailable) {
@@ -226,13 +235,18 @@ async function tryBrowserT5(
           return b ? `${h.slice(0, 80)} — ${b}` : h.slice(0, 80);
         }).join('. ')
       : topHeadlines.map(h => h.slice(0, 80)).join('. ');
-    const prompt = lang === 'fr'
-      ? `Résumez le titre le plus important en 2 phrases concises (moins de 60 mots) : ${combinedText}`
-      : `Summarize the most important headline in 2 concise sentences (under 60 words): ${combinedText}`;
+    const prompt = mode === 'article'
+      ? (lang === 'fr'
+        ? `Résumez cet article en 2 phrases concises (moins de 60 mots) : ${combinedText}`
+        : `Summarize this article in 2 concise sentences (under 60 words): ${combinedText}`)
+      : (lang === 'fr'
+        ? `Résumez le titre le plus important en 2 phrases concises (moins de 60 mots) : ${combinedText}`
+        : `Summarize the most important headline in 2 concise sentences (under 60 words): ${combinedText}`);
 
     const [summary] = await mlWorker.summarize([prompt], modelId);
 
-    if (!summary || summary.length < 20 || summary.toLowerCase().includes('summarize') || summary.toLowerCase().includes('résumez')) {
+    if (!summary || summary.length < 20 || summary.toLowerCase().includes('summarize') || summary.toLowerCase().includes('résumez')
+      || (mode === 'article' && ARTICLE_COMMENTARY_RE.test(summary))) {
       return null;
     }
 
@@ -260,10 +274,11 @@ async function runApiChain(
   stepOffset: number,
   totalSteps: number,
   bodies?: string[],
+  mode: 'brief' | 'article' = 'brief',
 ): Promise<SummarizationResult | null> {
   for (const [i, provider] of providers.entries()) {
     onProgress?.(stepOffset + i, totalSteps, `Connecting to ${provider.label}...`);
-    const result = await tryApiProvider(provider, attemptState, headlines, geoContext, lang, bodies);
+    const result = await tryApiProvider(provider, attemptState, headlines, geoContext, lang, bodies, mode);
     if (result) return result;
   }
   return null;
@@ -285,7 +300,8 @@ export async function generateSummary(
   lang: string = 'en',
   options?: SummarizeOptions,
 ): Promise<SummarizationResult | null> {
-  if (!headlines || headlines.length < 2) {
+  const mode = options?.mode ?? 'brief';
+  if (!headlines || (mode === 'article' ? headlines.length !== 1 : headlines.length < 2)) {
     return null;
   }
 
@@ -293,7 +309,7 @@ export async function generateSummary(
   const optionsSuffix = options?.skipCloudProviders || options?.skipBrowserFallback
     ? `:opts${options.skipCloudProviders ? 'C' : ''}${options.skipBrowserFallback ? 'B' : ''}`
     : '';
-  const cacheKey = (await buildSummaryCacheKey(headlines, 'brief', geoContext, SITE_VARIANT, lang, undefined, bodies)) + optionsSuffix;
+  const cacheKey = (await buildSummaryCacheKey(headlines, mode, geoContext, SITE_VARIANT, lang, undefined, bodies)) + optionsSuffix;
 
   return summaryResultBreaker.execute(
     async () => {
@@ -329,7 +345,7 @@ async function generateSummaryInternal(
   // authoritative cachedFetchJsonWithMeta lookup when bodies are present.
   if (!options?.skipCloudProviders && !bodies?.some((b) => typeof b === 'string' && b.length > 0)) {
     try {
-      const cacheKey = await buildSummaryCacheKey(headlines, 'brief', geoContext, SITE_VARIANT, lang, undefined, bodies);
+      const cacheKey = await buildSummaryCacheKey(headlines, options?.mode ?? 'brief', geoContext, SITE_VARIANT, lang, undefined, bodies);
       const cached = await newsClient.getSummarizeArticleCache({ cacheKey });
       if (cached.summary) {
         return { summary: cached.summary, provider: 'cache', model: cached.model || '', cached: true };
@@ -345,13 +361,13 @@ async function generateSummaryInternal(
       // Model already loaded -- use browser T5-small first
       if (!options?.skipBrowserFallback) {
         onProgress?.(1, totalSteps, 'Running local AI model (beta)...');
-        const browserResult = await tryBrowserT5(attemptState, headlines, 'summarization-beta', bodies);
+        const browserResult = await tryBrowserT5(attemptState, headlines, 'summarization-beta', bodies, options?.mode);
         if (browserResult) return browserResult;
       }
 
       // Warm model failed inference -- fallback through API providers
       if (!options?.skipCloudProviders) {
-        const chainResult = await runApiChain(API_PROVIDERS, attemptState, headlines, geoContext, undefined, onProgress, 2, totalSteps, bodies);
+        const chainResult = await runApiChain(API_PROVIDERS, attemptState, headlines, geoContext, undefined, onProgress, 2, totalSteps, bodies, options?.mode);
         if (chainResult) return chainResult;
       }
     } else {
@@ -362,7 +378,7 @@ async function generateSummaryInternal(
 
       // API providers while model loads
       if (!options?.skipCloudProviders) {
-        const chainResult = await runApiChain(API_PROVIDERS, attemptState, headlines, geoContext, undefined, onProgress, 1, totalSteps, bodies);
+        const chainResult = await runApiChain(API_PROVIDERS, attemptState, headlines, geoContext, undefined, onProgress, 1, totalSteps, bodies, options?.mode);
         if (chainResult) {
           return chainResult;
         }
@@ -371,7 +387,7 @@ async function generateSummaryInternal(
       // Last resort: try browser T5 (may have finished loading by now)
       if (mlWorker.isAvailable && !options?.skipBrowserFallback) {
         onProgress?.(API_PROVIDERS.length + 1, totalSteps, 'Waiting for local AI model...');
-        const browserResult = await tryBrowserT5(attemptState, headlines, 'summarization-beta', bodies);
+        const browserResult = await tryBrowserT5(attemptState, headlines, 'summarization-beta', bodies, options?.mode);
         if (browserResult) return browserResult;
       }
 
@@ -387,13 +403,13 @@ async function generateSummaryInternal(
   let chainResult: SummarizationResult | null = null;
 
   if (!options?.skipCloudProviders) {
-    chainResult = await runApiChain(API_PROVIDERS, attemptState, headlines, geoContext, lang, onProgress, 1, totalSteps, bodies);
+    chainResult = await runApiChain(API_PROVIDERS, attemptState, headlines, geoContext, lang, onProgress, 1, totalSteps, bodies, options?.mode);
   }
   if (chainResult) return chainResult;
 
   if (!options?.skipBrowserFallback) {
     onProgress?.(totalSteps, totalSteps, 'Loading local AI model...');
-    const browserResult = await tryBrowserT5(attemptState, headlines, undefined, bodies);
+    const browserResult = await tryBrowserT5(attemptState, headlines, undefined, bodies, options?.mode);
     if (browserResult) return browserResult;
   }
 
@@ -413,14 +429,27 @@ export async function translateText(
 ): Promise<string | null> {
   if (!text) return null;
 
+  // Translation requires Pro (summarize-article.ts enforces it). Two requests
+  // stay free and go through the plain client, which carries the anonymous
+  // session: Hebrew OREF alerts into English, and the desktop app's own local
+  // model. Anything else from a free browser is never sent.
+  const pro = hasPremiumAccess();
+  const freeAlert = isFreeAlertTranslation(text, targetLang);
   const totalSteps = API_PROVIDERS.length;
   for (const [i, providerDef] of API_PROVIDERS.entries()) {
     if (!isFeatureAvailable(providerDef.featureId)) continue;
+    const desktopLocal = providerDef.provider === 'ollama' && isDesktopRuntime();
+    if (!pro && !desktopLocal && !freeAlert) continue;
+    // Pro translation carries the caller's credential through the summary
+    // client. Its 429 backoff applies here too: a 429 is the account's limit,
+    // so a cooldown skips further Pro requests, never the free ones.
+    const client = pro && !desktopLocal ? premiumNewsClient : newsClient;
+    if (client === premiumNewsClient && isServerSummarizationSuppressed()) continue;
 
     onProgress?.(i + 1, totalSteps, `Translating with ${providerDef.label}...`);
     try {
       const resp = await summaryBreaker.execute(async () => {
-        return newsClient.summarizeArticle({
+        return client.summarizeArticle({
           provider: providerDef.provider,
           headlines: [text],
           mode: 'translate',
@@ -430,7 +459,9 @@ export async function translateText(
           systemAppend: '',
           bodies: [],
         });
-      }, emptySummaryFallback);
+      }, emptySummaryFallback, {
+        cacheKey: JSON.stringify(['translate', providerDef.provider, targetLang, text]),
+      });
 
       if (resp.fallback || resp.status === 'SUMMARIZE_STATUS_SKIPPED') continue;
       const summary = typeof resp.summary === 'string' ? resp.summary.trim() : '';

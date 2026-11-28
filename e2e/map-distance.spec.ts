@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 type Camera = { lon: number; lat: number; zoom: number };
 type HarnessWindow = Window & {
@@ -32,7 +33,7 @@ test('2D scale and ruler follow the camera and preserve map interactions', async
   await expect(page.locator('.map-popup')).not.toBeVisible();
   await page.evaluate(() => document.body.classList.remove('e2e-deterministic'));
   await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__mapHarness?.getDeckLayerSnapshot().find(l => l.id === 'map-distance-line')?.dataCount)).toBe(1);
-  await page.screenshot({ path: '.claude/verify-evidence/ruler-desktop-iceland.png' });
+  await evidenceScreenshot(page, { path: '.claude/verify-evidence/ruler-desktop-iceland.png' });
   await page.getByLabel('Distance units').selectOption('mi');
   await expect(page.locator('.map-distance-status')).toContainText('mi');
   await expect(scale).toContainText(/mi|ft/);
@@ -51,7 +52,6 @@ test('2D scale and ruler follow the camera and preserve map interactions', async
 });
 
 for (const [name, a, b, km] of [
-  ['equator', [0, 0], [1, 0], 111.2],
   ['legacy locale', [0, 0], [1, 0], 111.2],
   ['Iceland', [-22, 65], [-21, 65], 47.0],
   ['dateline', [179.9, 0], [-179.9, 0], 22.2],
@@ -108,7 +108,7 @@ test('scale reflects latitude and resized light and dark panels', async ({ page 
       return rect.left >= parent.left && rect.right <= parent.right && rect.bottom <= parent.bottom;
     });
     expect(fits).toBe(true);
-    await page.screenshot({ path: `.claude/verify-evidence/ruler-small-${theme}.png` });
+    await evidenceScreenshot(page, { path: `.claude/verify-evidence/ruler-small-${theme}.png` });
     await page.getByRole('button', { name: 'Exit measurement' }).click();
   }
 });

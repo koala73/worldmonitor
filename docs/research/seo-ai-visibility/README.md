@@ -6,7 +6,8 @@ missing source cannot silently become a zero or a site-wide vanity score.
 
 ## Files
 
-- `query-set.json` — 25 reviewed decision queries with intent, audience, target
+- `query-set.json` — the current reviewed query set (`seo-ai-visibility-v2`, 33
+  queries; see [Query sets](#query-sets)) with intent, audience, target
   page, conversion goal, and named comparison/source entities.
 - `baselines/<date>.json` — normalized source availability, search/referral
   windows, manual AI observations, the exact query-contract digest,
@@ -24,6 +25,12 @@ missing source cannot silently become a zero or a site-wide vanity score.
   referral snapshots from `scripts/seo-bing-collect.mjs` and
   `scripts/seo-umami-collect.mjs`, written by the same weekly run when their
   credentials are configured.
+- `answerrank/<date>.json` and `answerrank/<date>.md` — weekly AI-answer
+  snapshots from `scripts/seo-answerrank-collect.mjs`: how often model API
+  answers to 13 fixed buyer questions name or cite World Monitor, and whether
+  that changed significantly since the last comparable week. They are a proxy,
+  not observations of the AI products, so they never fill `aiSurfaces`. See
+  `answerrank/README.md`.
 - `scripts/seo-weekly-baseline.mjs` — turns one date's snapshots into
   `baselines/<date>.json` and `scorecards/<date>.md`. See
   [Weekly regeneration](#weekly-regeneration).
@@ -62,7 +69,7 @@ From a clean repository checkout:
 
 ```bash
 node scripts/seo-ai-visibility-scorecard.mjs \
-  --queries docs/research/seo-ai-visibility/query-set.json \
+  --queries docs/research/seo-ai-visibility/query-sets/seo-ai-visibility-v1.json \
   --baseline docs/research/seo-ai-visibility/baselines/2026-07-27.json \
   --output docs/research/seo-ai-visibility/scorecards/2026-07-27.md \
   --check
@@ -83,6 +90,32 @@ start a new baseline series with the digest computed by
 `computeQuerySetDigest()` in the scorecard module. Existing baselines must keep
 their original ID and digest; the validator rejects silently reinterpreting
 historical observations with a newer query definition.
+
+### Query sets
+
+`query-set.json` is the set the next weekly run uses. Each earlier set is kept,
+unchanged, as `query-sets/<querySetId>.json`, so every committed baseline still
+validates against the set it was measured with
+(`tests/seo-ai-visibility-scorecard.test.mjs` checks each one).
+
+- `seo-ai-visibility-v1` (reviewed 2026-07-27): the 25 long decision queries
+  q01-q25. It measured the baselines from 2026-07-27 to 2026-11-10. Search
+  Console reported none of them in either window of the 2026-11-10 snapshot,
+  the first with per-query lookups.
+- `seo-ai-visibility-v2` (reviewed 2026-11-13): q01-q25 unchanged, plus eight
+  short searches Search Console did report in both windows of a 2026-11-13
+  lookup: "world monitor", "worldmonitor", "world monitor api", "world monitor
+  mcp", "liveuamap alternative", "osint dashboard", "osint world map" and
+  "global conflict tracker" (q26-q33). The long queries stay for any future
+  AI-answer tracking; answerrank's questions in `answerrank/inputs/` are a
+  separate list.
+
+To change the set, copy `query-set.json` to `query-sets/<its querySetId>.json`,
+then edit it and give it a new `querySetId` and `reviewedAt`. The digest
+change resets the comparison: the next weekly scorecard says it was not
+compared with the previous baseline and starts a new series, and the week
+after compares as usual. The weekly run cannot compare across sets, because a
+set reviewed after a baseline was observed cannot validate that baseline.
 
 ## First-party collection and secure import
 
@@ -187,7 +220,8 @@ For both the trailing 28-day and 90-day windows:
 1. Export search performance grouped by query and page, retaining clicks,
    impressions, CTR, and average position.
 2. Export or record the supported Page Indexing summary for indexed pages.
-3. Join reviewed query rows to `query-set.json` by the exact query text.
+3. Look up each reviewed query in `query-set.json` with an exact-match filter
+   on the query dimension, and record the set's id and digest with the results.
 4. Group target pages into the `targetPage.family` values the query set
    declares for its schema version. `scripts/lib/seo-url-taxonomy.mjs` performs
    that mapping for any site URL and refuses an unmapped one.
@@ -203,6 +237,8 @@ If the export or indexing view is unavailable, keep every metric `null`, set
 `reason`. An unavailable provider has empty `queryRows` and `pageFamilyRows`.
 A partial provider may retain supported finite values while unavailable metrics
 remain `null`. A zero is valid only when the provider explicitly reported zero.
+A query row with no metrics must carry a `reason`, and the query-intent slice
+shows how many of its queries were reported instead of a partial sum.
 Every provider window must end on or before the baseline's `observedAt` date.
 
 ### 2. Bing Webmaster
@@ -303,14 +339,26 @@ It reads `gsc/<date>.json` (required) and `bing/<date>.json` and
 `umami/<date>.json` (each optional), builds the source manifest, runs it
 through `collectBaseline`, and writes `baselines/<date>.json` and
 `scorecards/<date>.md`. The scorecard is compared with the newest baseline dated
-before `<date>`, which is also the template: the query contract, referral
-classification, opportunity queue, guardrails and declared collection context
-carry forward, so consecutive weeks stay comparable. The template's limitations
-do not; each run states its own. Nothing is written unless both files build,
+before `<date>`, which is also the template: the referral classification,
+opportunity queue, guardrails and declared collection context carry forward,
+so consecutive weeks stay comparable. The template's limitations do not; each
+run states its own. The query set always comes from `query-set.json`; when its
+`querySetId` differs from the template's, the scorecard is not compared and
+says why (see [Query sets](#query-sets)). Nothing is written unless both files build,
 and the step is `continue-on-error`, so a failure leaves the snapshots to ship
 alone with a note in the PR body. The opportunity queue is human-reviewed:
 edit it in the newest baseline when it no longer fits, and the next week
-carries the edit forward.
+carries the edit forward. The current queue was written into
+`baselines/2026-11-10.json` on 2026-11-13 from that week's data.
+
+The collection context is site-wide: all countries, languages, devices and
+visitors, because every figure comes from a whole-property API. Until
+2026-11-13 the template carried the dropped manual panel's France / en /
+desktop web context, which described none of the weekly figures. The edit was
+made in `baselines/2026-11-10.json`, so the next run inherits it.
+`scorecards/2026-11-10.md` stays as generated that day: the scorecard refuses
+to compare two contexts, so it cannot be rebuilt with its comparison against
+2026-11-03.
 
 Each collector owns the mapping from its own snapshot, and
 `seo-ai-visibility-collector.mjs` stays the only normalizer. A value is copied
@@ -321,7 +369,7 @@ only where its meaning matches the contract field:
 | Search Console window clicks, impressions, CTR, position | `performance.windows[].siteTotals.all` (by property) | No by-property totals for that window. The page-row sum is never used: it counts one search once per URL shown. |
 | Search Console window `indexedPages` | `indexation.htmlPages.indexed`, the same count in both windows | The inspection sample did not cover every declared URL. |
 | Search Console page-family rows | `performance.windows[].byFamily` (page-grouped); `indexedPages` from `htmlPages.indexedByFamily` | A family's URLs were not all inspected. A family with no page row in a truncated window gets no row. |
-| Search Console query rows | `topQueries` whose text exactly equals a reviewed query | A reviewed query outside the top 20 has no row, which is not a zero. |
+| Search Console query rows | `reviewedQueries.windows[].lookups`, one per reviewed query and window | Google returned no row (`not-reported`: below its privacy threshold or no impressions) or the lookup failed (`unavailable`). Each row keeps null metrics and its `reason`; neither is a zero. There are no rows when the snapshot predates the lookups or they were made for a different query set (`querySetId` and `querySetDigest` differ); the source `reason` says which. |
 | Bing window clicks, impressions, CTR | `traffic.windows` (daily site rows) | Bing reported fewer days than the window has. |
 | Bing window and page-family position | none | Always: the daily rows carry no position. |
 | Bing `indexedPages` | `crawl.latest.inIndex` | Crawl stats unavailable. Page-family rows never carry one. |

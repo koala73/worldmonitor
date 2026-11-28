@@ -6,7 +6,6 @@ import { signalAggregator, type RegionalConvergence } from '@/services/signal-ag
 import { focalPointDetector } from '@/services/focal-point-detector';
 import { stripOrefLabels } from '@/services/oref-alerts';
 import { getCachedCountryScoreValue } from '@/services/cached-risk-scores';
-import { getTheaterPostureSummaries } from '@/services/military-surge';
 import { getCachedPosture } from '@/services/cached-theater-posture';
 import { isMobileDevice } from '@/utils';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
@@ -29,7 +28,7 @@ import { TimeoutError, withTimeout } from '@/utils/with-timeout';
 import { extractEntitiesFromTitle } from '@/services/entity-extraction';
 import { getEntityIndex } from '@/services/entity-index';
 
-import type { ClusteredEvent, FocalPoint, MilitaryFlight } from '@/types';
+import type { ClusteredEvent, FocalPoint } from '@/types';
 
 const getAuthoritativeCountryScore = getCachedCountryScoreValue;
 
@@ -49,7 +48,6 @@ export class InsightsPanel extends Panel {
   private lastMissedStories: AnalyzedHeadline[] = [];
   private lastConvergenceZones: RegionalConvergence[] = [];
   private lastFocalPoints: FocalPoint[] = [];
-  private lastMilitaryFlights: MilitaryFlight[] = [];
   private lastClusters: ClusteredEvent[] = [];
   private aiFlowUnsubscribe: (() => void) | null = null;
   private frameworkUnsubscribe: (() => void) | null = null;
@@ -102,15 +100,10 @@ export class InsightsPanel extends Panel {
     void this.paintCachedBriefEarly();
   }
 
-  public setMilitaryFlights(flights: MilitaryFlight[]): void {
-    this.lastMilitaryFlights = flights;
-  }
-
   private getTheaterPostureContext(): string {
-    const cachedPostures = getCachedPosture()?.postures;
-    const postures = cachedPostures?.length
-      ? cachedPostures
-      : (this.lastMilitaryFlights.length > 0 ? getTheaterPostureSummaries(this.lastMilitaryFlights) : []);
+    // The published levels only: a browser-side rating from raw flights would
+    // disagree with the Strategic Posture panel (scripts/shared/theater-posture.js).
+    const postures = getCachedPosture()?.postures ?? [];
 
     const significant = postures.filter(
       (p) => p.postureLevel === 'critical' || p.postureLevel === 'elevated' || p.strikeCapable
@@ -363,13 +356,9 @@ export class InsightsPanel extends Panel {
 
       let signalSummary: ReturnType<typeof signalAggregator.getSummary>;
       if (SITE_VARIANT === 'full') {
-        const _cp = getCachedPosture()?.postures;
-        const theaterPostures = _cp?.length
-          ? _cp
-          : (this.lastMilitaryFlights.length > 0 ? getTheaterPostureSummaries(this.lastMilitaryFlights) : []);
-        if (theaterPostures.length > 0) {
-          signalAggregator.ingestTheaterPostures(theaterPostures);
-        }
+        // An empty list clears earlier theater signals; the posture cache returns
+        // null once it expires.
+        signalAggregator.ingestTheaterPostures(getCachedPosture()?.postures ?? []);
         signalSummary = signalAggregator.getSummary();
         this.lastConvergenceZones = signalSummary.convergenceZones;
         this.lastFocalPoints = focalPointDetector.analyze(clusters, signalSummary).focalPoints;
@@ -469,13 +458,9 @@ export class InsightsPanel extends Panel {
       let focalSummary: ReturnType<typeof focalPointDetector.analyze>;
 
       if (SITE_VARIANT === 'full') {
-        const _cp = getCachedPosture()?.postures;
-        const theaterPostures = _cp?.length
-          ? _cp
-          : (this.lastMilitaryFlights.length > 0 ? getTheaterPostureSummaries(this.lastMilitaryFlights) : []);
-        if (theaterPostures.length > 0) {
-          signalAggregator.ingestTheaterPostures(theaterPostures);
-        }
+        // An empty list clears earlier theater signals; the posture cache returns
+        // null once it expires.
+        signalAggregator.ingestTheaterPostures(getCachedPosture()?.postures ?? []);
         signalSummary = signalAggregator.getSummary();
         this.lastConvergenceZones = signalSummary.convergenceZones;
         focalSummary = focalPointDetector.analyze(clusters, signalSummary);

@@ -1,0 +1,250 @@
+{
+ "source": "Microsoft Planetary Computer STAC search, https://planetarycomputer.microsoft.com/api/stac/v1/search (collections sentinel-2-l2a and sentinel-1-grd)",
+ "retrievedAt": "2026-11-13",
+ "note": "acquiredAt is the granule sensing time for Sentinel-2 and the scene start time for Sentinel-1.",
+ "acquisitions": [
+  {
+   "point": "paris",
+   "lat": 48.85,
+   "lon": 2.35,
+   "family": "sentinel-2",
+   "platform": "Sentinel-2B",
+   "itemId": "S2B_MSIL2A_20261110T105159_R051_T31UDQ_20261110T132153",
+   "acquiredAt": "2026-11-10T10:57:28.663Z"
+  },
+  {
+   "point": "nairobi",
+   "lat": -1.29,
+   "lon": 36.82,
+   "family": "sentinel-2",
+   "platform": "Sentinel-2A",
+   "itemId": "S2A_MSIL2A_20261110T075441_R092_T37MBU_20261110T110305",
+   "acquiredAt": "2026-11-10T08:00:30.512Z"
+  },
+  {
+   "point": "delhi",
+   "lat": 28.61,
+   "lon": 77.21,
+   "family": "sentinel-2",
+   "platform": "Sentinel-2A",
+   "itemId": "S2A_MSIL2A_20261111T053231_R105_T43RGM_20261111T102104",
+   "acquiredAt": "2026-11-11T05:41:08.699Z"
+  },
+  {
+   "point": "sao-paulo",
+   "lat": -23.55,
+   "lon": -46.63,
+   "family": "sentinel-2",
+   "platform": "Sentinel-2C",
+   "itemId": "S2C_MSIL2A_20261111T131241_R138_T23KLQ_20261111T145907",
+   "acquiredAt": "2026-11-11T13:18:39.068Z"
+  },
+  {
+   "point": "denver",
+   "lat": 39.74,
+   "lon": -104.99,
+   "family": "sentinel-2",
+   "platform": "Sentinel-2C",
+   "itemId": "S2C_MSIL2A_20261111T175551_R141_T13TEE_20261111T205205",
+   "acquiredAt": "2026-11-11T18:02:48.508Z"
+  },
+  {
+   "point": "sydney",
+   "lat": -33.87,
+   "lon": 151.21,
+   "family": "sentinel-2",
+   "platform": "Sentinel-2C",
+   "itemId": "S2C_MSIL2A_20261110T235231_R130_T56HLH_20261111T022349",
+   "acquiredAt": "2026-11-10T23:56:09.393Z"
+  },
+  {
+   "point": "madrid",
+   "lat": 40.42,
+   "lon": -3.7,
+   "family": "sentinel-2",
+   "platform": "Sentinel-2A",
+   "itemId": "S2A_MSIL2A_20261110T110211_R094_T30TVK_20261110T160053",
+   "acquiredAt": "2026-11-10T11:10:12.292Z"
+  },
+  {
+   "point": "lagos",
+   "lat": 6.52,
+   "lon": 3.38,
+   "family": "sentinel-2",
+   "platform": "Sentinel-2C",
+   "itemId": "S2C_MSIL2A_20261110T100231_R122_T31NEH_20261110T135359",
+   "acquiredAt": "2026-11-10T10:19:02.977Z"
+  },
+  {
+   "point": "almaty",
+   "lat": 43.24,
+   "lon": 76.89,
+   "family": "sentinel-2",
+   "platform": "Sentinel-2B",
+   "itemId": "S2B_MSIL2A_20261110T055049_R048_T43TFH_20261110T074924",
+   "acquiredAt": "2026-11-10T05:57:06.899Z"
+  },
+  {
+   "point": "tehran",
+   "lat": 35.69,
+   "lon": 51.39,
+   "family": "sentinel-2",
+   "platform": "Sentinel-2C",
+   "itemId": "S2C_MSIL2A_20261112T072131_R006_T39SWV_20261112T104148",
+   "acquiredAt": "2026-11-12T07:29:45.237Z"
+  },
+  {
+   "point": "johannesburg",
+   "lat": -26.2,
+   "lon": 28.05,
+   "family": "sentinel-2",
+   "platform": "Sentinel-2C",
+   "itemId": "S2C_MSIL2A_20261111T075141_R135_T35JPM_20261111T111102",
+   "acquiredAt": "2026-11-11T08:17:18.869Z"
+  },
+  {
+   "point": "kyiv",
+   "lat": 50.45,
+   "lon": 30.52,
+   "family": "sentinel-2",
+   "platform": "Sentinel-2B",
+   "itemId": "S2B_MSIL2A_20261110T091119_R050_T36UUB_20261110T111832",
+   "acquiredAt": "2026-11-10T09:16:07.947Z"
+  },
+  {
+   "point": "berlin",
+   "lat": 52.52,
+   "lon": 13.4,
+   "family": "sentinel-1",
+   "platform": "sentinel-1c",
+   "itemId": "S1C_IW_GRDH_1SDV_20261111T165949_20261111T170014_010292_0148D7",
+   "acquiredAt": "2026-11-11T16:59:49.966676Z",
+   "acquisitionEnd": "2026-11-11T17:00:14.964349Z",
+   "orbitState": "ascending"
+  },
+  {
+   "point": "beijing",
+   "lat": 39.9,
+   "lon": 116.4,
+   "family": "sentinel-1",
+   "platform": "sentinel-1d",
+   "itemId": "S1D_IW_GRDH_1SDV_20261112T101310_20261112T101335_005433_00A5EE",
+   "acquiredAt": "2026-11-12T10:13:10.994616Z",
+   "acquisitionEnd": "2026-11-12T10:13:35.993094Z",
+   "orbitState": "ascending"
+  },
+  {
+   "point": "mexico-city",
+   "lat": 19.43,
+   "lon": -99.13,
+   "family": "sentinel-1",
+   "platform": "sentinel-1c",
+   "itemId": "S1C_IW_GRDH_1SDV_20261111T123316_20261111T123341_010289_0148C5",
+   "acquiredAt": "2026-11-11T12:33:16.516257Z",
+   "acquisitionEnd": "2026-11-11T12:33:41.515478Z",
+   "orbitState": "descending"
+  },
+  {
+   "point": "istanbul",
+   "lat": 41.01,
+   "lon": 28.98,
+   "family": "sentinel-1",
+   "platform": "sentinel-1c",
+   "itemId": "S1C_IW_GRDH_1SDV_20261111T041334_20261111T041359_010284_014898",
+   "acquiredAt": "2026-11-11T04:13:34.610770Z",
+   "acquisitionEnd": "2026-11-11T04:13:59.608941Z",
+   "orbitState": "descending"
+  },
+  {
+   "point": "rome",
+   "lat": 41.9,
+   "lon": 12.5,
+   "family": "sentinel-2",
+   "platform": "Sentinel-2C",
+   "itemId": "S2C_MSIL2A_20261110T100231_R122_T33TTG_20261110T135359",
+   "acquiredAt": "2026-11-10T10:09:08.782Z"
+  },
+  {
+   "point": "moscow",
+   "lat": 55.75,
+   "lon": 37.62,
+   "family": "sentinel-2",
+   "platform": "Sentinel-2B",
+   "itemId": "S2B_MSIL2A_20261111T084109_R064_T37UDB_20261111T123120",
+   "acquiredAt": "2026-11-11T08:44:44.740Z"
+  },
+  {
+   "point": "seoul",
+   "lat": 37.57,
+   "lon": 126.98,
+   "family": "sentinel-2",
+   "platform": "Sentinel-2C",
+   "itemId": "S2C_MSIL2A_20261112T021921_R003_T52SCG_20261112T055305",
+   "acquiredAt": "2026-11-12T02:27:09.874Z"
+  },
+  {
+   "point": "toronto",
+   "lat": 43.65,
+   "lon": -79.38,
+   "family": "sentinel-2",
+   "platform": "Sentinel-2C",
+   "itemId": "S2C_MSIL2A_20261111T161511_R140_T17TPJ_20261111T193505",
+   "acquiredAt": "2026-11-11T16:21:09.058Z"
+  },
+  {
+   "point": "london",
+   "lat": 51.51,
+   "lon": -0.13,
+   "family": "sentinel-1",
+   "platform": "sentinel-1d",
+   "itemId": "S1D_IW_GRDH_1SDV_20261111T174856_20261111T174921_005423_00A593",
+   "acquiredAt": "2026-11-11T17:48:56.745277Z",
+   "acquisitionEnd": "2026-11-11T17:49:21.742654Z",
+   "orbitState": "ascending"
+  },
+  {
+   "point": "tokyo",
+   "lat": 35.68,
+   "lon": 139.69,
+   "family": "sentinel-1",
+   "platform": "sentinel-1c",
+   "itemId": "S1C_IW_GRDH_1SDV_20261111T084126_20261111T084151_010287_0148AD",
+   "acquiredAt": "2026-11-11T08:41:26.570197Z",
+   "acquisitionEnd": "2026-11-11T08:41:51.569644Z",
+   "orbitState": "ascending"
+  },
+  {
+   "point": "warsaw",
+   "lat": 52.23,
+   "lon": 21.01,
+   "family": "sentinel-1",
+   "platform": "sentinel-1c",
+   "itemId": "S1C_IW_GRDH_1SDV_20261110T161818_20261110T161843_010277_014865",
+   "acquiredAt": "2026-11-10T16:18:18.775950Z",
+   "acquisitionEnd": "2026-11-10T16:18:43.774923Z",
+   "orbitState": "ascending"
+  },
+  {
+   "point": "chicago",
+   "lat": 41.88,
+   "lon": -87.63,
+   "family": "sentinel-1",
+   "platform": "sentinel-1d",
+   "itemId": "S1D_IW_GRDH_1SDV_20261110T233953_20261110T234025_005412_00A53B",
+   "acquiredAt": "2026-11-10T23:39:53.849735Z",
+   "acquisitionEnd": "2026-11-10T23:40:25.008516Z",
+   "orbitState": "ascending"
+  },
+  {
+   "point": "kinshasa",
+   "lat": -4.32,
+   "lon": 15.31,
+   "family": "sentinel-1",
+   "platform": "sentinel-1d",
+   "itemId": "S1D_IW_GRDH_1SDV_20261110T043446_20261110T043511_005400_00A4D3",
+   "acquiredAt": "2026-11-10T04:34:46.655376Z",
+   "acquisitionEnd": "2026-11-10T04:35:11.653584Z",
+   "orbitState": "descending"
+  }
+ ]
+}

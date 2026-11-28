@@ -74,7 +74,9 @@ function checkAuth(req) {
 // Blocks dangerous operations like FLUSHALL, CONFIG SET, EVAL, DEBUG, SLAVEOF.
 const ALLOWED_COMMANDS = new Set([
   'GET', 'GETDEL', 'SET', 'DEL', 'MGET', 'MSET', 'SCAN',
-  'TTL', 'EXPIRE', 'PEXPIRE', 'EXISTS', 'TYPE',
+  // EXPIREAT sets the same TTL EXPIRE does, from an absolute time. The air
+  // traffic series pins each day hash to day end plus its retention.
+  'TTL', 'EXPIRE', 'EXPIREAT', 'PEXPIRE', 'EXISTS', 'TYPE',
   'HGET', 'HSET', 'HSETNX', 'HINCRBY', 'HDEL', 'HGETALL', 'HMGET', 'HMSET', 'HKEYS', 'HVALS', 'HEXISTS', 'HLEN',
   'LPUSH', 'RPUSH', 'LPOP', 'RPOP', 'LRANGE', 'LLEN', 'LTRIM', 'LREM',
   'SADD', 'SREM', 'SMEMBERS', 'SISMEMBER', 'SCARD',
@@ -223,6 +225,18 @@ const STORY_ALIAS_PUBLISH_SCRIPT = [
   'for index = 2, #KEYS do',
   "  redis.call('SET', KEYS[index], ARGV[2], 'EX', ARGV[3])",
   'end',
+  'return 1',
+].join('\n');
+
+// PINNED COPY of shared/rss-feed-renew-script.mjs. A 304 renews a cached feed
+// parse only while Redis still holds that parse, so a delayed refresh cannot
+// put an older entry back over a newer parse and its country pool.
+const RSS_FEED_RENEW_SCRIPT = [
+  "local current = redis.call('GET', KEYS[1])",
+  'if not current then return 0 end',
+  'local ok, entry = pcall(cjson.decode, current)',
+  "if not ok or type(entry) ~= 'table' or entry.parsedAt ~= tonumber(ARGV[1]) then return 0 end",
+  "redis.call('SET', KEYS[1], ARGV[2], 'PXAT', ARGV[3])",
   'return 1',
 ].join('\n');
 
@@ -555,6 +569,14 @@ const PHYSICAL_DIVERGENCE_PUBLISH_SCRIPT = [
   'end',
   'return #KEYS',
 ].join('\n');
+// PINNED COPY of scripts/seed-no2-activity.mjs PUBLISH_NO2_ACTIVITY_LUA.
+// The NO2 activity dataset and its activation marker must become visible
+// together, so health never sees a dataset without its marker or the reverse.
+const NO2_ACTIVITY_PUBLISH_SCRIPT = [
+  "redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])",
+  "redis.call('SET', KEYS[2], '1')",
+  'return 1',
+].join('\n');
 const SOURCE_RETRY_CLAIM_SCRIPT = [
   "if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end",
   "redis.call('SET', KEYS[1], ARGV[2], 'XX', 'KEEPTTL')",
@@ -831,6 +853,20 @@ const TENDER_RECEIPT_UPSERT_SCRIPT = [
   "",
 ].join('\n');
 
+// Pinned copy of scripts/lib/sent-alert-history.cjs for the single-file proxy
+// image. The notification relay stores a delivered alert only while the
+// recipient's account-deletion marker is absent; command-parity tests check
+// exact bytes.
+const SENT_ALERT_WRITE_SCRIPT = [
+  "if redis.call('EXISTS', KEYS[2]) == 1 then",
+  '  return 0',
+  'end',
+  "redis.call('LPUSH', KEYS[1], ARGV[1])",
+  "redis.call('LTRIM', KEYS[1], 0, tonumber(ARGV[2]) - 1)",
+  "redis.call('EXPIRE', KEYS[1], ARGV[3])",
+  'return 1',
+].join('\n');
+
 // PINNED COPIES of scripts/seed-military-bases.mjs version-switch scripts.
 // The seeder publishes a new bases version, sweeps leaked version keys, arms
 // staging TTLs and backfills seed-meta with these; command-parity tests check
@@ -878,6 +914,133 @@ const MILITARY_BASES_BACKFILL_META_IF_ACTIVE_SCRIPT = [
   'return {1, current}',
 ].join('\n');
 
+// PINNED COPY of shared/chokepoint-transit-store.js. The AIS relay merges
+// chokepoint transit gates through one EVAL so overlapping relay runs cannot
+// drop one another's observations (#10931).
+const MERGE_TRANSIT_GATES_SCRIPT = [
+  "",
+  "local now = tonumber(ARGV[1])",
+  "local gap = tonumber(ARGV[2])",
+  "local cooldown = tonumber(ARGV[3])",
+  "local countRetention = tonumber(ARGV[4])",
+  "local cutoff = now - gap - countRetention",
+  "local total = tonumber(redis.call('HGET', KEYS[1], '_rows') or '0')",
+  "local incomplete = cjson.decode(redis.call('HGET', KEYS[1], '_incomplete') or '{}')",
+  "for name, deadline in pairs(cjson.decode(ARGV[9])) do",
+  "  incomplete[name] = math.max(incomplete[name] or 0, deadline)",
+  "end",
+  "for name, deadline in pairs(incomplete) do",
+  "  if deadline <= now then incomplete[name] = nil end",
+  "end",
+  "local function saveMetadata()",
+  "  redis.call('HSET', KEYS[1], '_rows', total, '_incomplete', cjson.encode(incomplete))",
+  "  redis.call('EXPIRE', KEYS[1], math.ceil((gap + countRetention) / 1000) + 3600)",
+  "  redis.call('EXPIRE', KEYS[2], math.ceil((gap + countRetention) / 1000) + 3600)",
+  "end",
+  "local expired = redis.call('ZRANGEBYSCORE', KEYS[2], '-inf', '(' .. cutoff, 'LIMIT', 0, 4)",
+  "for _, id in ipairs(expired) do",
+  "  local raw = redis.call('HGET', KEYS[1], id)",
+  "  if raw then total = total - #cjson.decode(raw).observations end",
+  "  redis.call('HDEL', KEYS[1], id)",
+  "  redis.call('ZREM', KEYS[2], id)",
+  "end",
+  "local vessels = redis.call('ZCARD', KEYS[2])",
+  "local groups = {}",
+  "for _, row in ipairs(cjson.decode(ARGV[5])) do",
+  "  local ts = tonumber(row[5])",
+  "  if ts <= now and ts >= cutoff then",
+  "    local id = cjson.encode({row[1], row[2]})",
+  "    if not groups[id] then groups[id] = {name=row[1], mmsi=row[2], rows={}} end",
+  "    table.insert(groups[id].rows, {row[3], row[4], ts})",
+  "  end",
+  "end",
+  "for id, group in pairs(groups) do",
+  "  local raw = redis.call('HGET', KEYS[1], id)",
+  "  local previous = raw and cjson.decode(raw) or {observations={}, crossings={}, anchor={ts=0, crossedAt=0}}",
+  "  local observations, unique = {}, {}",
+  "  for _, rows in ipairs({previous.observations, group.rows}) do",
+  "    for _, row in ipairs(rows) do",
+  "      local key = row[1] .. ':' .. row[3]",
+  "      if row[3] > previous.anchor.ts and not unique[key] then",
+  "        unique[key] = true",
+  "        table.insert(observations, row)",
+  "      end",
+  "    end",
+  "  end",
+  "  table.sort(observations, function(a,b)",
+  "    if a[3] == b[3] then return a[1] < b[1] end",
+  "    return a[3] < b[3]",
+  "  end)",
+  "  local state = previous.anchor",
+  "  local anchor = previous.anchor",
+  "  local retained, crossings = {}, {}",
+  "  for _, row in ipairs(observations) do",
+  "    local side, kind, ts = row[1], row[2], row[3]",
+  "    if ts > state.ts then",
+  "      local crossedAt = state.crossedAt",
+  "      if state.side and state.side ~= side and ts - state.ts <= gap",
+  "          and (crossedAt == 0 or ts - crossedAt >= cooldown) then",
+  "        crossedAt = ts",
+  "        if ts > now - countRetention then",
+  "          table.insert(crossings, {group.name, group.mmsi, kind, ts})",
+  "        end",
+  "      end",
+  "      state = {side=side, ts=ts, crossedAt=crossedAt}",
+  "      if ts < cutoff then anchor = state else table.insert(retained, row) end",
+  "    end",
+  "  end",
+  "  local nextTotal = total - #previous.observations + #retained",
+  "  local nextVessels = vessels + (raw and 0 or 1)",
+  "  if nextVessels > tonumber(ARGV[6]) or #retained > tonumber(ARGV[7]) or nextTotal > tonumber(ARGV[8]) then",
+  "    -- Drop only this vessel's journal, freeing capacity for other vessels.",
+  "    -- Its waterway is explicitly unavailable until all affected input ages out.",
+  "    local newest = state.ts",
+  "    for _, row in ipairs(group.rows) do newest = math.max(newest, row[3]) end",
+  "    incomplete[group.name] = math.max(incomplete[group.name] or 0, newest + gap + countRetention)",
+  "    if raw then",
+  "      redis.call('HDEL', KEYS[1], id)",
+  "      redis.call('ZREM', KEYS[2], id)",
+  "      total = total - #previous.observations",
+  "      vessels = vessels - 1",
+  "    end",
+  "  else",
+  "    for _, event in ipairs(previous.crossings) do",
+  "      redis.call('ZREM', KEYS[3], cjson.encode(event))",
+  "    end",
+  "    for _, event in ipairs(crossings) do",
+  "      redis.call('ZADD', KEYS[3], event[4], cjson.encode(event))",
+  "    end",
+  "    redis.call('HSET', KEYS[1], id, cjson.encode({observations=retained, crossings=crossings, anchor=anchor}))",
+  "    redis.call('ZADD', KEYS[2], state.ts, id)",
+  "    total = nextTotal",
+  "    vessels = nextVessels",
+  "  end",
+  "end",
+  "saveMetadata()",
+  "redis.call('EXPIRE', KEYS[3], 25 * 60 * 60)",
+  "return {1, cjson.encode(incomplete)}",
+  "",
+].join('\n');
+
+// PINNED COPY of shared/chokepoint-transit-window.js. Same relay, same EVAL
+// reason: the 24h crossing window is merged, trimmed and read atomically.
+const MERGE_TRANSIT_WINDOW_SCRIPT = [
+  "",
+  "local now = tonumber(ARGV[1])",
+  "local cutoff = now - tonumber(ARGV[2])",
+  "local events = cjson.decode(ARGV[4])",
+  "for _, event in ipairs(events) do",
+  "  local ts = tonumber(event[4])",
+  "  if ts > cutoff and ts <= now then",
+  "    redis.call('ZADD', KEYS[1], ts, cjson.encode(event))",
+  "  end",
+  "end",
+  "redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', cutoff)",
+  "redis.call('EXPIRE', KEYS[1], tonumber(ARGV[3]))",
+  "return redis.call('ZRANGEBYSCORE', KEYS[1], '(' .. cutoff, now)",
+  "",
+].join('\n');
+
 const ALLOWED_EVAL_SCRIPTS = new Set([
   TENDER_RECEIPT_UPSERT_SCRIPT,
   HISTORY_COST_UPDATE_SCRIPT,
@@ -894,6 +1057,7 @@ const ALLOWED_EVAL_SCRIPTS = new Set([
   SOURCE_RETRY_CLAIM_SCRIPT,
   DIGEST_LASTGOOD_PUBLISH_SCRIPT,
   STORY_ALIAS_PUBLISH_SCRIPT,
+  RSS_FEED_RENEW_SCRIPT,
   MCP_QUOTA_RESERVE_SCRIPT,
   RESERVE_FREE_ACCOUNT_ALLOWANCE_SCRIPT,
   READ_FREE_ACCOUNT_ALLOWANCE_SCRIPT,
@@ -906,10 +1070,14 @@ const ALLOWED_EVAL_SCRIPTS = new Set([
   PHYSICAL_PREMIUM_HISTORY_APPEND_SCRIPT,
   PHYSICAL_PREMIUM_PUBLISH_SCRIPT,
   PHYSICAL_DIVERGENCE_PUBLISH_SCRIPT,
+  NO2_ACTIVITY_PUBLISH_SCRIPT,
   MILITARY_BASES_PUBLISH_ACTIVE_AND_META_SCRIPT,
   MILITARY_BASES_ARM_LEAKED_KEY_IF_INACTIVE_SCRIPT,
   MILITARY_BASES_ARM_STAGING_KEY_TTL_IF_INACTIVE_SCRIPT,
   MILITARY_BASES_BACKFILL_META_IF_ACTIVE_SCRIPT,
+  SENT_ALERT_WRITE_SCRIPT,
+  MERGE_TRANSIT_GATES_SCRIPT,
+  MERGE_TRANSIT_WINDOW_SCRIPT,
 ]);
 const LEGACY_EVAL_REPLACEMENTS = new Map([
   [LEGACY_COMPARE_AND_DELETE_SCRIPT, COMPARE_AND_DELETE_SCRIPT],

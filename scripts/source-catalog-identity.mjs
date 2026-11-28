@@ -53,7 +53,7 @@ export function isSyndicationTransportEntry(entry) {
 
 export function uniqueSorted(values) {
   const list = values instanceof Set ? [...values] : [...(values || [])];
-  return [...new Set(list.filter(Boolean))].sort((left, right) => left.localeCompare(right));
+  return [...new Set(list.filter(Boolean))].sort((left, right) => left.localeCompare(right, 'en-US'));
 }
 
 export function catalogHostKey(host) {
@@ -476,7 +476,7 @@ export function buildLogicalProviders(declarations, geography = new Map()) {
         coveredCountries: coverageCountriesForLabels(feedLabels, geography),
       };
     })
-    .sort((left, right) => left.provider.localeCompare(right.provider));
+    .sort((left, right) => left.provider.localeCompare(right.provider, 'en-US'));
 }
 
 export function isCatalogProviderEntry(entry) {

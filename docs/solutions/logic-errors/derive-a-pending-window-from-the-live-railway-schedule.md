@@ -1,6 +1,7 @@
 ---
 title: Derive a health pending window from the live Railway schedule, not from repo files
 date: 2026-11-07
+last_updated: 2026-11-07
 category: logic-errors
 module: api-health
 problem_type: logic_error
@@ -29,7 +30,11 @@ After a miss, the next verdict usually lands about 30 minutes later, from the st
 
 ## Resolution
 
-#10274 ships `maxPendingMin: 210` (`api/health.js:968`), which matches the NHC policy on the same key. It covers the 30-minute producer with wide margin and also covers the bundle-only fallback: the next 3-hourly tick, plus the section's 180 s timeout, is inside 210 minutes. The earlier value of 150 was below that fallback. While a producer keeps running, a longer window does not delay real alarms: a second consecutive miss turns pending off as soon as it publishes. The tradeoff appears when every producer stops after a retained first miss. No second verdict arrives, so the incident opens at the deadline, 60 minutes later with 210 than with 150, unless `maxStaleMin` or the source's `retainedUntil` closes the window sooner (`api/health.js:3811`).
+#10274 shipped `maxPendingMin: 210`, which matched the NHC policy on the same key. It covers the 30-minute producer with wide margin and also covers the bundle-only fallback: the next 3-hourly tick, plus the section's 180 s timeout, is inside 210 minutes. The earlier value of 150 was below that fallback. While a producer keeps running, a longer window does not delay real alarms: a second consecutive miss turns pending off as soon as it publishes. The tradeoff appears when every producer stops after a retained first miss. No second verdict arrives, so the incident opens at the deadline, 60 minutes later with 210 than with 150, unless `maxStaleMin` or the source's `retainedUntil` closes the window sooner (`api/health.js:3811`).
+
+## Outcome
+
+Neither producer was there by design. The standalone service predates the bundle, and Natural-Events joined the bundle as a one-line side change in the cyclone-attribution PR (#5296), whose doc assumed the bundle was the only producer. On 2026-11-07 the section was removed from `scripts/seed-bundle-climate.mjs`, and `seed-natural-events` was registered in `scripts/railway-services.json` with its `*/30` cron and exact watch paths. Health budgets were then sized for that single producer: `maxStaleMin` dropped from 540 to 120 (four runs) and both pending windows from 210 to 60 minutes. The 210-minute window described above is history.
 
 ## Prevention
 

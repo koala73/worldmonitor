@@ -250,11 +250,6 @@ describe('parseWhyMatters — pure sentence validator', () => {
 });
 
 describe('parseWhyMattersV2 — multi-sentence, analyst-path only', () => {
-  it('lazy-loads', async () => {
-    const mod = await import('../shared/brief-llm-core.js');
-    assert.equal(typeof mod.parseWhyMattersV2, 'function');
-  });
-
   it('accepts 2–3 sentences totalling 100–500 chars', async () => {
     const { parseWhyMattersV2 } = await import('../shared/brief-llm-core.js');
     const good =

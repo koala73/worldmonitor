@@ -12,7 +12,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { composeBriefFromDigestStories, stripHeadlineSuffix, stripHeadlinePrefix, digestStoryToSynthesisShape, deriveThreadsFromOrderedStories } from '../scripts/lib/brief-compose.mjs';
+import { composeBriefFromDigestStories, stripHeadlineSuffix, stripHeadlinePrefix, digestStoryToSynthesisShape, digestStoryToUpstreamTopStory, deriveThreadsFromOrderedStories } from '../scripts/lib/brief-compose.mjs';
 import { materializeCluster } from '../scripts/lib/brief-dedup-jaccard.mjs';
 
 const NOW = 1_745_000_000_000; // 2026-04-18 ish, deterministic
@@ -1605,13 +1605,8 @@ describe('Sprint 1 U3 — materializeCluster determinism', () => {
 // "card-list projection" from inline send-loop body construction would touch
 // U4/U5 implementation territory, which is out of U7 scope. Instead, this
 // test exercises the REAL chain (`materializeCluster` → `digestStoryToUpstream-
-// TopStory` → `filterTopStories` → `assertBriefEnvelope`) on the brief side,
-// and uses a small local helper (`projectDigestEmitClusterIds`) that mirrors
-// the canonical clusterId-derivation logic from `scripts/lib/brief-compose.mjs`
-// `digestStoryToUpstreamTopStory:316-329` — the SAME `mergedHashes[0] ?? hash`
-// fallback the live pipeline uses. If the live derivation diverges from the
-// projection (or vice-versa), the U3 idempotency test in this same file
-// catches it via the integration test against `assertBriefEnvelope`.
+// TopStory` → `filterTopStories` → `assertBriefEnvelope`) on the brief side.
+// The brief filter's `url:` fallback is a different function and is not part of this projection.
 //
 // Pragmatic note matching U2's source-text-guard precedent (test header in
 // `tests/digest-orchestration-helpers.test.mjs:574-589`): the worldmonitor
@@ -1623,46 +1618,11 @@ describe('Sprint 1 U3 — materializeCluster determinism', () => {
 // will fail loudly with an actionable message.
 
 describe('Sprint 1 U7 — digest projection invariant: digest.cards ⊆ brief.cards', () => {
-  /**
-   * Mirror of the canonical clusterId derivation in
-   * `scripts/lib/brief-compose.mjs::digestStoryToUpstreamTopStory` (lines
-   * 316-329). Returns the clusterId a digest card would need to match in
-   * the brief envelope's `BriefStory.clusterId` set.
-   *
-   * Source preference (top wins) — must stay in lockstep with the live
-   * derivation. If the live code changes, this helper changes; the U3
-   * integration test in this same file is the cross-check.
-   *
-   *   1. mergedHashes[0]   — canonical materializeCluster path
-   *   2. hash              — back-compat for non-clustered producers
-   *   3. `url:${sourceUrl}`— last-ditch fallback (matches shared/brief-filter.js;
-   *                          covers paths that omit hash entirely, e.g. news:
-   *                          insights ingestion)
-   *
-   * Codex PR #3614 P2 — pre-fix this helper threw on the 3rd-level
-   * fallback case ("test should never reach this"), leaving the
-   * url:${sourceUrl} branch uncovered by the U7 invariant. Now mirrors
-   * the live filter's full three-tier logic so a future producer that
-   * triggers level-3 in production is structurally testable.
-   *
-   * @param {object} digestStory
-   * @returns {string}
-   */
   function projectDigestEmitClusterId(digestStory) {
-    if (Array.isArray(digestStory?.mergedHashes)
-      && digestStory.mergedHashes.length > 0
-      && typeof digestStory.mergedHashes[0] === 'string'
-      && digestStory.mergedHashes[0].length > 0) {
-      return digestStory.mergedHashes[0];
-    }
-    if (typeof digestStory?.hash === 'string' && digestStory.hash.length > 0) {
-      return digestStory.hash;
-    }
-    if (typeof digestStory?.sourceUrl === 'string' && digestStory.sourceUrl.length > 0) {
-      return `url:${digestStory.sourceUrl}`;
-    }
+    const id = digestStoryToUpstreamTopStory(digestStory).clusterRepHash;
+    if (typeof id === 'string' && id.length > 0) return id;
     throw new Error(
-      `projectDigestEmitClusterId: digest story has no mergedHashes[0], hash, or sourceUrl; ` +
+      `projectDigestEmitClusterId: digest story has no mergedHashes[0] or hash; ` +
       `cannot derive clusterId for invariant check. Story: ${JSON.stringify(digestStory)}`,
     );
   }
@@ -1904,7 +1864,7 @@ describe('Sprint 1 U7 — digest projection invariant: digest.cards ⊆ brief.ca
 
   // ── Error path companion: missing-clusterId on digest side throws clearly ──
 
-  it('error path: digest story with no mergedHashes, hash, or sourceUrl throws a clear diagnostic', () => {
+  it('error path: digest story with no mergedHashes or hash throws a clear diagnostic', () => {
     // This expected-side oracle does not execute the live digest producer.
     // It verifies that a producer-shaped fixture with no cluster identifier
     // fails before the subset check with a clear diagnostic.
@@ -1914,24 +1874,7 @@ describe('Sprint 1 U7 — digest projection invariant: digest.cards ⊆ brief.ca
     );
   });
 
-  // Codex PR #3614 P2 — level-3 fallback `url:${sourceUrl}` parity.
-  // Pre-fix the test helper threw on this case ("test should never reach
-  // this"), leaving the level-3 branch in shared/brief-filter.js
-  // structurally untested. Now both helper and live filter agree.
-  it('level-3 fallback: digest story with only sourceUrl returns url:<sourceUrl> (Codex PR #3614 P2)', () => {
-    const cid = projectDigestEmitClusterId({
-      title: 'producer omits hash',
-      sourceUrl: 'https://example.com/news/x',
-    });
-    assert.equal(cid, 'url:https://example.com/news/x');
-  });
-
-  it('source preference order: mergedHashes[0] beats hash beats sourceUrl', () => {
-    // The three-tier order is load-bearing: a multi-story cluster MUST
-    // resolve to mergedHashes[0] even when hash and sourceUrl would also
-    // produce a valid clusterId. If the order ever flips, multi-story
-    // clusters would shatter back into per-story clusterIds and the
-    // delivered-log key shape would explode.
+  it('source preference order: mergedHashes[0] beats hash', () => {
     const allThree = projectDigestEmitClusterId({
       mergedHashes: ['rep-hash-canonical'],
       hash: 'own-hash-fallback',
@@ -1944,11 +1887,6 @@ describe('Sprint 1 U7 — digest projection invariant: digest.cards ⊆ brief.ca
       sourceUrl: 'https://example.com/level-3',
     });
     assert.equal(hashAndUrl, 'own-hash-fallback');
-
-    const urlOnly = projectDigestEmitClusterId({
-      sourceUrl: 'https://example.com/level-3',
-    });
-    assert.equal(urlOnly, 'url:https://example.com/level-3');
   });
 
   // ── Integration: real chain end-to-end through assertBriefEnvelope ──

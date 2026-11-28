@@ -150,12 +150,21 @@ trap post_pending_on_exit EXIT
 # `typecheck-changes` / `lint-changes` so all three are evaluated
 # instead of two being masked by the third (#5822).
 required='["changes","typecheck-changes","lint-changes","docs-stats","unit","consumer-prices","umami-postgres","sidecar","convex-tests","dom-tests","desktop-config","desktop-node-windows","desktop-rust","variant-smoke-full","resilience-validation-smoke","digest-image","typecheck","biome","markdown","public-docs","mintlify-slugs","doc-anchors","security-audit","stacked-merge-guard","proto-changes","proto-breaking","fork-artifact-check","internal-generate","internal-auto-generate","internal-merge-freshness","proto-freshness","zapier"]'
+# #11215 folds Typecheck's and Lint Code's small jobs into `docs-lint` (with the
+# existing `typecheck` and `biome`). This script runs from main for every PR,
+# so while open PRs carry either workflow version the gate takes the layout
+# from each commit's own check runs: a run named `docs-lint` means the new
+# layout, where `docs-lint` replaces these six names; otherwise the six stay
+# required. Remove it once no open PR runs the old workflows.
+lint_layout='{"marker":"docs-lint","replaces":["typecheck-changes","lint-changes","markdown","public-docs","mintlify-slugs","doc-anchors"]}'
+# Check runs are fetched for every name either layout can require.
+check_run_names=$(jq -nc --argjson required "$required" --argjson layout "$lint_layout" '$required + [$layout.marker] + $layout.replaces | unique')
 # The contract stamp covers the gate's PASS/FAIL RULES, not just the list of
 # names it inspects. A rules change that left the stamp alone would inherit
 # every success earned under the old rules, because the sweep only re-evaluates
 # a SUCCESS whose stamp differs (#5851). Bump this whenever the meaning of a
 # passing gate changes.
-gate_rules='base-drift-v3'
+gate_rules='pr-target-drift-v4;lint-layout-v1'
 gate_contract=$(REQUIRED_JOBS="$required" GATE_RULES="$gate_rules" python3 -c 'import hashlib, os; print(hashlib.sha256((os.environ["REQUIRED_JOBS"] + "\n" + os.environ["GATE_RULES"]).encode()).hexdigest()[:12])')
 gate_stamp="[gate-contract:$gate_contract]"
 BASE_DRIFT_REMOTE=${BASE_DRIFT_REMOTE:-origin}
@@ -169,9 +178,9 @@ repo_name=${REPO#*/}
 # goes red with both PRs green — #8269 deleted a declaration that #8376 had
 # added a use of, reddening biome, typecheck and two unit shards at once.
 #
-# The predicate: has `main` changed a file this head also changes, since this
-# head's merge base? Updating the branch always clears it, because the merge
-# base then IS `main` and the comparison below reports `ahead`.
+# Compare each open PR target with the head since their merge base. A head
+# shared by several PRs must satisfy every target. Heads without an open PR
+# retain the main comparison. Bringing the target into the head clears drift.
 #
 # GitHub caps a comparison's `files` at 300. A truncated list cannot prove the
 # absence of an overlap, so it blocks too — the same branch update clears it.
@@ -190,6 +199,7 @@ drift_files=""
 # about truncation rather than about drift. git has no such cap.
 base_drift() {
   local head="$1"
+  local base="${2:-main}"
   local merge_base main_tip head_tip head_list main_list
   local deepen=()
   drift_files=""
@@ -203,8 +213,8 @@ base_drift() {
   # fetch is unauthenticated (the checkout runs with persist-credentials:false)
   # which this public repo allows; a private fork would need a token here.
   if ! git fetch --no-tags --quiet --filter=blob:none "${deepen[@]}" "$BASE_DRIFT_REMOTE" \
-    "+refs/heads/main:$BASE_DRIFT_MAIN_REF" "+$head:$BASE_DRIFT_HEAD_REF"; then
-    echo "::error::Could not fetch main and $head for the base-drift comparison" >&2
+    "+refs/heads/$base:$BASE_DRIFT_MAIN_REF" "+$head:$BASE_DRIFT_HEAD_REF"; then
+    echo "::error::Could not fetch $base and $head for the base-drift comparison" >&2
     return 1
   fi
   main_tip=$(git rev-parse --verify --quiet "$BASE_DRIFT_MAIN_REF") || return 1
@@ -267,7 +277,7 @@ fetch_required_check_runs() {
       }
     }' 2>"$gql_error"); then
     rm -f "$gql_error"
-    printf '%s\n' "$gql_pages" | jq -c --argjson required "$required" '[.[].data.repository.object.statusCheckRollup.contexts.nodes[]? | select(has("name") and (.name as $name | $required | index($name)))]'
+    printf '%s\n' "$gql_pages" | jq -c --argjson required "$check_run_names" '[.[].data.repository.object.statusCheckRollup.contexts.nodes[]? | select(has("name") and (.name as $name | $required | index($name)))]'
     return 0
   fi
   cat "$gql_error" >&2
@@ -276,7 +286,7 @@ fetch_required_check_runs() {
   rest_pages=$(gh_api_with_rate_limit_retry core \
     "repos/$REPO/commits/$eval_sha/check-runs?per_page=100" \
     --paginate --slurp) || return $?
-  printf '%s\n' "$rest_pages" | jq -c --argjson required "$required" '[.[].check_runs[]? | select(.name as $name | $required | index($name)) | {name, conclusion, databaseId: .id, startedAt: .started_at, completedAt: .completed_at}]'
+  printf '%s\n' "$rest_pages" | jq -c --argjson required "$check_run_names" '[.[].check_runs[]? | select(.name as $name | $required | index($name)) | {name, conclusion, databaseId: .id, startedAt: .started_at, completedAt: .completed_at}]'
 }
 
 
@@ -518,16 +528,27 @@ print(json.dumps({
 # and a stale "in progress" on the head's last event would skip the only
 # re-poll. So the run whose completion fired this event never counts, and every
 # other candidate must still read as unfinished on its own run record.
+#
+# A run's `name` in the runs API is its run-name when the workflow sets one:
+# Test's is "PR #N into BASE: TITLE" (#10926), so matching on name never saw a
+# PR Test run, and every evaluation while Test ran slept 60s on a runner. Runs
+# are matched to the gated workflows by workflow_id, read from the workflow
+# listing only when an unfinished run exists.
 gated_run_in_flight() {
-  local eval_sha="$1" pages candidates run_id run_status
+  local eval_sha="$1" pages unfinished workflows gated_ids candidates run_id run_status
   [ -n "${GATED_WORKFLOWS:-}" ] || return 1
   pages=$(gh_api_with_rate_limit_retry core \
     "repos/$REPO/actions/runs?head_sha=$eval_sha&per_page=100" --paginate --slurp) || return 1
-  candidates=$(printf '%s\n' "$pages" | jq -r --arg gated "$GATED_WORKFLOWS" --arg trigger "${TRIGGER_RUN_ID:-}" '
+  unfinished=$(printf '%s\n' "$pages" | jq -c --arg trigger "${TRIGGER_RUN_ID:-}" '
+    [.[].workflow_runs[]? | select(.status != "completed" and (.id | tostring) != $trigger) | {id, workflow_id}]') || return 1
+  [ "$unfinished" != "[]" ] || return 1
+  workflows=$(gh_api_with_rate_limit_retry core \
+    "repos/$REPO/actions/workflows?per_page=100" --paginate --slurp) || return 1
+  gated_ids=$(printf '%s\n' "$workflows" | jq -c --arg gated "$GATED_WORKFLOWS" '
     ($gated | split(",")) as $names
-    | .[].workflow_runs[]?
-    | select(.status != "completed" and (.id | tostring) != $trigger and (.name as $name | $names | index($name)))
-    | .id') || return 1
+    | [.[].workflows[]? | select(.name as $name | $names | index($name)) | .id]') || return 1
+  candidates=$(jq -nr --argjson runs "$unfinished" --argjson ids "$gated_ids" '
+    $runs[] | select(.workflow_id as $id | $ids | index($id)) | .id') || return 1
   for run_id in $candidates; do
     run_status=$(gh_api_with_rate_limit_retry core "repos/$REPO/actions/runs/$run_id" --jq .status) || continue
     if [ -n "$run_status" ] && [ "$run_status" != "completed" ]; then
@@ -536,6 +557,37 @@ gated_run_in_flight() {
     fi
   done
   return 1
+}
+
+# Test cancels a main push run when a newer main commit lands, and the newer
+# run tests a tree that contains this commit. The cancelled run decides
+# nothing, so its cancelled jobs (and the always() aggregates that then fail)
+# must not publish a red gate on a commit nobody can fix. Echoes the
+# superseding commit when every failed name is a job of this commit's
+# cancelled main push Test run, a newer main push Test run was created while
+# it ran, and main now contains this commit. Any doubt or read error returns
+# non-zero, which keeps the ordinary failure verdict.
+superseded_on_main() {
+  local eval_sha="$1" failed_names="$2" test_run run_id newer jobs
+  test_run=$(gh_api_with_rate_limit_retry core \
+    "repos/$REPO/actions/runs?head_sha=$eval_sha&event=push&per_page=100" --paginate --slurp |
+    jq -ce '[.[].workflow_runs[]? | select(.name == "Test" and .head_branch == "main")]
+      | sort_by(.id) | last | select(. != null and .conclusion == "cancelled")
+      | {id, created_at, updated_at}') || return 1
+  run_id=$(printf '%s\n' "$test_run" | jq -r '.id')
+  newer=$(gh_api_with_rate_limit_retry core \
+    "repos/$REPO/actions/workflows/test.yml/runs?event=push&branch=main&per_page=50" |
+    jq -re --arg sha "$eval_sha" --argjson run "$test_run" '
+      [.workflow_runs[]? | select(.head_sha != $sha
+        and .created_at > $run.created_at and .created_at <= $run.updated_at)]
+      | sort_by(.created_at) | first | .head_sha | select(type == "string")') || return 1
+  [ "$(gh_api_with_rate_limit_retry core "repos/$REPO/compare/$eval_sha...main" --jq '.status')" = "ahead" ] || return 1
+  jobs=$(gh_api_with_rate_limit_retry core \
+    "repos/$REPO/actions/runs/$run_id/jobs?per_page=100" --paginate --slurp |
+    jq -ce '[.[].jobs[]?.name]') || return 1
+  printf '%s\n' "$failed_names" | jq -Rce --argjson jobs "$jobs" \
+    'split(",") | length > 0 and all(.[]; . as $name | $jobs | index($name))' >/dev/null || return 1
+  printf '%s\n' "$newer"
 }
 
 evaluate_sha() {
@@ -556,12 +608,21 @@ max_attempts=${CHECK_ATTEMPTS:-2}
 for attempt in 1 2; do
   runs=$(fetch_required_check_runs "$SHA")
 
-  status=$(RUNS_JSON="$runs" REQUIRED_JOBS="$required" python3 -c "
+  status=$(RUNS_JSON="$runs" REQUIRED_JOBS="$required" LINT_LAYOUT="$lint_layout" python3 -c "
 import json
 import os
 
 runs = json.loads(os.environ['RUNS_JSON'])
 required = json.loads(os.environ['REQUIRED_JOBS'])
+layout = json.loads(os.environ['LINT_LAYOUT'])
+names = {r.get('name') for r in runs}
+if layout['marker'] in names:
+  required = [n for n in required if n not in layout['replaces']]
+  if layout['marker'] not in required:
+    required.append(layout['marker'])
+else:
+  required = [n for n in required if n != layout['marker']]
+  required += [n for n in layout['replaces'] if n not in required]
 latest = {}
 
 for name in required:
@@ -609,20 +670,45 @@ if [ -n "$pending" ]; then
   return 0
 fi
 
+local superseded_by
+if [ -n "$failed" ] && superseded_by=$(superseded_on_main "$SHA" "$failed"); then
+  # Pending, not success: this commit has no verdict of its own.
+  post_gate_status "pending" "Superseded on main by ${superseded_by:0:10}: Test was cancelled and that commit's run covers this one"
+  active_sha=""
+  return 0
+fi
+
 if [ -n "$failed" ]; then
   post_gate_status "failure" "Required PR gates did not pass ($(name_count "$failed")): $failed"
   active_sha=""
   return 0
 fi
 
-if ! base_drift "$SHA"; then
-  post_gate_status "pending" "Deploy Gate could not compare this head against main; retry scheduled"
+local pr_targets base merged_head=false
+# Commit associations can omit open PRs once a commit is on the default branch.
+if ! pr_targets=$(gh_api_with_rate_limit_retry core \
+  "repos/$REPO/pulls?state=open&per_page=100" --paginate --slurp |
+  jq -ce --arg sha "$SHA" --arg repo "$REPO" '
+    if type == "array" and length > 0 and all(.[];
+      type == "array" and all(.[]; .state == "open" and (.head.sha | type) == "string"))
+    then [.[][] | select(.head.sha == $sha)] as $matching |
+      (if all($matching[]; (.head | has("repo")) and
+        (.head.repo == null or (.head.repo.full_name | type) == "string"))
+      then [$matching[] | select(.head.repo.full_name? == $repo)]
+      else error("Incomplete PR head ownership metadata") end) as $open |
+      if all($open[];
+        (.base.ref | type) == "string" and (.base.ref | length) > 0 and
+        .base.repo.full_name == $repo)
+      then [$open[].base.ref] | unique
+      else error("Incomplete PR target metadata") end
+    else error("Incomplete open pull-request response") end'); then
+  post_gate_status "pending" "Deploy Gate could not read open PR targets; retry scheduled"
   active_sha=""
   return 0
 fi
 
-if [ -n "$drift_files" ]; then
-  # Squash and rebase merges do not retain the PR head's ancestry.
+if [ "$pr_targets" = "[]" ]; then
+  pr_targets='["main"]'
   if ! merged_head=$(gh_api_with_rate_limit_retry core \
     "repos/$REPO/commits/$SHA/pulls?per_page=100" --paginate --slurp |
     jq -r --arg sha "$SHA" '
@@ -639,12 +725,23 @@ if [ -n "$drift_files" ]; then
     active_sha=""
     return 0
   fi
-  if [ "$merged_head" != "true" ]; then
-    post_gate_status "failure" "Stale base: main changed $(name_count "$drift_files") file(s) here: $drift_files"
-    active_sha=""
-    return 0
-  fi
+fi
+
+if [ "$merged_head" = "true" ]; then
   echo "Skipping base drift for merged PR head $SHA"
+else
+  while IFS= read -r base; do
+    if ! git check-ref-format "refs/heads/$base" >/dev/null 2>&1 || ! base_drift "$SHA" "$base"; then
+      post_gate_status "pending" "Deploy Gate could not compare this head against $base; retry scheduled"
+      active_sha=""
+      return 0
+    fi
+    if [ -n "$drift_files" ]; then
+      post_gate_status "failure" "Stale base: $base changed $(name_count "$drift_files") file(s) here: $drift_files"
+      active_sha=""
+      return 0
+    fi
+  done < <(printf '%s\n' "$pr_targets" | jq -r '.[]')
 fi
 
 post_gate_status "success" "All required PR gates passed"
@@ -665,7 +762,7 @@ case "${1:-}" in
   # `base_drift` be tested against a real repository with real SHAs.
   drift)
     validate_sha
-    base_drift "$SHA" || exit 1
+    base_drift "$SHA" "${2:-main}" || exit 1
     printf '%s\n' "$drift_files"
     ;;
   *) echo "::error::Unknown Deploy Gate phase" >&2; exit 2 ;;

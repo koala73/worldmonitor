@@ -95,8 +95,8 @@ describe('Map one-shot viewport commands read current size (#5022 review)', () =
     const ro = mapSrc.slice(mapSrc.indexOf('private onContainerResized('));
     const body = ro.slice(0, ro.slice(1).search(/\n {2}(?:public|private) \w+\(/) + 1);
     // Resize-driven rendering is gated on a visible size...
-    assert.match(body, /if \(width > 0 && height > 0\) \{[\s\S]*?this\.resize\(\);/, 'resize must fire only for a visible size');
-    assert.equal(body.match(/this\.resize\(\)/g)?.length, 1, 'exactly one render trigger, inside the visible-size guard');
+    assert.match(body, /if \(width > 0 && height > 0\) \{[\s\S]*?this\.resize\(/, 'resize must fire only for a visible size');
+    assert.equal(body.match(/this\.resize\(/g)?.length, 1, 'exactly one render trigger, inside the visible-size guard');
     assert.ok(
       body.indexOf('this.rememberContainerSize({ width, height });') < body.indexOf('if (width > 0 && height > 0) {'),
       'the cache update must run before (and regardless of) the visibility gate',

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 
 export const PLUGIN_MAP_LAYERS = ['natural', 'fires', 'cables', 'pipelines', 'waterways', 'bases'] as const;
 export type PluginMapLayer = typeof PLUGIN_MAP_LAYERS[number];

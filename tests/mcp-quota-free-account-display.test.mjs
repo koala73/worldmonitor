@@ -37,6 +37,7 @@ function makeDeps(ent, store) {
     reads,
     deps: {
       resolveUserId: async () => USER,
+      rateLimit: async () => null,
       redisGet: async (key) => { reads.push(key); return store[key] ?? null; },
       getEntitlements: async () => ent,
       now: () => NOW,

@@ -3,6 +3,7 @@ import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
 // @ts-expect-error — JS module, no declaration file
 import { redisPipeline } from './_upstash-json.js';
+import { checkRateLimit } from './_rate-limit.js';
 
 export const config = { runtime: 'edge' };
 
@@ -88,6 +89,12 @@ export default async function handler(req) {
       { ...NO_STORE_HEADERS, ...cors, Allow: 'GET, OPTIONS' },
     );
   }
+
+  // Every dashboard load reads this, so the per-IP budget is wide; a 429 makes the client fall back to legacy.
+  const limited = await checkRateLimit(req, { ...NO_STORE_HEADERS, ...cors }, {
+    scope: 'correlation-runtime-mode', limit: 300, window: '60 s',
+  });
+  if (limited) return limited;
 
   return jsonResponse(
     { mode: await readModeFromRedis() },

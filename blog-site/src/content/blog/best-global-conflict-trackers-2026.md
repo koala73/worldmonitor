@@ -6,7 +6,7 @@ keywords: "global conflict tracker, conflict monitoring tools, live conflict map
 audience: "Analysts, researchers, journalists, and policy teams"
 heroImage: "/blog/images/blog/track-global-conflicts-in-real-time.jpg"
 pubDate: "2026-09-20"
-modifiedDate: "2026-11-05"
+modifiedDate: "2026-11-17"
 ---
 
 The best global conflict tracker depends on the question. Use **World Monitor** to view conflict reports alongside aviation, shipping, and market signals; **CFR** for policy context; **ACLED** for structured political violence and protest data; and **UCDP** for conflict research. A live map and a research dataset serve different needs. For a quick list of wars happening now, independent trackers such as **Armed Conflicts**, **WarMonit**, and **War Radar** publish dated lists, but each defines an active war differently.
@@ -52,7 +52,7 @@ The [source catalog](https://www.worldmonitor.app/sources/) identifies the under
 
 **Strength:** shared geographic context across multiple feeds. **Limit:** aircraft and vessel observations are incomplete, and feeds have different delays. An unusual movement does not by itself establish military intent or a causal link to a headline.
 
-The public dashboard has a free offering, and the [source code](https://github.com/koala73/worldmonitor) is available. Hosted paid features are separate: check the [current plans](https://www.worldmonitor.app/pro) before assuming an AI, history, alert, or API feature is included. Self-hosting also depends on provider credentials and terms.
+The public dashboard has a free offering, and the [source code](https://github.com/koala73/worldmonitor) is available. Hosted paid features are separate: check the [current plans](https://www.worldmonitor.app/pro) before assuming an AI, history, alert, or API feature is included. [Self-hosting](/blog/posts/self-host-worldmonitor-open-source-osint-dashboard/) also depends on provider credentials and terms.
 
 ## 2. CFR Global Conflict Tracker: policy context
 
@@ -116,7 +116,7 @@ The [Uppsala Conflict Data Program's download center](https://ucdp.uu.se/downloa
 
 ## 12. WarMonit: a daily brief and a threat level
 
-[WarMonit](https://warmonit.com/), formerly War Monitor, combines a live war map, a daily brief, and a global threat level. Its [methodology](https://warmonit.com/methodology) names ACLED, UCDP, GDELT, official reporting, and tracking data such as vessel traffic and military flights, and says a language model writes the brief from a structured feed. The [about page](https://warmonit.com/about) names its founder and editor and describes its free and paid tiers. WarMonit is a separate service, not affiliated with World Monitor.
+[WarMonit](https://warmonit.com/), formerly War Monitor, combines a live war map, a daily brief, and a global threat level. Its [methodology](https://warmonit.com/methodology) names ACLED, UCDP, [GDELT](/blog/posts/free-geopolitical-data-apis-2026/), official reporting, and tracking data such as vessel traffic and military flights, and says a language model writes the brief from a structured feed. The [about page](https://warmonit.com/about) names its founder and editor and describes its free and paid tiers. WarMonit is a separate service, not affiliated with World Monitor.
 
 **Strength:** a short daily summary on top of a map. **Limit:** the site says its threat level is descriptive, not predictive, and that AI-generated summaries can contain errors. Open the linked reports before quoting a development from the brief.
 
@@ -158,7 +158,7 @@ They can help organize geopolitical reports alongside shipping and market observ
 
 **How many wars are happening right now?**
 
-It depends on the definition. World Monitor's [crisis hub](https://www.worldmonitor.app/crises/) lists the countries with at least 25 deaths in state-based fighting in UCDP's latest monthly release and shows which month that is. Armed Conflicts and WarMonit publish their own dated lists with different inclusion rules, so their counts differ. Quote the definition and the date with any number.
+It depends on the definition. World Monitor's [global conflict tracker](https://www.worldmonitor.app/crises/) lists the countries with at least 25 deaths in state-based fighting in UCDP's latest monthly release and shows which month that is. Armed Conflicts and WarMonit publish their own dated lists with different inclusion rules, so their counts differ. Quote the definition and the date with any number.
 
 **Is DEFCON Level the official US alert level?**
 

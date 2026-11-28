@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Live eval for the summarize-article translate prompt.
 //
-// Translate is free to anonymous callers, so its text is attacker-controlled.
+// Translate text is caller-supplied (anonymous callers may send Hebrew alert
+// text), so it is attacker-controlled.
 // This script sends injection cases and real headlines through the production
 // prompt with production request parameters (temperature 0.3, top_p 0.9,
 // max_tokens 100, reasoning off, the China-provider exclusion) and the

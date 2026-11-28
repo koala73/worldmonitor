@@ -150,10 +150,16 @@ describe('agent-friendly 404s (orank agent-friendly-404)', () => {
   });
 
   it('404s leaked SPA guesses that used to soft-404 the dashboard (#6575, #6836)', async () => {
-    for (const path of ['/country-intel', '/security']) {
+    for (const path of ['/country-intel']) {
       const res = call(path, { accept: '*/*' });
       assert.ok(res instanceof Response, `${path} must 404`);
       assert.equal(res.status, 404);
+    }
+  });
+
+  it('serves the security page and its directory index', () => {
+    for (const path of ['/security', '/security/', '/security/index.html']) {
+      assert.equal(call(path, { accept: '*/*' }), undefined, `${path} must reach the security page`);
     }
   });
 

@@ -59,7 +59,7 @@ if (maplibregl.getRTLTextPluginStatus() === 'unavailable') {
 maplibregl.setWorkerUrl(maplibreWorkerUrl);
 ```
 
-`public/mapbox-gl-rtl-text.min.js` (207 KB) went with it, and `tests/map-locale.test.mts` now fails if either the call or the file comes back. Two Sentry rules rode along in the same PR: the marketing surface gained the `ClerkJS: Network error` entry the dashboard already had, and `beforeSend` gates the zero-frame `Object.hasOwn is not a function` rejection on `!hasFirstParty`, because a main-thread polyfill would never reach the worker where MapLibre calls it. Fix opened in #8224, unmerged as of this writing.
+`public/mapbox-gl-rtl-text.min.js` (207 KB) went with it, and `tests/map-locale.test.mts` fails if the call comes back. Two Sentry rules rode along in the same PR: the marketing surface gained the `ClerkJS: Network error` entry the dashboard already had, and `beforeSend` gates the zero-frame `Object.hasOwn is not a function` rejection on `!hasFirstParty`, because a main-thread polyfill would never reach the worker where MapLibre calls it. Fix opened in #8224, unmerged as of this writing.
 
 ## Why This Works
 

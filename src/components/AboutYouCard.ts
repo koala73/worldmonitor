@@ -62,10 +62,6 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-export function removeAboutYouCard(): void {
-  document.getElementById(ABOUT_YOU_CARD_ID)?.remove();
-}
-
 /** Mount the card. Returns the root element, or null if one is already open. */
 export function mountAboutYouCard(options: AboutYouCardOptions): HTMLElement | null {
   if (document.getElementById(ABOUT_YOU_CARD_ID)) return null;

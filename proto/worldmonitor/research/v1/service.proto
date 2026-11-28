@@ -17,7 +17,7 @@ service ResearchService {
     option (sebuf.http.config) = {path: "/list-arxiv-papers", method: HTTP_METHOD_GET};
   }
 
-  // ListTrendingRepos returns daily trending GitHub repositories for Python, JavaScript or TypeScript from OSSInsight, with GitHub search as a fallback.
+  // ListTrendingRepos returns daily trending GitHub repositories for Python, JavaScript or TypeScript from github.com/trending, with GitHub search as a fallback.
   rpc ListTrendingRepos(ListTrendingReposRequest) returns (ListTrendingReposResponse) {
     option (sebuf.http.config) = {path: "/list-trending-repos", method: HTTP_METHOD_GET};
   }

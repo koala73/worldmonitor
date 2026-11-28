@@ -98,10 +98,6 @@ export async function fetchWeatherAlerts(): Promise<WeatherAlert[]> {
   }, []);
 }
 
-export function getWeatherStatus(): string {
-  return breaker.getStatus();
-}
-
 export function getSeverityColor(severity: WeatherAlert['severity']): string {
   switch (severity) {
     case 'Extreme': return getCSSColor('--semantic-critical');

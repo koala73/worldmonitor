@@ -59,6 +59,12 @@ export interface MissionPresetCatalogItem {
 export interface MissionPresetCatalogLiveState {
   variant: string;
   hasPremium: boolean;
+  /**
+   * The account may set a focus (Pro Business, API Business, Enterprise).
+   * A preset that `requiresFocus` is entitled only when this is true; an
+   * omitted value counts as false, so the answer fails closed.
+   */
+  hasFocus?: boolean;
   activePresetId: string | null;
   /**
    * When false, presets that would otherwise be available stay listed but are
@@ -174,7 +180,7 @@ export function buildMissionPresetCatalogItem(
   const panelIds = monitorCompatible
     ? resolvedPreset.panels.filter((panelId) => panelId === 'map' || matchingPanels.includes(panelId))
     : [];
-  const entitled = resolveEntitled(matchingPanels, live);
+  const entitled = resolveEntitled(matchingPanels, live) && (!preset.requiresFocus || live.hasFocus === true);
   const reason = unavailableReason({
     monitorCompatible,
     entitled,

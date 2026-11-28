@@ -16,7 +16,7 @@
     "predictionMarkets": "预测市场",
     "loadingMarkets": "正在加载预测市场...",
     "infrastructure": "基础设施暴露",
-    "briefUnavailable": "AI简报不可用 — 请在设置中配置OPENROUTER_API_KEY。",
+    "briefUnavailable": "AI 简报暂时无法生成。",
     "cached": "已缓存",
     "fresh": "最新",
     "noMarkets": "未找到预测市场",
@@ -126,13 +126,13 @@
     },
     "fallback": {
       "instabilityIndex": "**不稳定指数：{{score}}/100**（{{level}}，{{trend}}）",
-      "protestsDetected": "检测到{{count}}起活跃抗议",
-      "aircraftTracked": "追踪到{{count}}架军用飞机",
-      "vesselsTracked": "追踪到{{count}}艘军用舰艇",
-      "internetOutages": "{{count}}起互联网中断",
-      "recentEarthquakes": "{{count}}起近期地震",
+      "protestsDetected": "活跃抗议活动：{{count}}",
+      "aircraftTracked": "被监控的军用飞机：{{count}}",
+      "vesselsTracked": "被监控的军用舰船：{{count}}",
+      "internetOutages": "互联网中断：{{count}}",
+      "recentEarthquakes": "最近的地震：{{count}}",
       "stockIndex": "股票指数：{{value}}",
-      "activeStrikes": "检测到{{count}}起活跃罢工"
+      "activeStrikes": "攻击和拦截：{{count}}"
     },
     "countryFacts": "国家概况",
     "loadingFacts": "正在加载国家概况...",
@@ -299,6 +299,40 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "升级至PRO以查看武器供应商依赖关系和军事能力"
+    },
+    "intelMemory": {
+      "title": "历史情报库",
+      "help": "180天重要事件档案库，涵盖冲突、军事、能源、动荡、网络、海事、自然灾害和航空，支持按需语义先例匹配。",
+      "loading": "正在加载历史情报库…",
+      "proLocked": "升级至PRO以获得180天历史情报库和先例搜索",
+      "unavailable": "历史情报库暂时不可用。",
+      "retry": "重试",
+      "empty": "在180天时间窗口内，没有与该国家和领域匹配的归档情报事件。",
+      "partial": "本次查询的档案覆盖不完整；可用的记录仍然可见。",
+      "domainFilterLabel": "按领域筛选历史情报",
+      "domains": {
+        "all": "全部",
+        "conflict": "冲突",
+        "military": "军事",
+        "energy": "能源",
+        "unrest": "动荡",
+        "cyber": "网络",
+        "maritime": "海事",
+        "natural": "自然灾害",
+        "aviation": "航空"
+      },
+      "loadMore": "加载更多",
+      "loadingMore": "正在加载…",
+      "loadMoreError": "无法加载更多事件。请重试。",
+      "sourceLink": "来源 ↗",
+      "similarTitle": "查找相似的历史事件",
+      "useLatestHeadline": "使用最新标题",
+      "similarPlaceholder": "描述一个发展中的局势（至少10个字符）…",
+      "findSimilar": "查找相似事件",
+      "similarMinLength": "输入至少10个字符以搜索历史先例。",
+      "similarLoading": "正在搜索历史先例…",
+      "similarEmpty": "没有历史事件超过相似度阈值。",
+      "similarUnavailable": "先例搜索暂时不可用。请重试。"
     }
   },
   "header": {
@@ -490,7 +524,9 @@
     "marketBreadth": "市场广度",
     "climateNews": "气候新闻",
     "fx": "外汇汇率",
-    "ukmtoIncidents": "UKMTO事件"
+    "ukmtoIncidents": "UKMTO事件",
+    "reservoirLevels": "战略水位",
+    "gridDisruptionClock": "美国各州电网停电时钟"
   },
   "commands": {
     "prefixes": {
@@ -627,7 +663,8 @@
         "techevent": "科技活动",
         "techhq": "科技总部",
         "accelerator": "加速器",
-        "flight": "航班"
+        "flight": "航班",
+        "alert": "警报"
       },
       "flightOnGround": "地面停靠",
       "flightAirborne": "FL{{fl}} · {{kts}} 节",
@@ -635,7 +672,9 @@
       "flightMilitaryOnGround": "军用 · {{type}} · 地面停靠",
       "flightSearchHint": "按 Enter 或点击查看实时位置",
       "flightNotFound": "未找到 {{callsign}} 的实时位置",
-      "addPanel": "添加"
+      "addPanel": "添加",
+      "sentAlerts": "发送给您的警报",
+      "sentAlertTime": "发送于 {{time}}"
     },
     "signal": {
       "title": "情报发现",
@@ -803,7 +842,7 @@
       "fresh": "最新",
       "noMarkets": "未找到预测市场",
       "predictionMarkets": "预测市场",
-      "unavailable": "AI简报不可用 — 请在设置中配置OPENROUTER_API_KEY。"
+      "unavailable": "AI 简报暂时无法生成。"
     },
     "countryBrief": {
       "identifying": "正在识别国家...",
@@ -819,7 +858,7 @@
       "predictionMarkets": "预测市场",
       "loadingMarkets": "正在加载预测市场...",
       "infrastructure": "基础设施暴露",
-      "briefUnavailable": "AI简报不可用 — 请在设置中配置OPENROUTER_API_KEY。",
+      "briefUnavailable": "AI 简报暂时无法生成。",
       "cached": "已缓存",
       "fresh": "最新",
       "noMarkets": "未找到预测市场",
@@ -972,7 +1011,7 @@
       "upstreamUnavailable": "供应链数据暂时不可用 — 显示缓存数据",
       "spikeAlert": "检测到异常飙升 — 费率显著高于52周均值（周度）",
       "warnings": "条警告",
-      "aisDisruptions": "船舶追踪中断",
+      "aisDisruptions_other": "{{count}} 次船舶追踪中断",
       "disruption": "中断",
       "vessels": "船舶",
       "incidents7d": "事件（7天）",
@@ -983,6 +1022,7 @@
       "topProducers": "主要生产国",
       "risk": "风险",
       "wowChange": "周环比变化",
+      "asOf": "截至 {{date}}",
       "riskLevel": "风险等级",
       "flowUnavailable": "流量数据不可用",
       "containerRates": "集装箱运费",
@@ -1091,7 +1131,8 @@
       "skipToStart": "跳到开头",
       "previous": "上一个",
       "next": "下一个",
-      "skipToEnd": "跳到结尾"
+      "skipToEnd": "跳到结尾",
+      "storageUnavailable": "回放功能不可用，因为浏览器正在阻止网站存储。请允许此网站的网站数据以开始保存快照。"
     },
     "pizzint": {
       "indexSource": "指数：World Monitor",
@@ -1157,7 +1198,7 @@
         "auxiliary": "辅助舰",
         "navalVessels": "海军舰艇"
       },
-      "infoTooltip": "<strong>方法论</strong><p>按作战区域聚合军用飞机和海军舰艇。</p><ul><li><strong>正常：</strong> 基准活动</li><li><strong>升高：</strong> 超过阈值（50+ 架飞机）</li><li><strong>严重：</strong> 高度集中（100+ 架飞机）</li></ul><p><strong>具备打击能力：</strong> 加油机 + 预警机 + 战斗机数量充足以维持持续作战。</p>",
+      "infoTooltip": "<strong>方法论</strong><p>统计各军事行动区的军用飞机和被跟踪的海军舰艇数量。</p><ul><li><strong>正常：</strong>低于该行动区的阈值</li><li><strong>升高：</strong>计数达到 3 至 8，因行动区而异</li><li><strong>严重：</strong>计数达到 8 至 20，因行动区而异</li></ul><p>舰艇计入计数，最多可达升高阈值的一半，因此单独的舰艇永远不会引发等级提升。</p><p><strong>具有打击能力：</strong>油料补给机、预警机以及战斗机数量充足，足以维持持续作战。</p>",
       "scanningTheaters": "扫描战区",
       "positions": "飞机位置",
       "navalVesselsLoading": "海军舰艇",
@@ -1199,13 +1240,21 @@
       },
       "emojiKeyLabel": "表情符号图例",
       "emojiKeyAir": "空中资产",
-      "emojiKeyNaval": "海军资产"
+      "emojiKeyNaval": "海军资产",
+      "instabilityChip": "不稳定指数 {{score}}",
+      "instabilityNote": "{{nation}} 不稳定指数：{{score}} 分（满分100分）。仅供参考。该指数不影响威胁等级，威胁等级由该战区内的飞机和舰船数量决定。"
     },
     "countryBrief": {
+      "moreActions": "更多操作",
       "shareLink": "分享链接",
       "shareStory": "分享报道",
       "printPdf": "打印 / PDF",
-      "exportData": "导出数据"
+      "exportData": "导出数据",
+      "sources": {
+        "summary": "来源与时间窗 · {{count}} 类",
+        "note": "各来源时间窗不同；这不是 24 小时总计。",
+        "footer": "不作为 CII/CRI 的输入。"
+      }
     },
     "relatedAssets": {
       "pipeline": "管道",
@@ -1305,7 +1354,8 @@
         "canadaRoads": "Canada 道路",
         "canadaAlerts": "加拿大警报",
         "notamAirspace": "NOTAM 空域限制",
-        "no2Activity": "工业活动"
+        "no2Activity": "工业活动",
+        "reservoirLevels": "水位"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1422,7 +1472,8 @@
           "canadaRoads": "加拿大（Canada）受支持辖区的官方道路事件、警报、路况、封闭、施工和危险信息",
           "canadaAlerts": "来自 Alberta Emergency Alert、B.C. 疏散令与警报及 SaskAlert 的省级公共安全警报",
           "notamAirspace": "FAA NOTAM 中的临时飞行限制和受限、危险及禁飞空域，当前生效或将在 24 小时内生效",
-          "no2Activity": "Sentinel-5P NO2 活动方向，覆盖 167 个国家和 32 个工业集群：最新 56 天窗口与往年同期日期对比，经 10% 死区处理。包含经修改的 Copernicus Sentinel 数据。"
+          "no2Activity": "Sentinel-5P NO2 活动方向，覆盖 167 个国家和 32 个工业集群：最新 56 天窗口与往年同期日期对比，经 10% 死区处理。包含经修改的 Copernicus Sentinel 数据。",
+          "reservoirLevels": "来自 NASA ICESat-2 卫星激光雷达的战略水库和湖泊水面水位，与该月的常年水位对比。NASA 在每次过境测量后约两个月发布数据。"
         },
         "notes": {
           "timeAffects": "影响范围：地震、天气、抗议、中断"
@@ -1534,7 +1585,7 @@
       "briefStoryDetails": "报道详情 ({{count}})",
       "streamIdleStopLabel": "空闲时停止实时视频",
       "streamIdleStopNever": "从不",
-      "streamIdleStopDesc": "在此时间内无活动后停止实时新闻和实时网络摄像头，并在面板中显示通知。",
+      "streamIdleStopDesc": "在此时间内无活动后停止实时新闻和实时网络摄像头，并在面板中显示通知。声音开启时，实时新闻会继续播放。",
       "liveNewsAutoplayLabel": "自动播放实时新闻",
       "liveNewsAutoplayDesc": "实时新闻视频出现在屏幕上时自动开始播放，静音状态。关闭此选项可仅在您手动启动时加载视频。"
     },
@@ -1604,7 +1655,7 @@
       "noData": "无数据",
       "enable": "启用",
       "convergenceMetric": "汇聚度",
-      "ciiDeviation": "国家不稳定指数偏差",
+      "topCiiScore": "最高国家不稳定得分",
       "infraEvents": "基础设施事件",
       "highAlerts": "高等级警报",
       "topRisks": "主要风险",
@@ -1641,6 +1692,10 @@
       "infoTooltip": "<strong>科技活动</strong> 即将举行和近期的科技活动：会议、产品发布、监管听证会和财报电话会议。从官方活动日历和行业来源汇总。"
     },
     "techReadiness": {
+      "ranked": "已排名",
+      "unranked": "未排名",
+      "coverageRequirement": "参与排名所需的最少指标数",
+      "coverageLabel": "可用指标",
       "internetUsers": "互联网用户",
       "mobileSubscriptions": "移动订阅",
       "rdSpending": "研究和开发支出",
@@ -1656,10 +1711,16 @@
       "dataPreparing": "刷新技术就绪数据中——即将显示。"
     },
     "populationExposure": {
-      "totalAffected": "受影响总数",
-      "affectedCount": "{{count}}人受影响",
-      "radiusKm": "{{km}}km半径",
-      "infoTooltip": "<strong>人口暴露估计</strong>事件影响半径内的估计人口。基于WorldPop国家人口密度数据。<ul><li>冲突：50km半径</li><li>地震：100km半径</li><li>洪水：100km半径</li><li>野火：30km半径</li></ul>"
+      "estimateWithin": "半径 {{km}} 公里内约有 {{count}} 人",
+      "method": "估算使用该国的平均人口密度。",
+      "empty": "没有符合条件的事件地点",
+      "infoTooltip": "显示有国家人口密度数据的事件。缺少位置精度信息的 UCDP 事件会标记为待更新。估计区域可能重叠。 动乱事件需要精确位置；标记为位置不精确的 UCDP 事件会被排除。同一地点由两个来源（动乱和 UCDP）报告时，会显示为两行。",
+      "eventCount_other": "{{count}} 起事件",
+      "locationPending": "位置精度待更新",
+      "unrestCoverage": "动乱数据覆盖范围",
+      "ucdpPending": "UCDP 数据覆盖范围待更新",
+      "coverageShown": "已显示事件：{{shown}} / {{total}}",
+      "coverageLeftOut": "未显示：{{imprecise}} 起无精确位置，{{noEstimate}} 起位于无人口密度数据的国家，{{otherPlaces}} 起在每个来源前 10 个地点之后"
     },
     "securityAdvisories": {
       "loading": "正在加载旅行警告...",
@@ -1706,7 +1767,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS卫星在监控冲突区域的热异常探测。高强度 = 亮度温度>360K且置信度>80%。",
       "possibleExplosions": "检测到 {{count}} 起可能爆炸",
-      "explosionTooltip": "热信号与爆炸一致（火辐射功率 >80 MW，亮度 >380 K）"
+      "explosionTooltip": "热信号与爆炸一致（火辐射功率 >80 MW，亮度 >380 K）",
+      "agencyReports": "机构报告的火灾",
+      "agencyDates": "机构日期",
+      "shownOfTotal": "显示 {{total}} 条火灾记录中的 {{shown}} 条"
     },
     "ucdpEvents": {
       "stateBased": "国家冲突",
@@ -1771,6 +1835,7 @@
       "refugees": "难民",
       "asylumSeekers": "寻求庇护者",
       "idps": "国内流离失所者",
+      "stateless": "无国籍者",
       "total": "总计",
       "origins": "来源国",
       "hosts": "收容国",
@@ -1875,7 +1940,8 @@
         "minutesAgo": "{{count}}分钟前",
         "hoursAgo": "{{count}}小时前",
         "daysAgo": "{{count}}天前"
-      }
+      },
+      "breakingAlertsNotSaved": "无法保存。请允许此网站保存数据或清理浏览器存储空间，然后重试。"
     },
     "countryTimeline": {
       "now": "现在",
@@ -2095,12 +2161,20 @@
       "channelOrVideoUrl": "YouTube 频道或视频 URL",
       "channelUrlHint": "粘贴频道 URL (youtube.com/channel/UC…) 或直播视频 URL",
       "youtubeChannel": "YouTube 频道",
-      "httpsStreamHint": "浏览器会阻止不安全的 (http) 流。请粘贴安全的 (https) 流 URL"
+      "httpsStreamHint": "浏览器会阻止不安全的 (http) 流。请粘贴安全的 (https) 流 URL",
+      "tapToPlay": "点击播放"
     },
     "map": {
       "showMap": "显示地图",
       "hideMap": "隐藏地图",
-      "clearTrails": "清除轨迹"
+      "clearTrails": "清除轨迹",
+      "locate": "显示我的位置"
+    },
+    "mapLocate": {
+      "locating": "正在定位…",
+      "denied": "位置访问被拒绝。请使用搜索查找地点。",
+      "unavailable": "未找到位置。请使用搜索查找地点。",
+      "noCountry": "您所在位置没有国家。请使用搜索查找地点。"
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>互联网中断</strong> 来自全球网络监测的实时互联网中断、DDoS 攻击和流量异常：<ul><li><strong>中断</strong>：按国家统计的 BGP 检测连接故障</li><li><strong>DDoS</strong>：按协议和攻击向量的流量攻击报告</li><li><strong>异常</strong>：来自 Cloudflare Radar 的异常流量模式</li></ul>",
@@ -2252,6 +2326,7 @@
       "infoTooltip": "<strong>金融压力指标</strong>World Monitor高收益债券与长期国债比率，根据股票波动率和高收益利差调整：（HYG / TLT）/（VIX × 高收益利差 / 100）。这不是堪萨斯城联储金融压力指数。1.5或更高的读数表示低压力；低于0.3表示高压力。",
       "title": "金融压力指标",
       "usFsiValue": "美国金融压力指标值",
+      "asOf": "截至 {{date}}",
       "cissTitle": "欧盟CISS（欧元区系统性压力）",
       "notAvailable": "不适用",
       "interpretation": {
@@ -2311,7 +2386,7 @@
       "proLocked": "升级至PRO以查看商品脆弱性评分"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>霍尔木兹贸易追踪</strong> WTO DataLab 关于霍尔木兹海峡的日货运指数：离开波斯湾的原油、液化天然气和化肥，以及抵达的农产品。按体积计，2025年1–3月平均值 = 100，仅包括 AIS 可见船舶。状态和日期来自 WTO 的最新分析。",
+      "infoTooltip": "<strong>霍尔木兹贸易追踪</strong> WTO DataLab 关于霍尔木兹海峡的日货运指数：离开波斯湾的原油、液化天然气和化肥，以及抵达的农产品。按体积计，2025年1–3月平均值 = 100，仅包括 AIS 可见船舶。图表为日度数据；状态来自WTO评论。",
       "title": "霍尔木兹贸易追踪",
       "noData": "无数据",
       "notAvailable": "不适用",
@@ -2324,8 +2399,10 @@
         "unavailable": "霍尔木兹数据不可用",
         "failedToLoad": "加载失败"
       },
-      "analysisDate": "WTO分析 {{date}}",
-      "indexNote": "货运指数（按体积），2025年1–3月平均值 = 100"
+      "analysisDate": "WTO评论{{date}}",
+      "indexNote": "货运指数（按体积），2025年1–3月平均值 = 100",
+      "dataThrough": "每日数据至{{date}}",
+      "noShipments": "{{from}}至{{to}}期间无船运记录"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>实时摄像头</strong> 来自全球地缘政治重要地点的直播：冲突区、首都、边境口岸和战略咽喉要道。流媒体来自YouTube和公共网络。"
@@ -2364,7 +2441,15 @@
       "noData": "能源数据暂时不可用 - 将重试",
       "liveTape": "实时行情",
       "liveTapeSource": "市场报价",
-      "infoTooltip": "<strong>能源市场</strong> 实物和可交易能源信号整合显示：<ul><li><strong>美国能源信息署指标</strong>：WTI、布伦特油价、美国产量和库存</li><li><strong>实时行情</strong>：原油和天然气等可交易能源价格</li><li><strong>目的</strong>：将实物能源压力与更广泛的宏观和商品面板分离</li></ul>"
+      "infoTooltip": "<strong>能源市场</strong> 实物和可交易能源信号整合显示：<ul><li><strong>美国能源信息署指标</strong>：WTI、布伦特油价、美国产量和库存</li><li><strong>实时行情</strong>：原油和天然气等可交易能源价格</li><li><strong>目的</strong>：将实物能源压力与更广泛的宏观和商品面板分离</li></ul>",
+      "marketTape": "市场报价",
+      "futures": "期货",
+      "dailySpot": "每日现货价",
+      "eiaWeeklySpot": "EIA 现货价 · 周均价",
+      "weekEnding": "截至 {{date}} 的一周",
+      "unknownPriceDate": "观测时间不可用",
+      "unknownQuoteSource": "报价来源不可用",
+      "stalePrice": "已过时"
     },
     "consumerPrices": {
       "tabs": {
@@ -2512,7 +2597,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>燃油价格</strong>30多个国家的汽油和柴油零售泵价，以美元/升为单位进行比较。价格来自官方政府开放数据计划，每周更新。最便宜和最昂贵的国家突出显示。当获得上周数据时显示周环比变化。",
-      "countries": "个国家"
+      "countries": "个国家",
+      "observedStale": "{{date}}，{{days}} 天前",
+      "monthlyMean": "{{month}}均价"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>粮农组织食品价格指数</strong>联合国粮食及农业组织的食品价格指数跟踪食品商品篮（谷物、乳制品、肉类、油类、糖）的国际出口价格，基数2014-2016=100。每月第一个星期五更新。",
@@ -2530,7 +2617,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>气候新闻</strong>来自Carbon Brief、UNEP、NASA、The Guardian等权威来源的最新环境和气候资讯。每30分钟更新一次。",
-      "loadError": "气候新闻暂时无法获取"
+      "loadError": "气候新闻暂时无法获取",
+      "restoreOriginal": "恢复原文",
+      "translate": "翻译"
     },
     "liquidityShifts": {
       "title": "流动性变化",
@@ -2565,7 +2654,13 @@
       "headline": "每日AI情报摘要，通过邮件或Slack接收",
       "tagline": "另含WM Analyst、告警规则和适用于Claude的MCP",
       "cta": "升级到Pro →",
-      "dismiss": "关闭"
+      "dismiss": "关闭",
+      "promoBadge": "黑色星期五",
+      "promoHeadline": "Pro 首年立省 {{savings}}%",
+      "promoTagline": "每月{{perMonth}}，而非{{monthly}}，按年计费。随时取消。优惠截止于{{date}}。",
+      "promoHeadlineYearlyOnly": "Pro 年度版首年立省 {{percent}}%",
+      "promoTaglineYearlyOnly": "随时取消。优惠截止 {{date}}。",
+      "promoCta": "获取优惠"
     },
     "billingState": {
       "onHoldDesc": "支付失败。请更新您的支付方式以恢复高级访问权限。",
@@ -2688,7 +2783,7 @@
     },
     "sanctionsPressure": {
       "title": "制裁与指定",
-      "infoTooltip": "美国外交资产冻结办公室特别指定国民和综合清单以及加拿大全球事务部SEMA/JVCFOA名单。显示哪些国家面临最高列表压力、驱动列表的计划以及自上次更新以来新增的内容。",
+      "infoTooltip": "OFAC SDN和综合名单，以及加拿大SEMA/JVCFOA制裁名单。国家行使用直接关联。船旗和航空器注册在注册信息中单独计数；某国资产数量为零并不表示没有受制裁资产。",
       "loading": "正在加载制裁数据...",
       "unavailable": "制裁数据不可用。",
       "summary": {
@@ -2700,7 +2795,9 @@
       "sections": {
         "countries": "受制裁国家",
         "entries": "最近指定",
-        "programs": "计划"
+        "programs": "计划",
+        "flagRegistries": "船舶旗籍与航空器登记",
+        "regulationTargets": "SEMA法规目标国家"
       },
       "empty": {
         "countries": "无国家归属信息。",
@@ -2722,7 +2819,8 @@
         "unattributed": "未归属",
         "program": "计划",
         "undated": "无日期"
-      }
+      },
+      "targetExplanation": "法规目标国家并非国籍或地址证据，不计入国家风险评分和简报统计。"
     },
     "radiationWatch": {
       "title": "辐射监测",
@@ -2793,7 +2891,21 @@
       "saved": "最近一次已知更新 {{time}} · 正在检查更新",
       "savedOffline": "最近一次已知更新 {{time}} · 离线",
       "localSignals": "基于仪表板中已加载的信号",
-      "emptySaved": "最近一次已知更新中未发现汇聚。"
+      "emptySaved": "最近一次已知更新中未发现汇聚。",
+      "signalTypes": {
+        "militaryFlight": "军机飞行",
+        "militaryVessel": "军舰",
+        "aisGap": "AIS 中断",
+        "conflictEvent": "冲突事件",
+        "escalationOutage": "通信中断",
+        "newsSeverity": "严重新闻",
+        "sanctionsNews": "制裁新闻",
+        "marketMove": "市场波动",
+        "commoditySpike": "大宗商品飙升",
+        "earthquake": "地震",
+        "infraOutage": "基础设施中断",
+        "other": "信号"
+      }
     },
     "thermalEscalation": {
       "title": "热异常升级",
@@ -3089,6 +3201,151 @@
           "placeholder": "可选"
         }
       }
+    },
+    "githubStarPrompt": {
+      "title": "喜欢 World Monitor 吗？",
+      "body": "在 GitHub 上标星可以帮助其他人发现它。",
+      "star": "在 GitHub 上标星",
+      "dismiss": "关闭，不再提示"
+    },
+    "reservoirLevels": {
+      "note": "水面水位来自 NASA ICESat-2 卫星激光雷达。NASA 在每次过境测量后约两个月发布数据，因此这里追踪的是数周和季节尺度的变化，而不是逐日变化。仅为水位，不是库容。",
+      "source": "来源：",
+      "processedWith": "处理工具：",
+      "empty": "暂无读数",
+      "filterEmpty": "没有符合此筛选条件的水体",
+      "unavailable": "水位数据当前不可用",
+      "filterLabel": "筛选水体",
+      "filter": {
+        "all": "全部",
+        "attention": "需要关注",
+        "transboundary": "跨境"
+      },
+      "status": {
+        "record_low": "创纪录低位",
+        "record_high": "创纪录高位",
+        "falling_fast": "快速下降",
+        "rising_fast": "快速上升",
+        "low": "低于同期",
+        "high": "高于同期",
+        "normal": "正常",
+        "insufficient_history": "历史数据不足",
+        "no_recent_data": "近期无过境",
+        "lowInRange": "在其范围内较低",
+        "highInRange": "在其范围内较高"
+      },
+      "vsUsual": "较{{month}}常年 {{value}}",
+      "in12Months": "12 个月 {{value}}",
+      "noComparison": "暂无对比",
+      "measured": "测量于 {{date}}（{{age}}）",
+      "noPass": "暂无可用过境",
+      "popup": {
+        "level": "水位",
+        "levelValue": "海拔 {{value}}（EGM2008）",
+        "anomaly": "较{{month}}常年",
+        "anomalyPlain": "较当月常年",
+        "changePrev": "较上次过境",
+        "change90": "90 天内",
+        "change365": "12 个月内",
+        "measured": "测量时间",
+        "sparkline": "36 个月水位"
+      },
+      "nextPass": {
+        "label": "ICESat-2 下次过境",
+        "loading": "加载中…",
+        "at": "{{date}}（根据 {{epoch}} 的轨道数据预测；云层可能遮挡激光雷达）",
+        "none": "此时段内无测量（至 {{date}}）；轨道数据日期 {{epoch}}",
+        "unavailable": "轨道数据不可用"
+      },
+      "siteContext": {
+        "label": "此地点的战略水库"
+      },
+      "energyContext": {
+        "heading": "战略水库",
+        "hydro": "水电占一次能源的 {{share}}%"
+      },
+      "countryEvidence": {
+        "heading": "水位",
+        "empty": "该国没有任何战略水库在最近一次过境时超出其季节基线。",
+        "measured": "测量于 {{date}}"
+      },
+      "card": {
+        "measured": "测量于 {{date}} · {{age}}",
+        "noCrossing": "此窗口内无（至 {{date}}）",
+        "crossing": "ICESat-2 预测过境",
+        "summary": "{{total}} 座水库中 {{beyond}} 座超出季节基线",
+        "latestPass": "最近 ICESat-2 过境 {{date}}",
+        "sparkline": "36 个月水位，季节基线为虚线",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC)。来自带日期过境的激光雷达水面高度，并非实时读数或库容。"
+      },
+      "water": {
+        "heading": "{{name}}的水体",
+        "level": "激光雷达水位",
+        "extent": "雷达水域面积",
+        "extentValue": "{{date}} 开阔水面 {{percent}}%（{{area}} km²）",
+        "extentChange": "同一轨道自 {{date}} 以来变化 {{delta}} 个百分点",
+        "extentNoComparison": "同一轨道没有更早的读数可供比较",
+        "extentNone": "暂无雷达读数",
+        "unavailable": "加载失败；重新打开以重试",
+        "optical": "最新光学影像",
+        "opticalNone": "30 天内没有光学影像",
+        "note": "每一行都是来自不同过境的带日期测量值，而非实时读数。雷达测量水库核心区域内的开阔水面；被风吹皱的水面可能被识别为陆地。"
+      }
+    },
+    "gridDisruptionClock": {
+      "region": "选择州",
+      "unknown": "未知",
+      "customers": "据报停电的用户数",
+      "lastCustomers": "上次报告的停电用户数",
+      "denominatorUnknown": "监测覆盖的用户总数未知",
+      "tracked": "监测覆盖 {{amount}} 户",
+      "dataAge": "距上次报告",
+      "minutes": "{{amount}} 分钟",
+      "hours": "{{amount}} 小时",
+      "warnings": "预警",
+      "recovery": "报告的变化",
+      "decreased": "报告的停电用户减少 {{amount}} 户",
+      "increased": "报告的停电用户增加 {{amount}} 户",
+      "unchanged": "报告的停电用户数无变化",
+      "since": "对比时间",
+      "peakLoad": "已恢复正常峰值负荷的 {{percent}}%",
+      "noComparison": "暂无可供比较的停电用户数。",
+      "history": "近期停电用户统计（{{total}} 条）",
+      "priorNotice": "此前发布的预警",
+      "sources": "预警来源监测情况",
+      "operatorLink": "电网通告请查阅",
+      "issued": "发布于",
+      "until": "到期时间",
+      "noActive": "监测的来源中暂无有效预警。",
+      "unknownWarnings": "目前仅能核实部分预警来源。",
+      "noObservation": "暂无当前停电用户数及监测范围信息。",
+      "loadError": "暂时无法获取电网停电时钟数据。",
+      "retained": "刷新失败，现显示上次收到的报告。",
+      "phase": {
+        "unknown": "影响未知",
+        "monitoring": "监测中",
+        "watch": "关注",
+        "disrupted": "已报告停电",
+        "recovering": "据报正在恢复供电",
+        "restored": "据报已恢复供电"
+      },
+      "kind": {
+        "grid": "电网通告",
+        "weather": "天气预警",
+        "space-weather": "空间天气"
+      },
+      "checks": {
+        "available": "已核实",
+        "unavailable": "暂不可用",
+        "not_monitored": "请直接向电网运营方查询",
+        "stale": "上次核实结果已过时"
+      },
+      "warningAge": "距首条仍有效的预警",
+      "days": "{{amount}} 天"
+    },
+    "externalNavigation": {
+      "blocked": "浏览器阻止了新标签页的打开。",
+      "openLink": "打开 {{host}}"
     }
   },
   "popups": {
@@ -3126,7 +3383,6 @@
       }
     },
     "protest": {
-      "acledVerified": "ACLED（已验证）",
       "gdelt": "GDELT",
       "records": "条记录",
       "mediaSignal": "未经核实的媒体信号",
@@ -4064,6 +4320,21 @@
       "yellowWarning": "黄色预警",
       "orangeWarning": "橙色预警",
       "redWarning": "红色预警"
+    },
+    "displacement": {
+      "event": "事件",
+      "cause": "原因",
+      "date": "日期",
+      "operation": "行动",
+      "reportDate": "报告日期",
+      "measure": "衡量指标",
+      "kinds": {
+        "outflow": "外流",
+        "return": "返回",
+        "arrival": "抵达",
+        "death": "死亡",
+        "encounter": "边境遭遇"
+      }
     }
   },
   "signals": {
@@ -4157,7 +4428,13 @@
     "alert": "警报：{{location}}",
     "multipleRegions": "多个区域",
     "trending": "「{{term}}」趋势上升 — {{hours}}小时内{{count}}次提及",
-    "eventsDetected": "在区域（{{lat}}°, {{lon}}°）检测到{{count}}个事件"
+    "eventsDetected": "检测到{{count}}个事件：{{types}}（{{lat}}°, {{lon}}°）",
+    "eventTypes": {
+      "protest": "抗议",
+      "military_flight": "军机飞行",
+      "military_vessel": "海军舰艇",
+      "earthquake": "地震活动"
+    }
   },
   "intel": {
     "topics": {
@@ -4254,7 +4531,6 @@
     "dataAndCommunity": "数据与社区",
     "theme": "主题",
     "themeDesc": "自动跟随系统偏好。",
-    "themeAuto": "自动（跟随系统）",
     "themeDark": "深色",
     "themeLight": "浅色",
     "mapProvider": "地图图块提供者",
@@ -4313,7 +4589,9 @@
   },
   "contextMenu": {
     "openCountryBrief": "打开国家简报",
-    "copyCoordinates": "复制坐标"
+    "copyCoordinates": "复制坐标",
+    "satellitePasses": "经过此处的卫星",
+    "imageryEvidenceHere": "此处的影像证据"
   },
   "shell": {
     "documentTitle": "World Monitor — 实时全球情报仪表板",
@@ -4408,7 +4686,9 @@
   "auth": {
     "signIn": "登录",
     "createAccount": "创建账户",
+    "freeReason": "免费：保存布局、关注国家、获取提醒",
     "settings": "设置",
+    "planBilling": "套餐与计费",
     "passkeyOffer": {}
   },
   "mcp": {
@@ -4452,7 +4732,17 @@
     "renameHint": "{{name}} — 双击重命名",
     "deleteTab": "删除标签页",
     "deleteTabAria": "删除标签页 {{name}}",
-    "tabNameAria": "标签页名称"
+    "tabNameAria": "标签页名称",
+    "addTabTitleSaved": "新标签页（使用已保存的面板）",
+    "newTabOptions": "新标签页选项",
+    "newTabStartsDefault": "新标签页将从默认面板开始。",
+    "newTabStartsSaved": "新标签页将从已保存的面板开始。",
+    "newTabOptionsHint": "已有的标签页不会改变。",
+    "useThisTabPanels": "使用此标签页的面板",
+    "useDefaultPanels": "使用默认面板",
+    "newTabPanelsNotSaved": "无法保存。浏览器阻止了网站存储。",
+    "team": "团队",
+    "teamDashboards": "团队仪表盘"
   },
   "theaterPresets": {
     "label": "覆盖预设",
@@ -4545,6 +4835,21 @@
         "related": {
           "0": "中国活动即时预测",
           "1": "国家简报"
+        }
+      },
+      "reservoirLevels": {
+        "category": "气候",
+        "purpose": "按水面水位与一年中同期常年水位的对比以及变化速度，标示战略水库和湖泊。",
+        "source": "经由 NSIDC 获取的 NASA ICESat-2 ATL13 内陆水面高度，使用 SlideRule Earth 处理，并由 seed-reservoir-levels 服务按每次卫星过境汇总。",
+        "freshness": "每日更新。NASA 在测量后 50 至 70 天发布每次过境数据，每座水库的重访间隔从几天到约一个月不等。",
+        "confidence": "只有当至少 5 个水面段在 0.25 米内一致时，该次过境才计入。季节对比需要至少 3 个往年同期的过境数据。",
+        "limitations": {
+          "0": "仅为水位，不是库容：同样的下降在不同水库意味着不同的蓄水损失。",
+          "1": "150 天内没有过境的水体会标记为近期无过境；其最后一次读数、变化和日期仍会显示。"
+        },
+        "related": {
+          "0": "战略水位面板",
+          "1": "气候异常"
         }
       },
       "conflicts": {
@@ -4721,7 +5026,7 @@
         "category": "自然灾害",
         "purpose": "显示地震、严重灾害警报和仍在持续的地球观测事件，用于掌握态势。",
         "source": "USGS地震、GDACS警报和NASA EONET事件，合并进自然事件服务。",
-        "freshness": "自然事件每3小时写入一次种子。USGS地震的预期在文档中约为5分钟的来源节奏。",
+        "freshness": "自然事件每30分钟写入一次种子。USGS地震的预期在文档中约为5分钟的来源节奏。",
         "confidence": "对已探测到的公开灾害信号较强。置信度因灾害类型和上游报告延迟而不同。",
         "limitations": {
           "0": "为保持地图可读，低严重程度的GDACS警报会被滤除。",
@@ -4790,7 +5095,8 @@
     "current": "来源已检查",
     "reportedClaims": "发布方报告。相关说法可能仍在调查中。",
     "occurred": "事件",
-    "reported": "发布"
+    "reported": "发布",
+    "listed": "收录"
   },
   "panelVariants": {
     "finance": {
@@ -4814,6 +5120,828 @@
     },
     "happy": {
       "map": "好消息地图"
+    }
+  },
+  "pwaInstall": {
+    "title": "安装应用",
+    "share": "在 Safari 中轻点分享（带向上箭头的方框）。你可能需要先打开更多菜单。",
+    "add": "选择添加到主屏幕。",
+    "confirm": "轻点添加，然后从主屏幕打开 World Monitor。",
+    "close": "关闭",
+    "alertsHint": "将 World Monitor 安装到主屏幕，以便在此 iPhone 或 iPad 上接收提醒。",
+    "how": "如何安装"
+  },
+  "teamDashboards": {
+    "desc": "团队共享的仪表盘。打开一个可将其作为新标签页添加。",
+    "empty": "你的团队还未共享任何仪表盘。共享此标签页可让团队成员获得相同的面板、尺寸和地图。",
+    "open": "以新标签页打开 {{name}}",
+    "stopSharing": "停止共享 {{name}}",
+    "confirmStop": "停止与团队共享 {{name}}？已打开的标签页将保持不变。",
+    "shareTab": "将此标签页与团队共享",
+    "shareChanges": "将此标签页的更改与团队共享",
+    "behind": "你打开此仪表盘后，团队进行了更改。",
+    "getLatest": "获取最新版本",
+    "opened": "从团队共享中打开了 {{name}}。",
+    "shared": "已将 {{name}} 与团队共享。",
+    "updated": "此标签页现已是团队的最新版本。",
+    "stopped": "停止共享 {{name}}。",
+    "failed": "无法连接团队仪表盘。请重试。",
+    "limit": "你的团队已在此共享 {{limit}} 个仪表盘。请先停止共享其中一个。",
+    "focusNotEntitled": "您的套餐不支持共享聚焦仪表板。清除此标签页的聚焦以共享其面板。",
+    "focusUnreadable": "{{name}} 有一个此版本无法显示的聚焦。重新加载以更新，然后重新打开。"
+  },
+  "focus": {
+    "barLabel": "聚焦",
+    "summary": "聚焦于 {{countries}}",
+    "neighboursOff": "未包含相邻国家",
+    "chosenLabel": "已选择",
+    "neighboursLabel": "相邻国家",
+    "neighbourItem": "相邻国家：{{name}}",
+    "range": "{{start}} 至 {{end}}",
+    "windowEnded": "时间窗口已于 {{date}} 结束",
+    "windowStarts": "开始于 {{date}}",
+    "windowUntil": "至 {{date}}",
+    "windowFrom": "从 {{date}}",
+    "edit": "编辑",
+    "clear": "清除",
+    "clearAria": "清除聚焦并显示整个世界",
+    "clearFocus": "清除聚焦",
+    "notFiltered": "未筛选",
+    "notFilteredGlobal": "全球数据：未按国家筛选",
+    "notFilteredYet": "尚未按国家筛选",
+    "gateSignedOutDesc": "登录以将仪表板标签页的聚焦设置在您覆盖的国家。",
+    "gateUpgradeDesc": "将标签页聚焦在所选国家需要 Pro Business、API Business 或 Enterprise 套餐。",
+    "gateUpgradeCta": "升级",
+    "tabButton": "聚焦",
+    "tabButtonTitle": "将此标签页聚焦在所选国家",
+    "tabButtonTitleActive": "编辑此标签页的聚焦",
+    "newTitle": "聚焦此标签页",
+    "editTitle": "编辑聚焦",
+    "intro": "可按国家筛选的面板只显示这些国家。其他面板显示\"未筛选\"。",
+    "countriesLabel": "国家",
+    "count": "{{n}}/{{max}}",
+    "searchPlaceholder": "搜索国家",
+    "resultsLabel": "匹配的国家",
+    "limitReached": "您已选择 {{max}} 个国家，这是聚焦可容纳的最大数量。",
+    "removeCountry": "移除 {{name}}",
+    "includeNeighbours": "包含相邻国家",
+    "neighboursHint": "风险跨越边界。相邻国家已标记，不计入 {{max}} 的限制中。",
+    "startLabel": "从（可选）",
+    "endLabel": "至（可选）",
+    "datesHint": "用于行程或任务。时间窗口结束后，聚焦保持不变，聚焦栏会注明窗口已结束。",
+    "errorNoCountries": "至少选择一个国家。",
+    "errorTooMany": "聚焦最多可容纳 {{max}} 个国家。",
+    "errorDates": "结束日期早于开始日期。",
+    "save": "保存",
+    "cancel": "取消",
+    "saved": "此标签页聚焦于 {{countries}}。",
+    "cleared": "聚焦已清除。此标签页显示整个世界。",
+    "notSaved": "无法保存。此浏览器阻止了网站存储。",
+    "plusNeighbours_other": "+ {{count}} 个相邻国家",
+    "filter": {
+      "showing": "显示 {{countries}}",
+      "showingNeighbours": "显示 {{countries}} + 邻国",
+      "showAll": "显示全部",
+      "focusOff": "此面板已关闭聚焦：显示全部内容",
+      "applyFocus": "应用聚焦",
+      "applyFocusAria": "按聚焦重新筛选此面板",
+      "show": "显示",
+      "hide": "隐藏",
+      "noCountryTag": "无国家",
+      "emptyHint": "其他一切内容已计入上方。",
+      "emptyNews": "当前头条新闻中没有这些国家的内容",
+      "emptyAdvisories": "这些国家没有旅行建议",
+      "emptyConflict": "这些国家没有 UCDP 冲突事件",
+      "emptyConflictPartial": "最新事件中这些国家没有冲突事件。完整列表未加载。",
+      "loadingConflict": "正在加载这些国家的所有冲突事件…",
+      "emptyAirports": "您监控的机场中没有位于这些国家的机场",
+      "emptyFlights": "此面板中没有往返这些国家的航班",
+      "emptyAviationNews": "最近 24 小时内这些国家没有航空新闻",
+      "tabNotFiltered": "此标签页未按国家筛选",
+      "hidden_other": "聚焦隐藏了 {{count}} 项",
+      "showAllAria_other": "显示此面板中的全部内容，包括聚焦范围外的 {{count}} 项",
+      "unattributed_other": "{{count}} 项无国家标记",
+      "showUnattributedAria_other": "显示 {{count}} 项无国家标记的内容",
+      "hideUnattributedAria_other": "隐藏 {{count}} 项无国家标记的内容",
+      "partialConflict": "仅显示最近150条冲突事件。完整列表未加载。",
+      "partialConflictLoading": "正在加载完整列表，目前显示最新150条冲突事件。",
+      "emptyInstability": "这些国家没有不稳定性评分",
+      "emptyOutbreaks": "这些国家没有疾病爆发",
+      "emptyOutages": "这些国家没有互联网中断",
+      "emptyRadiation": "这些国家没有辐射读数",
+      "emptyFuelShortages": "这些国家没有燃料短缺",
+      "emptyEnergyDisruptions": "这些国家没有能源中断",
+      "emptyDisplacement": "这些国家没有人口流离失所数据",
+      "emptyCorrelation": "这些国家没有信号",
+      "emptyExposure": "这些国家没有人口暴露地点",
+      "emptyExposurePartial": "现有数据中没有这些国家的暴露地点。正在等待完整的 UCDP 覆盖数据。",
+      "partialExposureLoading": "正在加载所有 UCDP 地点，然后筛选暴露数据。覆盖统计仅包含骚乱事件。",
+      "partialExposure": "无法加载所有 UCDP 地点。暴露数据不完整；覆盖统计仅包含骚乱事件。"
+    },
+    "draftAssessment": "行程评估",
+    "draftAssessmentAria": "打开行程评估，并以此聚焦预先填好",
+    "draftCopied": "请求已复制。将其粘贴到您的AI助手中。",
+    "draftCopiedPartial": "已为前 {{count}} 个国家复制请求。一份评估最多涵盖 {{max}} 个国家。未包含的国家：{{omitted}}。",
+    "draftCopyFailed": "无法复制请求。"
+  },
+  "tripAssessment": {
+    "heading": "行程评估",
+    "intro": "由数据支持的旅行风险评估初稿，供分析师完成。它报告数据显示的内容，不提供建议。",
+    "privacy": "仅包括国家、城市和日期。请勿输入旅行者姓名、酒店或街道地址。您输入的任何内容都不会被保存。",
+    "taskLabel": "任务标签（可选）",
+    "taskLabelPlaceholder": "区域实地访问",
+    "windowStart": "行程开始",
+    "windowEnd": "行程结束",
+    "countriesLabel": "国家，按旅行顺序",
+    "count": "{{n}}/{{max}}",
+    "searchPlaceholder": "添加国家",
+    "addCountry": "向行程中添加国家",
+    "limit": "一趟行程最多涵盖 {{max}} 个国家。",
+    "omitted": "被遗漏，因为一趟行程最多涵盖 {{max}} 个国家：{{names}}。",
+    "cities": "城市，用逗号分隔（最多 {{max}} 个）",
+    "arrive": "抵达",
+    "depart": "出发",
+    "moveEarlier": "将 {{name}} 移至行程较早位置",
+    "moveLater": "将 {{name}} 移至行程较晚位置",
+    "remove": "从行程中移除 {{name}}",
+    "downloadMarkdown": "下载 Markdown",
+    "downloadWord": "下载为 Word 格式",
+    "print": "打印或保存为 PDF",
+    "copyRequest": "复制 AI 助手请求",
+    "close": "关闭",
+    "building": "从最新数据生成初稿中…",
+    "downloaded": "已下载 {{file}}。每次下载都是从最新数据生成，并附带其自身的捕获时间戳。",
+    "printOpened": "打印对话框已打开。选择\"另存为 PDF\"来保留副本。",
+    "errNoCountries": "至少添加一个国家。",
+    "errTooMany": "一趟行程最多涵盖 {{max}} 个国家。",
+    "errWindow": "行程必须在开始日期的当天或之后结束。",
+    "errCities": "{{name}}：最多列出 {{max}} 个城市。",
+    "errCountryDates": "{{name}}：出发日期必须在抵达日期的当天或之后。",
+    "errOutsideWindow": "{{name}}：日期必须在行程窗口内。",
+    "errInvalid": "无法从此行程生成初稿：",
+    "errAuth": "重新登录以生成初稿。",
+    "errUpgrade": "行程评估包含在 Pro Business、API Business 和 Enterprise 计划中。",
+    "errBusy": "请求过于频繁。请在一分钟后重试。",
+    "errUnavailable": "初稿背后的数据暂时不可用。请在一分钟后重试。",
+    "errGeneric": "初稿生成失败。请重试。",
+    "errDownload": "无法在此处下载文件。请改用打印或另存为 PDF。",
+    "errLoad": "无法打开行程评估。请刷新页面后重试。"
+  },
+  "orbitalWatch": {
+    "track": {},
+    "replay": {},
+    "counts": {},
+    "tier": {
+      "checking": "正在检查档案库",
+      "notInArchive": "档案库中无此影像",
+      "confirmed": "已确认",
+      "likely": "可能",
+      "unmatchedImage": "无计算过境的影像",
+      "weatherFrame": "气象图像",
+      "unavailable": "不可用",
+      "inReach": "可指向",
+      "capability": "可成像",
+      "inRange": "范围内",
+      "mosaic": "镶嵌图",
+      "upcoming": "即将过境"
+    },
+    "row": {
+      "offNadir": "偏离星下点 {{deg}}°",
+      "distance": "距地面轨迹 {{km}} 公里",
+      "orbitAge": "轨道数据",
+      "imageLoading": "加载场景中…",
+      "satellite": "卫星",
+      "sensor": "传感器",
+      "time": "时间",
+      "in": "剩余时间",
+      "tier": "状态",
+      "elevation": "仰角",
+      "point": "位置",
+      "pixel": "像素",
+      "credit": "档案库",
+      "orbitAgeValue": "{{age}} 前"
+    },
+    "ui": {
+      "tab": {},
+      "caption": {},
+      "tile": {},
+      "grid": {},
+      "group": {},
+      "order": {},
+      "row": {},
+      "section": {},
+      "status": {},
+      "step": {}
+    },
+    "viewer": {
+      "open": "打开场景：{{image}}",
+      "imageAlt": "{{name}} 场景，{{time}}",
+      "close": "关闭场景查看器",
+      "northUp": "北向上",
+      "unreferenced": "沿用档案库方向；未标注北向",
+      "compareDates": "此集合中的日期",
+      "compareNone": "此集合中没有第二个场景。",
+      "divider": "基准分割线",
+      "searching": "正在搜索档案库中 {{days}} 天内的场景",
+      "historyFailed": "{{archive}} 返回错误；较早的场景缺失。",
+      "historyTimeout": "{{archive}} 超时；较早的场景缺失。",
+      "loading": "已加载帧数：{{loaded}}/{{total}}",
+      "closeLabel": "关闭",
+      "agoNow": "现在",
+      "agoHours": "{{count}} 小时前",
+      "agoDays": "{{count}} 天前",
+      "clear": "晴空",
+      "clouded": "云 {{pct}}%",
+      "tabImage": "场景",
+      "tabChange": "对比",
+      "metaAcquired": "拍摄",
+      "metaDate": "日期",
+      "metaPixel": "像素",
+      "metaSpot": "该点云量",
+      "metaScene": "场景云量",
+      "metaSun": "太阳高度",
+      "showCloudy": "包含多云日期（{{count}}）",
+      "eventMark": "事件 {{date}}"
+    },
+    "timelapse": {},
+    "passDetail": {
+      "dir": {},
+      "heading": {}
+    },
+    "search": {
+      "label": "地点或坐标",
+      "placeholder": "地点或 25.11, 55.14",
+      "submit": "搜索",
+      "locate": "我的位置",
+      "hint": "输入的坐标和您的位置永远不会发送到 WorldMonitor。输入的地名会发送到 WorldMonitor 和 OpenStreetMap Nominatim。",
+      "results": "地点",
+      "searching": "正在搜索…",
+      "tooShort": "输入至少两个字符，或输入坐标如 25.11, 55.14。",
+      "invalidCoordinates": "纬度必须在 -90 到 90 之间，经度在 -180 到 180 之间。",
+      "failed": "地点查询失败。坐标和地图点击仍可使用。",
+      "noResults": "没有匹配的地点。",
+      "locating": "定位中…",
+      "locationDenied": "位置访问被拒绝。输入任何地点名称或右键点击地图。",
+      "locationUnavailable": "位置未找到。输入任何地点名称或右键点击地图。",
+      "idle": "输入任何地点名称，使用设备位置，或右键点击地图以打开其影像证据。"
+    },
+    "share": {
+      "copied": "链接已复制",
+      "copyManually": "复制此链接",
+      "link": "分享链接",
+      "dismiss": "关闭",
+      "passOutsideWindow": "链接中的过境不在当前时间窗口内；未选中任何过境。",
+      "passNotFound": "链接中的过境不在重新计算的列表中；未选中任何过境。"
+    },
+    "timeline": {
+      "now": "现在",
+      "nowAt": "现在：{{time}}",
+      "density": "{{label}}，{{start}} 到 {{end}}：{{count}}",
+      "daylight": "此处日光：{{start}}–{{end}}",
+      "unavailable": "不可用",
+      "notRetained": "数据源不保留历史",
+      "notRetainedSpan": "{{label}}：数据源没有 {{start}} 到 {{end}} 的历史",
+      "countryWide": "全国",
+      "source": {
+        "conflict": "冲突",
+        "fires": "火灾",
+        "unrest": "动乱",
+        "outages": "中断"
+      },
+      "live": {
+        "vessels": "海运",
+        "militaryFlights": "军用航班",
+        "gpsJamming": "GPS 干扰"
+      },
+      "name": "时间线",
+      "span": "过去 {{days}} 天 · 未来 {{hours}} 小时",
+      "daylightHere": "该点的日光",
+      "row": {
+        "images": "影像",
+        "events": "事件",
+        "passes": "过境"
+      },
+      "retained": "历史 {{start}} 到 {{end}}",
+      "retainedDay": "仅 {{day}} 的历史",
+      "geoLine": "静止卫星视野：{{names}}",
+      "away": "{{km}} 公里",
+      "densityTip_other": "自 {{start}} 起 {{count}} 次过境 · {{names}}"
+    },
+    "satelliteSites": {
+      "heading": "监视地点 · 未来 {{hours}} 小时",
+      "projecting": "正在计算过境…",
+      "notLoaded": "再次点击卫星；其轨道根数未加载。",
+      "failed": "再次点击卫星以重试；过境计算失败。",
+      "viewFailed": "再次点击卫星以重试；地点列表未能加载。",
+      "unavailable": "再次点击卫星以重试；过境几何计算拒绝了这些轨道根数。",
+      "signals": "信号情报卫星。没有成像设备，因此不模拟地面覆盖范围。",
+      "noProfile": "此卫星没有传感器参数，因此不模拟其地面覆盖范围。",
+      "geostationary": "地球静止轨道：固定在某一经度上方，因此没有可列出的过境。",
+      "badElements": "轨道根数无法读取。",
+      "none": "未来 {{hours}} 小时内，其覆盖范围内没有监视地点。",
+      "utc": "{{time}} UTC",
+      "inMinutes": "{{minutes}} 分钟后",
+      "inHours": "{{hours}} 小时 {{minutes}} 分钟后",
+      "offTrack": "距地面轨迹 {{km}} 公里",
+      "swathEdge": "位于幅宽边缘",
+      "card": {
+        "norad": "NORAD {{id}}",
+        "type": "类型",
+        "operator": "运营方",
+        "over": "下方",
+        "ocean": "海洋",
+        "altBand": "高度范围",
+        "inclination": "倾角",
+        "velocity": "速度",
+        "types": {
+          "sar": "SAR 成像",
+          "optical": "光学成像",
+          "military": "军用",
+          "sigint": "SIGINT",
+          "signals": "信号情报"
+        }
+      },
+      "tooOld_other": "轨道根数已有 {{count}} 天，过旧，无法计算过境。",
+      "count_other": "{{family}} 覆盖范围内有 {{count}} 个地点",
+      "passes_other": "{{count}} 次过境"
+    },
+    "siteSatellites": {
+      "heading": "此地点上空的跟踪卫星 · 未来 {{hours}} 小时",
+      "none": "{{hours}} 小时内没有跟踪中的成像卫星覆盖此地点。",
+      "notLoaded": "重新打开地点以重试；卫星轨道根数未加载。",
+      "failed": "重新打开地点以重试；过境计算失败。"
+    },
+    "sheet": {
+      "heading": "影像证据",
+      "window": "过去 {{days}} 天，未来 {{hours}} 小时",
+      "apart": "未计入：",
+      "newest": "最新 {{when}}",
+      "newestNoPreview": "最新获取 {{when}} 缺少预览；显示较早的影像。",
+      "noneConfirmed": "本时段无已确认影像",
+      "noneYet": "档案库仍在响应",
+      "latest": "最新影像",
+      "latestNone": "档案库未返回该位置和时期的数据。",
+      "latestChecking": "正在搜索档案库。已计算的过境列于下方。",
+      "compareWith": "对比",
+      "compareDate": "基准日期",
+      "moreImages": "其他确认影像",
+      "imageAlt": "{{sensor}} 场景，{{time}}",
+      "dailyMosaic": "每日镶嵌图",
+      "weatherFrame": "气象图像",
+      "change": "更换位置",
+      "showUtc": "UTC",
+      "showLocal": "本地时间",
+      "alert": "每次开放数据卫星过境上空前提醒，并在每幅新的无云影像出现时提醒。",
+      "alertCta": "设置警报 · Pro",
+      "height": {
+        "collapsed": "面板已折叠。展开至半高",
+        "half": "面板处于半高。展开至全高",
+        "full": "面板已展开。折叠"
+      },
+      "apartMosaics_other": "{{count}} 幅每日镶嵌图",
+      "apartFrames_other": "{{count}} 幅气象卫星画面",
+      "apartInRange_other": "{{count}} 次范围内过境",
+      "confirmedCount_other": "{{count}} 幅已确认影像"
+    },
+    "tierDef": {
+      "confirmed": "档案库中存在覆盖该点的场景。",
+      "likely": "固定幅宽覆盖包含该点；尚无已存档场景。",
+      "inReach": "可指向传感器可对准此处。任务安排不公开。",
+      "capability": "一类无公开档案的传感器曾经过上空。"
+    },
+    "events": {
+      "heading": "该位置的事件",
+      "kindLabel": "类型",
+      "detail": "详情",
+      "now": "现在",
+      "loading": "加载事件数据中…",
+      "none": "过去 {{days}} 天内 {{km}} 公里范围内无事件。",
+      "unavailable": "不可用：{{sources}}",
+      "kind": {
+        "conflict": "冲突",
+        "fires": "火灾",
+        "unrest": "动乱",
+        "outages": "中断",
+        "vessels": "海运",
+        "military-flights": "军用航班",
+        "gps-jamming": "GPS干扰"
+      }
+    },
+    "capability": {
+      "heading": "谁能对该点成像",
+      "none": "该时段无传感器过境。",
+      "tooOld": "轨道数据太旧无法计算：{{names}}",
+      "showAll": "显示全部 {{count}}",
+      "showFewer": "显示更少",
+      "group": {
+        "open": "开放数据",
+        "commercial": "商业",
+        "government": "政府",
+        "military": "军事",
+        "other": "其他"
+      }
+    },
+    "windows": {
+      "heading": "下次采集窗口",
+      "optical": "开放光学",
+      "radar": "开放雷达",
+      "none": "{{hours}} 小时内无开放光学或雷达过境。"
+    },
+    "status": {
+      "catalog": "正在加载卫星目录…",
+      "computing": "计算过境 · 第 {{done}}/{{total}} 颗卫星",
+      "checking": "档案库已响应：{{done}}/{{total}}",
+      "partial": "{{sources}} 未回应。计数可能偏低。",
+      "staleCatalog": "目录已有 {{age}} 未更新；预测时间可能有偏差。",
+      "empty": "该时段内无卫星进入该点范围。",
+      "unavailable": "过境数据不可用。请稍后重试。"
+    },
+    "privacy": {
+      "line": "您的点位仅发送到图像档案库。",
+      "more": "详情",
+      "body": "轨道过境时间在本设备上计算。为了查找图像，您的浏览器将该点位直接发送到 Earth Search、Planetary Computer、NASA GIBS 和 EUMETSAT；WorldMonitor 不会收到它。在监测站点上，系统按站点 ID 向 WorldMonitor 请求该站点的每日记录，而不是按您的点位。输入的地名将发送到 WorldMonitor 和 OpenStreetMap Nominatim 进行定位。共享链接保留两位小数（0.01°）。"
+    },
+    "sources": {
+      "heading": "数据源 ({{count}})",
+      "docs": "方法和覆盖范围",
+      "conflict": "冲突和动乱事件",
+      "fires": "火灾检测",
+      "outages": "互联网中断数据源",
+      "vessels": "船舶位置"
+    },
+    "caption": {
+      "clear": "该点无云",
+      "clearSceneCloud": "该点无云 · 场景云量 {{pct}}%",
+      "clouded": "该点有云 · {{pct}}%",
+      "cloudShadow": "该点有阴影",
+      "spotNotChecked": "该点云量未知",
+      "sceneCloud": "场景云量 {{pct}}% · 点位未知",
+      "radar": "雷达 · 不受云影响"
+    },
+    "tile": {
+      "failed": "场景加载失败 · {{archive}}",
+      "noPreview": "尚未发布此场景的预览",
+      "processing": "场景仍在处理中，请稍后再试。",
+      "radar": "雷达"
+    },
+    "target": {
+      "acquired": "拍摄 {{time}} · {{resolution}}"
+    },
+    "popup": {
+      "title": "卫星影像",
+      "loading": "正在检查卫星档案库…",
+      "latest": "最新影像",
+      "nextPass": "下次过境",
+      "noImage": "未找到近期影像",
+      "noPass": "72 小时内无过境",
+      "openEvidence": "打开证据",
+      "compareEvent": "前后对比",
+      "compareEventLocked": "前后对比 · Pro",
+      "compareSearching": "正在搜索 {{date}} 前后的影像…",
+      "compareNoAfter": "{{date}} 之后尚无晴空影像。",
+      "compareNoAfterWindow": "{{date}} 之后 {{days}} 天内没有晴空影像。",
+      "compareNoBefore": "存档时段内没有 {{date}} 之前的晴空影像。",
+      "compareFailed": "存档搜索失败，请重试。",
+      "imageAlt": "来自 {{source}} 的卫星视图",
+      "unavailable": "卫星影像加载失败。",
+      "fire": {
+        "title": "卫星火灾检测",
+        "detected": "探测时间",
+        "satellite": "卫星",
+        "confidence": "置信度",
+        "confidenceHigh": "高",
+        "confidenceNominal": "中等",
+        "confidenceLow": "低",
+        "power": "火灾功率",
+        "powerValue": "{{value}} MW",
+        "region": "地区",
+        "source": "数据源",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "每日合成图",
+        "mosaicLoading": "正在检查 NASA GIBS…",
+        "mosaicCaption": "{{date}} 当天 {{source}} 过境数据的合成图；火灾可能被云或烟雾遮挡。",
+        "mosaicNone": "NASA GIBS 没有 {{date}} 的 {{source}} 合成图。",
+        "mosaicNoLayer": "此卫星没有可用的每日合成图。",
+        "mosaicUnavailable": "每日合成图加载失败。",
+        "mosaicAlt": "NASA GIBS {{source}} {{date}} 每日合成图"
+      }
+    },
+    "site": {
+      "heading": "监测站点",
+      "loading": "正在加载站点的每日记录…",
+      "failed": "站点的每日记录未能加载；请重新打开该点以重试。",
+      "stale": "此站点没有当前的每日检查记录。",
+      "checked": "检查时间",
+      "noPass": "没有即将到来的过境记录",
+      "list": {
+        "hotspot": "热点",
+        "conflictZone": "冲突区",
+        "militaryBase": "军事基地",
+        "nuclearFacility": "核设施",
+        "port": "港口",
+        "chokepoint": "咽喉要道",
+        "reservoir": "水库"
+      }
+    }
+  },
+  "settings": {
+    "back": "返回设置",
+    "signIn": {
+      "label": "登录",
+      "desc": "同步设置并管理您的方案"
+    },
+    "summary": {
+      "themeAuto": "自动",
+      "count": "{{on}}/{{total}}"
+    },
+    "groups": {
+      "dashboard": "仪表板",
+      "preferences": "偏好设置",
+      "developer": "开发者",
+      "app": "应用"
+    },
+    "sections": {
+      "account": "账户",
+      "map": "地图",
+      "ai": "AI 与分析",
+      "video": "视频与流媒体",
+      "apiKeys": "API 密钥",
+      "embeds": "嵌入",
+      "aiAgents": "AI 代理 (MCP)",
+      "sync": "同步、导入与导出",
+      "about": "关于"
+    },
+    "descriptions": {
+      "panels": "显示、隐藏和重新排序",
+      "sources": "地区和数据源",
+      "notifications": "频道和警报规则",
+      "display": "主题、字体和语言",
+      "map": "提供商、主题和地球仪",
+      "ai": "模型、记忆和框架",
+      "video": "质量和自动播放",
+      "apiKeys": "World Monitor API 密钥",
+      "embeds": "用于您网站的 widget",
+      "aiAgents": "已连接的 MCP 客户端",
+      "about": "网站链接、条款和隐私"
+    },
+    "signOut": "退出登录",
+    "signOutFailed": "无法退出登录。请重试。",
+    "search": {
+      "empty": "没有匹配的设置"
+    },
+    "account": {
+      "intro": "查看您当前的套餐，管理支付方式、发票或取消订阅。",
+      "planFree": "免费版",
+      "planPremium": "高级版",
+      "external": {
+        "heading": "高级版访问权限",
+        "desc": "此访问权限不通过您的 WorldMonitor 账户计费。此处无法使用支付方式或查看发票。"
+      },
+      "checking": {
+        "heading": "正在检查您的套餐…",
+        "desc": "通常只需片刻。"
+      },
+      "status": {
+        "cancelScheduled": "已计划取消 -- 访问权限保留至 {{date}}",
+        "renews": "续订时间：{{date}}",
+        "onHold": "已暂停 -- 请更新支付方式",
+        "cancelled": "已取消 -- 访问权限保留至 {{date}}",
+        "expired": "已过期",
+        "unknown": "请查看\"管理计费\"了解您的当前套餐详情。",
+        "ownerManaged": "计费由您的套餐所有者管理。"
+      },
+      "upgradeToBusiness": "升级至 Business",
+      "unavailable": {
+        "heading": "套餐状态不可用",
+        "desc": "我们无法验证您的当前套餐。请重试或在新标签页中查看套餐。"
+      },
+      "free": {
+        "heading": "WorldMonitor 免费版",
+        "desc": "您当前的套餐是免费版。升级以获取全部面板、AI 分析和优先级数据刷新。"
+      },
+      "portal": {
+        "openFailed": "无法打开计费门户。请允许弹出窗口并重试。",
+        "unavailable": "计费门户不可用。请发送邮件至 support@worldmonitor.app 获取帮助。"
+      },
+      "deletion": {
+        "heading": "删除账户",
+        "desc": "永久删除此 World Monitor 账户。订阅立即取消，剩余预付时长不予退款。API 密钥、嵌入密钥和 MCP 令牌将停止工作。会计、纠纷处理和依法请求所需的计费记录将连同其中的客户联系方式一并保留；这些记录将不再关联您的登录账户，但支付服务商在删除前写入的 webhook 日志仍保留投递时附带的标识符。此设备上的仪表板偏好设置和桌面密钥链（系统凭据存储）中的机密信息不会被远程清除。",
+        "dialogTitle": "删除此账户?",
+        "dialogCopy": "此操作无法撤销。订阅将取消，密钥立即停止工作，计费记录将为会计、纠纷处理和依法请求而保留——包括其中的联系方式。之后请在其他设备上登出，并清除此设备的网站数据——服务器无法代为执行这些操作。",
+        "phraseLabel": "输入 {{phrase}} 以确认",
+        "deleted": "账户已删除。请在其他设备上登出，之后清除此设备的网站数据。",
+        "failed": "账户删除失败。请重试。"
+      },
+      "seats": {
+        "used": "已使用 {{used}} / {{cap}}",
+        "invite": "邀请",
+        "inviting": "邀请中...",
+        "remove": "移除",
+        "removing": "移除中...",
+        "inviteSent": "邀请已发送",
+        "alreadyInvited": "已邀请"
+      },
+      "businessSeats": {
+        "heading": "Business 席位",
+        "statusAccepted": "已接受",
+        "statusExpired": "已过期",
+        "statusPending": "待接受",
+        "expires": "有效期至 {{date}}",
+        "hintCorporate": "邀请任何企业邮箱域名的团队成员。",
+        "hintPersonal": "添加企业邮箱以邀请团队成员。",
+        "personalDomain": "免费或一次性邮箱域名无法邀请团队成员。请添加企业邮箱以使用此功能。",
+        "empty": "尚未邀请任何席位。",
+        "confirmRemove": "移除此席位？被邀请人将立即失去 Pro 访问权限。",
+        "removed": "席位已移除",
+        "alreadyInactive": "席位已停用",
+        "loadFailed": "加载席位失败",
+        "inviteFailed": "发送邀请失败",
+        "removeFailed": "移除席位失败",
+        "errors": {
+          "seatCap": "4 个席位已全部使用。请先移除一个席位。",
+          "ownerDomain": "您的账户邮箱必须是企业域名才能邀请团队成员。",
+          "self": "您无法邀请自己。",
+          "inviteeDomain": "被邀请人的邮箱必须是企业域名。",
+          "rateLimited": "您已在滚动 24 小时内达到最多 20 封邀请的上限。请稍候再邀请更多团队成员。"
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "{{account}} Enterprise 席位",
+        "memberHint": "您账户的管理员负责添加和移除此账户上的成员。",
+        "hintFull": "所有席位都在使用中。请移除某人或撤回邀请以空出席位。",
+        "hintOpen": "通过企业邮箱邀请成员。他们将获得一个有效期为 14 天的链接，并共享此账户的配额。",
+        "emailLabel": "邀请的邮箱地址",
+        "statusActive": "已激活",
+        "statusExpired": "邀请已过期",
+        "statusInvited": "已邀请",
+        "emailFailed": "邀请邮件无法发送。请检查地址，然后撤回并重新邀请。",
+        "inviteExpires": "邀请有效期至 {{date}}",
+        "roleAdmin": "管理员",
+        "you": "您",
+        "withdraw": "撤回",
+        "unknownEmail": "未知邮箱",
+        "alreadyMember": "已是成员",
+        "confirmRemove": "移除 {{email}}？对方将立即失去 Enterprise 访问权限。",
+        "confirmRemoveUnknown": "移除此成员？对方将立即失去 Enterprise 访问权限。",
+        "confirmWithdraw": "撤回对 {{email}} 的邀请？",
+        "confirmWithdrawUnknown": "撤回对此地址的邀请？",
+        "removed": "成员已移除",
+        "withdrawn": "邀请已撤回",
+        "loadFailed": "无法加载席位。请重试。",
+        "inviteFailed": "无法发送邀请。请重试。",
+        "removeFailed": "无法移除。请重试。",
+        "errors": {
+          "seatCap": "所有席位都已被占用。请先移除某个用户或撤回邀请。",
+          "inviteeDomain": "请邀请企业邮箱地址。不接受免费或一次性邮箱域名。",
+          "self": "您已经拥有一个席位。",
+          "contractEnded": "您的 Enterprise 合同已到期。请联系支持团队续约。",
+          "notAdmin": "仅账户管理员可以管理席位。",
+          "removeSelf": "您无法移除自己的席位。请联系支持团队更换管理员。",
+          "tooMany": "一次最多邀请10个人。",
+          "rateLimited": "您今天发送的邀请已达上限。请明天再试。"
+        }
+      },
+      "switchYearly": {
+        "entryLabel": "切换为年付",
+        "offerLine": "黑色星期五：每月{{perMonth}}，而非{{monthly}}，按年计费。首年比按月付费立省{{percent}}%。之后按每年{{renewal}}续费。随时取消。",
+        "title": "切换到 Pro 年度版",
+        "confirm": "立即切换",
+        "dismiss": "以后再说",
+        "previewMoves": "您的 Pro 月度版订阅将立即转为 Pro 年度版。",
+        "previewChargeOffer": "您今天需支付{{charge}}，即首年立省{{percent}}%后的价格，再扣除本月未使用部分的费用。",
+        "previewCharge": "您今天需支付{{charge}}，已扣除本月未使用部分的费用。",
+        "previewRestart": "您的计费周期从今天重新开始。",
+        "renewsPriceDate": "将于{{date}}按每年{{price}}续费，另加适用税费。",
+        "renewsPrice": "续费价格为每年{{price}}，另加适用税费。",
+        "renewsListDate": "将于{{date}}按 Pro 年度版价格续费。",
+        "renewsList": "将按 Pro 年度版价格续费。",
+        "previewTerms": "在此之前随时取消，将不会再次收费。如果付款失败，您将继续使用 Pro 月度版。",
+        "offerNotApplied": "此次切换不适用该优惠。以下是不含优惠的价格。",
+        "quoteChanged": "该优惠已不再提供，您的套餐未作更改。以下是不含优惠的价格。",
+        "chargeChanged": "自报价后价格已变动，您的套餐未作更改。以下是新价格。",
+        "successTitle": "已切换到 Pro 年度版",
+        "successBody": "付款确认后，您的套餐即会变更，通常在一分钟内完成。",
+        "done": "完成",
+        "cancelScheduledTitle": "请先恢复 Pro 月度版",
+        "cancelScheduledBody": "您的 Pro 月度版订阅已设置为在本计费周期结束时取消。请先在计费门户中恢复订阅，再切换到 Pro 年度版。",
+        "openPortal": "打开计费门户",
+        "failedTitle": "未能确认切换",
+        "failedBody": "我们无法确认此次切换。重试前请先在计费门户中查看您的套餐，或发送邮件至 support@worldmonitor.app。",
+        "accountChangedTitle": "账户已更改",
+        "accountChangedBody": "您在获取此报价后切换了账户。请在要切换到 Pro 年度版的账户中重新开始切换。",
+        "unavailable": "我们目前无法计算此次切换的价格。请几分钟后重试，或发送邮件至 support@worldmonitor.app。"
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "布局",
+        "1": "小部件",
+        "2": "文字大小",
+        "3": "重置布局"
+      },
+      "sources": {
+        "0": "新闻",
+        "1": "源",
+        "2": "订阅源",
+        "3": "地区",
+        "4": "新闻报道"
+      },
+      "notifications": {
+        "0": "提醒",
+        "1": "警报",
+        "2": "Slack",
+        "3": "电子邮件",
+        "4": "Discord",
+        "5": "Webhook",
+        "6": "推送"
+      },
+      "display": {
+        "0": "主题",
+        "1": "深色",
+        "2": "浅色",
+        "3": "字体",
+        "4": "语言",
+        "5": "文本大小"
+      },
+      "map": {
+        "0": "地球",
+        "1": "提供商",
+        "2": "瓦片",
+        "3": "底图"
+      },
+      "ai": {
+        "0": "人工智能",
+        "1": "Ollama",
+        "2": "框架",
+        "3": "标题记忆",
+        "4": "浏览器模型"
+      },
+      "video": {
+        "0": "流媒体",
+        "1": "自动播放",
+        "2": "质量",
+        "3": "直播"
+      },
+      "apiKeys": {
+        "0": "密钥",
+        "1": "令牌",
+        "2": "桌面密钥"
+      },
+      "embeds": {
+        "0": "小部件",
+        "1": "iframe",
+        "2": "嵌入密钥"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "代理",
+        "3": "ChatGPT",
+        "4": "客户端"
+      },
+      "sync": {
+        "0": "导入",
+        "1": "导出",
+        "2": "备份",
+        "3": "云"
+      },
+      "about": {
+        "0": "条款",
+        "1": "隐私",
+        "2": "许可",
+        "3": "法律"
+      },
+      "account": {
+        "0": "套餐",
+        "1": "账单",
+        "2": "订阅",
+        "3": "发票",
+        "4": "席位",
+        "5": "登出",
+        "6": "删除账户, 退出登录"
+      }
+    },
+    "reservoirAlert": {
+      "title": "水位告警",
+      "description": "当战略水库的激光雷达水位低时发出告警。美国航天局在卫星过境测量约两个月后公布数据，因此每条告警都附带测量日期。",
+      "scopeHint": "最多选择 {{max}} 个水库。告警仅覆盖此处列出的水库。",
+      "searchPlaceholder": "按名称添加水库",
+      "searchLabel": "添加水库",
+      "removeLabel": "移除 {{name}}",
+      "thresholdLabel": "水位阈值",
+      "thresholdHint": "当最新测量水位低于该水库已测量范围的此百分比时发出告警，其中 0 是最低已测量水位，100 是最高已测量水位。留空则不设阈值。",
+      "thresholdInputLabel": "水位阈值，已测量范围的百分比",
+      "seasonalLabel": "超过季节基线的下降",
+      "seasonalHint": "当最新测量水位明显低于该水库在一年中该时期的通常测量值时发出告警。",
+      "quietNote": "这些提醒即使在实时提醒设为仅限严重时也会送达。静默时段内不会收到。",
+      "quietNoteBatch": "这些提醒即使在实时提醒设为仅限严重时也会送达。静默时段内不会收到;如果选择 Batch,则会暂存至静默时段结束。"
+    },
+    "briefLanguage": {
+      "label": "简报语言",
+      "hint": "您的每日简报将使用{{language}}撰写。",
+      "sameAsApp": "与应用语言相同",
+      "loadFailed": "加载失败",
+      "saveFailed": "保存失败。请重试。"
     }
   }
 }

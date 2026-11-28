@@ -34,12 +34,3 @@ export function applyFont(font?: FontFamily): void {
     delete document.documentElement.dataset.font;
   }
 }
-
-export function subscribeFontChange(cb: (font: FontFamily) => void): () => void {
-  const handler = (e: Event) => {
-    const detail = (e as CustomEvent).detail as { font?: FontFamily } | undefined;
-    cb(detail?.font ?? getFontFamily());
-  };
-  window.addEventListener(EVENT_NAME, handler);
-  return () => window.removeEventListener(EVENT_NAME, handler);
-}

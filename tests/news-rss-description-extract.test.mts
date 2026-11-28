@@ -203,7 +203,7 @@ describe('parseRssXml — integration with description', () => {
     `);
     const result = parseRssXml(xml, FEED, 'full');
     assert.ok(result, 'parseRssXml returns non-null for populated feed');
-    const items = result!.items;
+    const items = [...result!.items].reverse(); // feed order: the parser ranks newest first
     assert.strictEqual(items.length, 2);
     assert.ok(items[0]!.description.length > 0, 'first item has a real description');
     assert.ok(items[0]!.description.includes('substantive'));
@@ -227,7 +227,7 @@ describe('parseRssXml — integration with description', () => {
     `);
     const result = parseRssXml(xml, FEED, 'full');
     assert.ok(result);
-    const items = result!.items;
+    const items = [...result!.items].reverse(); // feed order: the parser ranks newest first
     assert.strictEqual(items.length, 2);
     assert.strictEqual(items[0]!.isOpinion, false, 'hard-news item is not opinion');
     assert.strictEqual(items[1]!.isOpinion, true, 'Opinion:-prefixed item under /opinion/ is opinion');
@@ -250,7 +250,7 @@ describe('parseRssXml — integration with description', () => {
     `);
     const result = parseRssXml(xml, FEED, 'full');
     assert.ok(result);
-    const items = result!.items;
+    const items = [...result!.items].reverse(); // feed order: the parser ranks newest first
     assert.strictEqual(items.length, 2);
     assert.strictEqual(items[0]!.isFeelGood, false, 'hard-news Sarmat item is not feel-good');
     assert.strictEqual(items[1]!.isFeelGood, true, 'Veterans-warplanes item is feel-good (STRONG /features/ URL)');
@@ -273,7 +273,7 @@ describe('parseRssXml — integration with description', () => {
     `);
     const result = parseRssXml(xml, FEED, 'full');
     assert.ok(result);
-    const items = result!.items;
+    const items = [...result!.items].reverse(); // feed order: the parser ranks newest first
     assert.strictEqual(items.length, 2);
     assert.strictEqual(items[0]!.isEphemeralLiveCoverage, true, 'WATCH LIVE teaser is ephemeral');
     assert.strictEqual(items[1]!.isEphemeralLiveCoverage, false, 'live-update hard news is preserved');

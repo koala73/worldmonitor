@@ -14,6 +14,8 @@ import {
   ICCC_INDEX_URL, discoverPngFuelPosts, parsePngFuelPost,
   FCCC_INDEX_URL, discoverFijiFuelPdfs, parseFijiFuel,
   MEM_MAX_UPLOADS_PER_MONTH, memUploadFolders, memWorkbookUrl, parseMemPriceRows,
+  localDay, previousDay, emsLiveUrl, emsRealisedUrl, emsJson, parseEmsLive, parseEmsRealised,
+  NOSBIH_AJAX_URL, nosbihForm, parseNosbih, MEPSO_HOME_URL, discoverMepsoPdfs, parseMepso,
 } from './lib/regional-energy-feeds.mjs';
 import {
   QATARENERGY_PDF_URL, parseQatarFuel,
@@ -25,6 +27,9 @@ import {
   ANPTL_INDEX_URL, discoverAnpTlPosts, discoverAnpTlPdf, parseAnpTlStations,
   CREG_PAGE_URL, parseCregPrices,
   URSEA_TOPIC_URL, discoverUrseaPages, parseUrseaMaximumPrices, parseUrseaReferencePrices,
+  FUELWATCH_HOST, fuelWatchCsvUrls, parseFuelWatchPrices,
+  SEARG_CSV_URL, parseSeArgentinaPrices,
+  OIL111_HOST, OIL111_REQUESTS, parseOil111Survey,
 } from './lib/regional-fuel-feeds.mjs';
 
 const USER_AGENT = 'WorldMonitor/1.0 (+https://www.worldmonitor.app)';
@@ -39,7 +44,16 @@ const DOWNLOAD_HOSTS = new Set([
   'iccc.gov.pg', 'fccc.gov.fj', 'mem.gob.gt',
   'www.qatarenergy.qa', 'www.erb.org.zm', 'npa.gov.gh', 'www.sonabhy.bf', ...SONABHY_API_HOSTS,
   'www.zera.co.zw', DOE_HOST, DOE_MEDIA_HOST, 'www.anp.tl', 'creg.gov.co', 'www.gub.uy',
+  FUELWATCH_HOST,
+  'datos.energia.gob.ar',
+  OIL111_HOST,
+  'transparency.ems.rs', 'www.nosbih.ba', 'www.mepso.com.mk',
 ]);
+// NOS BiH answers its AJAX POST over HTTP/1.1 with neither a length nor
+// chunking, so the body ends only when the connection closes. On a kept-alive
+// connection it never does (measured 2026-11-26: curl --http1.1 hangs, the same
+// request with Connection: close returns in 0.5 s).
+const CLOSE_AFTER_RESPONSE = new Set(['www.nosbih.ba']);
 export const regionalEnergyKey = id => `energy:regional:${id}:v1`;
 export const regionalEnergyMetaKey = id => `seed-meta:energy:regional-${id}`;
 const issuerAgents = new Map();
@@ -138,9 +152,10 @@ export async function fetchRegionalEnergyFeed(id, { fetchFn = sourceFetch, nowMs
     let url = new URL(input);
     for (let hop = 0; hop < 4; hop++) {
       approved(url);
+      const base = { 'User-Agent': USER_AGENT, ...(CLOSE_AFTER_RESPONSE.has(url.hostname) ? { Connection: 'close' } : {}) };
       const request = form === undefined
-        ? { headers: { 'User-Agent': USER_AGENT } }
-        : { method: 'POST', body: form, headers: { 'User-Agent': USER_AGENT, 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' } };
+        ? { headers: base }
+        : { method: 'POST', body: form, headers: { ...base, 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' } };
       const response = await fetchFn(url.href, { ...request, signal: AbortSignal.timeout(timeoutMs), redirect: 'manual' });
       if ([301, 302, 303, 307, 308].includes(response.status)) {
         if (form !== undefined) throw new Error('Unexpected regional energy POST redirect');
@@ -316,6 +331,58 @@ export async function fetchRegionalEnergyFeed(id, { fetchFn = sourceFetch, nowMs
       throw new Error('No ursea price publication in effect');
     };
     points = [...await inForce(pages.maximum, parseUrseaMaximumPrices), ...await inForce(pages.reference, parseUrseaReferencePrices)];
+  }
+  if (id === 'fuelwatch') {
+    // About 10 MB per month. This month's file is missing (HTTP 404), empty or
+    // without a complete day until its first day is written; then last month's is
+    // read. A started file that is corrupt fails the run instead, so the last
+    // good snapshot stays.
+    const [current, previous] = fuelWatchCsvUrls(nowMs);
+    const readMonth = url => read(url, 'text', undefined, 60000);
+    let body = '';
+    try { body = await readMonth(current); } catch (err) { if (err.message !== `${id} provider HTTP 404`) throw err; }
+    if (String(body).trim().split(/\r?\n/).length > 1) {
+      try { points = parseFuelWatchPrices(body, nowMs); } catch (err) { if (err.message !== 'FuelWatch station sample is incomplete') throw err; }
+    }
+    if (!points?.length) points = parseFuelWatchPrices(await readMonth(previous), nowMs);
+  }
+  if (id === 'searg') {
+    // About 9 MB of station rows from a host that is often slow to answer. runSeed
+    // ends the fetch phase 40 s before the 120 s section timeout, so the read stops at 75 s.
+    points = parseSeArgentinaPrices(await read(SEARG_CSV_URL, 'text', undefined, 75000), nowMs);
+  }
+  if (id === 'oil111') {
+    // Five small POST responses: four weekly pump surveys and the monthly LPG survey.
+    points = [];
+    for (const request of OIL111_REQUESTS) points.push(...parseOil111Survey(await read(request.url, 'json', request.form), request, nowMs));
+  }
+  if (id === 'ems') {
+    // Today's operational hours, plus the newest consolidated day (about two
+    // days later) so the hours after local midnight still have a series.
+    const today = localDay(nowMs);
+    const live = parseEmsLive(emsJson(await read(emsLiveUrl(today))), today);
+    let realised = [];
+    for (let back = 1; back <= 3 && !realised.length; back++) {
+      const day = previousDay(today, back);
+      realised = parseEmsRealised(emsJson(await read(emsRealisedUrl(day))), day);
+    }
+    points = [...live, ...realised];
+  }
+  if (id === 'nosbih') {
+    const today = localDay(nowMs);
+    points = [];
+    for (const day of [previousDay(today), today]) points.push(...parseNosbih(await read(NOSBIH_AJAX_URL, 'json', nosbihForm(day)), day));
+  }
+  if (id === 'mepso') {
+    // A report covering a DST change day is skipped for the one before it.
+    for (const report of discoverMepsoPdfs(await read(MEPSO_HOME_URL)).slice(0, 3)) {
+      try {
+        points = parseMepso(await readPdf(report.url), report.day);
+        break;
+      } catch (err) {
+        if (!/covers a DST change day/.test(err.message)) throw err;
+      }
+    }
   }
   if (feed.publishesAhead) points = inEffect(points, nowMs, feed.utcOffsetMin);
   const snapshot = buildFeedSnapshot(id, points, downloaded.at(-1), nowMs);

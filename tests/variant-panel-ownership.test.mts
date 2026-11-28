@@ -156,6 +156,27 @@ describe('variant panel ownership', () => {
     assert.deepEqual(persisted, result);
   });
 
+  it('re-enables variant default panels a previous variant or mission disabled', () => {
+    const result = applyVariantPanelLayoutTransition({
+      currentVariant: 'tech',
+      panelSettings: {
+        hardware: { name: 'Hardware', enabled: false, priority: 1 },
+        'energy-only': { name: 'Energy only', enabled: true },
+        'tech-off-by-default': { name: 'Off by default', enabled: true },
+      },
+      variantPanelKeys: new Set(['hardware', 'tech-off-by-default']),
+      isDynamicPanel: () => false,
+      getDefaultPanel: (key) => ({ name: key, enabled: key !== 'tech-off-by-default' }),
+      persistPanels: () => {},
+      persistAppliedVariant: () => {},
+    });
+
+    assert.equal(result.hardware?.enabled, true);
+    assert.equal(result.hardware?.name, 'Hardware', 'existing panel metadata is kept');
+    assert.equal(result['energy-only']?.enabled, false);
+    assert.equal(result['tech-off-by-default']?.enabled, false);
+  });
+
   it('does not advance the applied marker when panel persistence fails', () => {
     const events: string[] = [];
     const result = applyVariantPanelLayoutTransition({

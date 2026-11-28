@@ -29,6 +29,7 @@ const SAFE_GATEWAY_ERROR_CODES: ReadonlySet<string> = new Set([
   'insufficient_entitlement',
   'entitlement_verification_unavailable',
   'subscription_lapsed',
+  'payment_failed',
   'renewal_verification_pending',
   'renewal_verification_failed',
   'payload_too_large',

@@ -63,10 +63,6 @@ export function getHotspotEscalation(hotspotId: string): DynamicEscalationScore 
   return scores.get(hotspotId) ?? null;
 }
 
-export function getAllEscalationScores(): DynamicEscalationScore[] {
-  return Array.from(scores.values());
-}
-
 export function shouldEmitSignal(hotspotId: string, oldScore: number | null, newScore: number): EscalationSignalReason | null {
   return evaluateEscalationSignal({
     oldScore,
@@ -127,9 +123,4 @@ export function getEscalationChange24h(hotspotId: string): { change: number; sta
   if (!score) return null;
 
   return computeEscalationChange(score.history, Date.now());
-}
-
-export function clearEscalationData(): void {
-  scores.clear();
-  lastSignalTime.clear();
 }

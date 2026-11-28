@@ -5,6 +5,9 @@ import {
   deriveCountryIntelCacheKey,
   buildSharedCountryContext,
 } from '../server/worldmonitor/intelligence/v1/_country-brief-context.ts';
+import { countryImageryFlagsFrom } from '../server/worldmonitor/intelligence/v1/_country-brief-evidence.ts';
+import { confirmedFlagsTag } from '../shared/orbital/country-rollup.js';
+import { CONFIRMED, RAISED, flagAfter, rollupOf, siteOf, watchedRead } from './helpers/orbital-country-rollup.mjs';
 
 describe('country intel brief cache key derivation', () => {
   it('anon callers share one key per country+lang regardless of client context', () => {
@@ -17,7 +20,7 @@ describe('country intel brief cache key derivation', () => {
       contextHash: 'bbbbbbbbbbbbbbbb', frameworkHash: '', energyYear: '2024', energyImportYear: '2023',
     });
     assert.equal(a, b, 'anon key must not vary with client context');
-    assert.ok(a.startsWith('ci-sebuf:v12:FR:en:shared'), `anon key should use shared namespace, got ${a}`);
+    assert.ok(a.startsWith('ci-sebuf:v13:FR:en:shared'), `anon key should use shared namespace, got ${a}`);
   });
 
   it('re-keys a brief when a NOTAM closes or reopens one of its airports', () => {
@@ -28,6 +31,20 @@ describe('country intel brief cache key derivation', () => {
       assert.equal(mk(premium, ''), mk(premium, undefined), 'no NOTAM keeps the existing key');
       assert.notEqual(mk(premium, ''), mk(premium, 'OEJN:closed'));
       assert.notEqual(mk(premium, 'OEJN:closed'), mk(premium, 'OEJN:restricted'));
+    }
+  });
+
+  it('re-keys a brief when a watched site\'s imagery change is confirmed', () => {
+    const mk = (isPremium, imageryTag) => deriveCountryIntelCacheKey({
+      countryCode: 'IR', lang: 'en', isPremium, contextHash: 'base', frameworkHash: '', energyYear: '2024', energyImportYear: '2023', imageryTag,
+    });
+    const now = Date.UTC(2026, 8, 21, 12);
+    const natanz = siteOf('nuclear:natanz', 'Natanz Enrichment Facility');
+    const tagOf = (tail) => confirmedFlagsTag(countryImageryFlagsFrom(watchedRead(rollupOf('IR', now, [{ site: natanz, flag: flagAfter(natanz.id, now, tail) }])), 'IR', now));
+    assert.equal(tagOf(RAISED), '', 'a raised flag leaves the key alone');
+    for (const premium of [false, true]) {
+      assert.equal(mk(premium, tagOf(RAISED)), mk(premium, undefined));
+      assert.notEqual(mk(premium, tagOf(CONFIRMED)), mk(premium, ''));
     }
   });
 
@@ -61,17 +78,17 @@ describe('country intel brief cache key derivation', () => {
     assert.notEqual(mk('aaaaaaaaaaaaaaaa', ''), mk('bbbbbbbbbbbbbbbb', ''), 'premium context must personalize the key');
     assert.equal(mk('aaaaaaaaaaaaaaaa', ''), mk('aaaaaaaaaaaaaaaa', ''), 'same premium context must share the key');
     assert.notEqual(mk('aaaaaaaaaaaaaaaa', 'deadbeef'), mk('aaaaaaaaaaaaaaaa', ''), 'framework must personalize the key');
-    assert.ok(mk('aaaaaaaaaaaaaaaa', '').startsWith('ci-sebuf:v13:FR:en:sources:aaaaaaaaaaaaaaaa'));
+    assert.ok(mk('aaaaaaaaaaaaaaaa', '').startsWith('ci-sebuf:v14:FR:en:sources:aaaaaaaaaaaaaaaa'));
     assert.ok(!mk('aaaaaaaaaaaaaaaa', '').includes(':shared'));
   });
 
   it('retires premium entries made before context and source parsing agreed', () => {
     const options = { countryCode: 'FR', lang: 'en', isPremium: true, contextHash: 'abc', frameworkHash: '', energyYear: '2024', energyImportYear: '2023' };
-    assert.equal(deriveCountryIntelCacheKey(options), 'ci-sebuf:v13:FR:en:sources:abc:e2024:i2023');
-    assert.equal(deriveCountryIntelCacheKey({ ...options, frameworkHash: 'def' }), 'ci-sebuf:v13:FR:en:abc:def:e2024:i2023');
-    assert.equal(deriveCountryIntelCacheKey({ ...options, lang: 'fr' }), 'ci-sebuf:v10:FR:fr:abc:e2024:i2023');
-    assert.equal(deriveCountryIntelCacheKey({ ...options, lang: 'fr', frameworkHash: 'def' }), 'ci-sebuf:v10:FR:fr:abc:def:e2024:i2023');
-    assert.equal(deriveCountryIntelCacheKey({ ...options, isPremium: false }), 'ci-sebuf:v12:FR:en:shared:e2024:i2023');
+    assert.equal(deriveCountryIntelCacheKey(options), 'ci-sebuf:v14:FR:en:sources:abc:e2024:i2023');
+    assert.equal(deriveCountryIntelCacheKey({ ...options, frameworkHash: 'def' }), 'ci-sebuf:v14:FR:en:abc:def:e2024:i2023');
+    assert.equal(deriveCountryIntelCacheKey({ ...options, lang: 'fr' }), 'ci-sebuf:v11:FR:fr:abc:e2024:i2023');
+    assert.equal(deriveCountryIntelCacheKey({ ...options, lang: 'fr', frameworkHash: 'def' }), 'ci-sebuf:v11:FR:fr:abc:def:e2024:i2023');
+    assert.equal(deriveCountryIntelCacheKey({ ...options, isPremium: false }), 'ci-sebuf:v13:FR:en:shared:e2024:i2023');
   });
 });
 
@@ -80,10 +97,10 @@ describe('country relationship grounding generation namespace', () => {
     for (const isPremium of [false, true]) {
       const options = { countryCode: 'FR', lang: 'en', isPremium, contextHash: 'abc', frameworkHash: 'def', energyYear: '2024', energyImportYear: '2023' };
       const key = deriveCountryIntelCacheKey(options);
-      assert.ok(key.startsWith(isPremium ? 'ci-sebuf:v13:FR:en:' : 'ci-sebuf:v12:FR:en:'));
+      assert.ok(key.startsWith(isPremium ? 'ci-sebuf:v14:FR:en:' : 'ci-sebuf:v13:FR:en:'));
       assert.equal(deriveCountryIntelCacheKey({ ...options, lang: 'fr' }), isPremium
-        ? 'ci-sebuf:v10:FR:fr:abc:def:e2024:i2023'
-        : 'ci-sebuf:v9:FR:fr:shared:e2024:i2023');
+        ? 'ci-sebuf:v11:FR:fr:abc:def:e2024:i2023'
+        : 'ci-sebuf:v10:FR:fr:shared:e2024:i2023');
     }
   });
 });

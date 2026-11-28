@@ -69,6 +69,8 @@ export class IntelligenceFindingsBadge {
   private audioEnabled = true;
   private enabled: boolean;
   private popupEnabled: boolean;
+  /** The last breaking-alerts change could not be stored; say so under the switch. */
+  private breakingAlertsSaveFailed = false;
   private contextMenu: HTMLElement | null = null;
   private contextMenuDismissListener: (() => void) | null = null;
   private findingsModalOverlay: HTMLElement | null = null;
@@ -119,8 +121,13 @@ export class IntelligenceFindingsBadge {
       }
       if (toggleAttr === 'breaking-alerts') {
         e.stopPropagation();
-        const settings = getAlertSettings();
-        updateAlertSettings({ enabled: !settings.enabled });
+        // Flip what the reader saw. Re-reading storage here can disagree with the
+        // rendered switch (a failed read rendered the default, then storage
+        // recovered), and a click meant as "off" would turn alerts on.
+        const shownOn = target.closest('[data-toggle]')?.querySelector('.popup-toggle-switch')?.classList.contains('on')
+          ?? getAlertSettings().enabled;
+        // A rejected write leaves the switch where it was; tell the reader why.
+        this.breakingAlertsSaveFailed = !updateAlertSettings({ enabled: !shownOn });
         this.renderDropdown();
         return;
       }
@@ -375,7 +382,9 @@ export class IntelligenceFindingsBadge {
       <div class="popup-toggle-row" data-toggle="breaking-alerts">
         <span class="popup-toggle-label">🚨 ${escapeHtml(breakingLabel)}</span>
         <span class="popup-toggle-switch${breakingSettings.enabled ? ' on' : ''}"><span class="popup-toggle-knob"></span></span>
-      </div>`;
+      </div>${this.breakingAlertsSaveFailed
+        ? `<div class="popup-toggle-error" role="alert" data-breaking-alerts-save-error>${escapeHtml(t('components.intelligenceFindings.breakingAlertsNotSaved'))}</div>`
+        : ''}`;
   }
 
   private renderDropdown(): void {
@@ -502,19 +511,31 @@ export class IntelligenceFindingsBadge {
   }
 
   private toggleDropdown(): void {
-    this.isOpen = !this.isOpen;
-    this.dropdown.classList.toggle('open', this.isOpen);
-    this.badge.classList.toggle('active', this.isOpen);
     if (this.isOpen) {
-      void this.update();
+      this.closeDropdown();
+      return;
     }
+    this.isOpen = true;
+    this.dropdown.classList.add('open');
+    this.badge.classList.add('active');
+    document.addEventListener('keydown', this.dropdownEscListener);
+    void this.update();
   }
 
   private closeDropdown(): void {
     this.isOpen = false;
     this.dropdown.classList.remove('open');
     this.badge.classList.remove('active');
+    document.removeEventListener('keydown', this.dropdownEscListener);
   }
+
+  private readonly dropdownEscListener = (e: KeyboardEvent): void => {
+    // Another control (Search) already closed itself and placed focus.
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    e.preventDefault();
+    this.closeDropdown();
+    this.badge.focus();
+  };
 
   private showAllFindings(): void {
     // Create modal overlay
@@ -630,6 +651,7 @@ export class IntelligenceFindingsBadge {
     }
     this.dismissContextMenu();
     this.dismissFindingsModal();
+    this.closeDropdown();
     document.removeEventListener('wm:intelligence-updated', this.boundUpdate);
     document.removeEventListener('click', this.boundCloseDropdown);
     this.badge.remove();

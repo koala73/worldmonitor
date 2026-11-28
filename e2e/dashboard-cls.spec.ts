@@ -1,5 +1,9 @@
 import { expect, test, devices, type Page } from '@playwright/test';
 
+// Layout and paint timing are measured with motion on, as users see it;
+// playwright.config.ts turns reduced motion on for every other spec.
+test.use({ reducedMotion: 'no-preference' });
+
 type Box = {
   height: number;
   width: number;
@@ -281,7 +285,7 @@ const assertSeededDeferredPanelMount = async (
   expect(Math.abs(mounted!.height - shell!.height), 'shell→mounted height delta').toBeLessThanOrEqual(2);
 };
 
-const assertDashboardCls = async (page: Page): Promise<void> => {
+const assertDashboardCls = async (page: Page, dashboardBudget = 0.05): Promise<void> => {
   const cls = await page.evaluate(() => {
     const entries = (window.__wmDashboardClsEntries ?? []).filter((entry) => !entry.hadRecentInput);
     const total = entries.reduce((sum, entry) => sum + entry.value, 0);
@@ -305,12 +309,15 @@ const assertDashboardCls = async (page: Page): Promise<void> => {
   if (!isHappyVariant) {
     expect(cls.total, JSON.stringify(cls.entries)).toBeLessThan(0.1);
   }
-  expect(cls.dashboard, JSON.stringify(cls.dashboardEntries)).toBeLessThan(0.05);
+  expect(cls.dashboard, JSON.stringify(cls.dashboardEntries)).toBeLessThan(dashboardBudget);
 };
 
 const exerciseDashboardBoot = async (
   page: Page,
-  { assertSeededDeferredFootprint = false }: { assertSeededDeferredFootprint?: boolean } = {},
+  {
+    assertSeededDeferredFootprint = false,
+    dashboardClsBudget,
+  }: { assertSeededDeferredFootprint?: boolean; dashboardClsBudget?: number } = {},
 ): Promise<void> => {
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -354,7 +361,7 @@ const exerciseDashboardBoot = async (
     expect(Math.abs(after.height - before.height), `${selector} height`).toBeLessThanOrEqual(2);
   }
 
-  await assertDashboardCls(page);
+  await assertDashboardCls(page, dashboardClsBudget);
   if (seededDeferredShell) {
     await assertSeededDeferredPanelMount(page, seededDeferredShell);
   }
@@ -406,6 +413,8 @@ test.describe('dashboard layout stability on mobile', () => {
     // Note: the strict shell↔mount footprint equality check is desktop-only — on
     // mobile spans are inert (flex column) and panels are content-sized, so we
     // rely on the dashboard CLS bucket assertion to catch reservation regressions.
-    await exerciseDashboardBoot(page);
+    // The 0.05 default hid a 0.033 #panelsGrid shift (chip nav mounted after createPanels
+    // yielded), so phones get a tighter budget: the healthy boot measures ~0.0002.
+    await exerciseDashboardBoot(page, { dashboardClsBudget: 0.01 });
   });
 });

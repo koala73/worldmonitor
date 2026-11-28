@@ -13,7 +13,13 @@
 
 import type { DodoProductId } from '@/config/products';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
-import { openBillingPortal, prereserveBillingPortalTab } from './billing';
+import {
+  openBillingPortal,
+  prereserveBillingPortalTab,
+  requestApiStarterSwitch,
+  requestProAnnualSwitch,
+  requestProBusinessUpgrade,
+} from './billing';
 import { getCurrentClerkUser, getClerkToken, openSignIn } from './clerk';
 import { subscribeAuthState } from './auth-state';
 import { saveCheckoutAttempt, clearCheckoutAttempt } from './checkout-attempt';
@@ -61,6 +67,8 @@ import {
   resolveCheckoutContext,
 } from '../../shared/checkout-attribution';
 import { showDuplicateSubscriptionDialog } from './checkout-duplicate-dialog';
+import { showCheckoutConfirmDialog } from './checkout-dialog-factory';
+import { extractBillingErrorKind } from './_billing-error';
 import { showCheckoutPendingDialog } from './checkout-pending-dialog';
 import { resolvePlanDisplayName } from './checkout-plan-names';
 import {
@@ -93,7 +101,6 @@ const CHECKOUT_REFERRAL_PARAM = 'checkoutReferral';
 const CHECKOUT_DISCOUNT_PARAM = 'checkoutDiscount';
 const PENDING_CHECKOUT_KEY = 'wm-pending-checkout';
 const POST_CHECKOUT_FLAG_KEY = 'wm-post-checkout';
-const APP_CHECKOUT_BASE_URL = `${WEB_APP_ORIGIN}/dashboard`;
 
 /**
  * The desktop "return to app" step (#5911). Handing checkout to the OS
@@ -296,21 +303,6 @@ export function initCheckoutWatchers(): void {
   });
 }
 
-export function buildCheckoutLaunchUrl(
-  productId: string,
-  options?: { referralCode?: string; discountCode?: string },
-): string {
-  const url = new URL(APP_CHECKOUT_BASE_URL);
-  url.searchParams.set(CHECKOUT_PRODUCT_PARAM, productId);
-  if (options?.referralCode) {
-    url.searchParams.set(CHECKOUT_REFERRAL_PARAM, options.referralCode);
-  }
-  if (options?.discountCode) {
-    url.searchParams.set(CHECKOUT_DISCOUNT_PARAM, options.discountCode);
-  }
-  return url.toString();
-}
-
 export function capturePendingCheckoutIntentFromUrl(): PendingCheckoutIntent | null {
   const url = new URL(window.location.href);
   const productId = url.searchParams.get(CHECKOUT_PRODUCT_PARAM);
@@ -444,6 +436,66 @@ function checkoutRateLimitRemainingSeconds(): number {
  * off that graph — the same reason every other client consumer lazy-loads it.
  * A failed load falls back to the generic copy rather than blocking the dialog.
  */
+async function isProYearlyCheckoutTarget(productId: string): Promise<boolean> {
+  try {
+    const { DODO_PRODUCTS } = await import('@/config/products');
+    return productId === DODO_PRODUCTS.PRO_ANNUAL;
+  } catch {
+    return false;
+  }
+}
+
+function openPortalFromDialog(): void {
+  const reservedWin = prereserveBillingPortalTab();
+  void openBillingPortal(reservedWin);
+}
+
+function reportPlanChangeError(action: string, err: unknown): void {
+  const kind = extractBillingErrorKind(err);
+  enqueueSentryCall((s) => s.captureException(err instanceof Error ? err : new Error(String(err)), {
+    tags: { component: 'dodo-billing', action, ...(kind ? { billing_error_kind: kind } : {}) },
+    level: 'warning',
+  }));
+}
+
+/**
+ * In-place Pro Monthly → Pro Yearly switch, with the running offer applied.
+ * Reached from Settings (an active Pro Monthly) and from the checkout 409 when
+ * a Pro Monthly subscriber starts a Pro Yearly checkout. `fallback` runs when
+ * no quote comes back.
+ */
+export async function startProAnnualSwitch(
+  planKey: unknown,
+  fallback: () => void,
+  /** Settings returns focus to its switch button; the checkout 409 path passes nothing. */
+  onDismiss?: () => void,
+): Promise<void> {
+  // A failed chunk load (stale deploy, flaky network) still reaches the fallback.
+  const [flowModule, i18n] = await Promise.all([
+    import('./pro-business-upgrade-dialog').catch(() => null),
+    // Already loaded by the app; dynamic so node suites that load checkout skip i18next.
+    import('./i18n').catch(() => null),
+  ]);
+  if (!flowModule || !i18n) {
+    fallback();
+    return;
+  }
+  await flowModule.runProAnnualSwitchFlow({
+    translate: i18n.t,
+    locale: i18n.getLocale(),
+    planKey,
+    fallback,
+    requestSwitch: requestProAnnualSwitch,
+    currentUserId: () => getCurrentClerkUser()?.id,
+    openPortal: openPortalFromDialog,
+    afterSuccess: () => window.location.reload(),
+    showDialog: showCheckoutConfirmDialog,
+    errorKind: extractBillingErrorKind,
+    reportError: reportPlanChangeError,
+    ...(onDismiss ? { onDismiss } : {}),
+  });
+}
+
 async function isProBusinessCheckoutTarget(productId: string): Promise<boolean> {
   try {
     const { DODO_PRODUCTS } = await import('@/config/products');
@@ -454,6 +506,42 @@ async function isProBusinessCheckoutTarget(productId: string): Promise<boolean> 
   } catch {
     return false;
   }
+}
+
+async function isApiStarterCheckoutTarget(productId: string): Promise<boolean> {
+  try {
+    const { DODO_PRODUCTS } = await import('@/config/products');
+    return productId === DODO_PRODUCTS.API_STARTER_MONTHLY || productId === DODO_PRODUCTS.API_STARTER_ANNUAL;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * In-place individual Pro → API Starter switch. Reached from Settings and,
+ * before any API Starter checkout, from startCheckout. Resolves
+ * 'not-switchable' when the account has no Pro the server would switch (or the
+ * flow cannot run), and the caller then goes on as before. The server keeps
+ * the cadence, so a Pro Yearly holder is quoted API Starter Annual whichever
+ * API Starter product was picked.
+ */
+export async function startApiStarterSwitch(
+  /** Settings returns focus to its switch button; the checkout path passes nothing. */
+  onDismiss?: () => void,
+): Promise<'shown' | 'not-switchable'> {
+  // A failed chunk load (stale deploy, flaky network) continues to checkout.
+  const flowModule = await import('./api-starter-switch-dialog').catch(() => null);
+  if (!flowModule) return 'not-switchable';
+  return flowModule.runApiStarterSwitchFlow({
+    requestSwitch: requestApiStarterSwitch,
+    currentUserId: () => getCurrentClerkUser()?.id,
+    openPortal: openPortalFromDialog,
+    afterSuccess: () => window.location.reload(),
+    showDialog: showCheckoutConfirmDialog,
+    errorKind: extractBillingErrorKind,
+    reportError: reportPlanChangeError,
+    ...(onDismiss ? { onDismiss } : {}),
+  });
 }
 
 /**
@@ -539,7 +627,6 @@ export async function startCheckout(
       navigate: (url) => navigateToWebSurface(buildAttributedProUrl(
         url,
         checkoutContext.origin.kind === 'mission-preview' ? checkoutContext.origin : undefined,
-        { desktopHandoff: desktopRuntime },
       )),
       persistIntent: () => savePendingCheckoutIntent(intent),
       persistAttempt: () => saveCheckoutAttempt({
@@ -578,7 +665,32 @@ export async function startCheckout(
     return false;
   }
 
+  // An individual Pro holder moves to API Starter in place instead of buying
+  // a second subscription. Every other account continues to checkout. The
+  // guard is taken before the first await and held into the checkout below.
   _checkoutInFlight = true;
+  if (await isApiStarterCheckoutTarget(productId)) {
+    let switchOutcome: 'shown' | 'not-switchable' = 'not-switchable';
+    try {
+      switchOutcome = await startApiStarterSwitch();
+    } catch {
+      // Treated as not switchable: the checkout runs exactly as before.
+    }
+    if (switchOutcome === 'shown') {
+      _checkoutInFlight = false;
+      // The switch dialog answers this purchase. A stored intent for it would
+      // reopen the dialog on the next sign-in in this tab.
+      if (loadPendingCheckoutIntent()?.productId === productId) clearPendingCheckoutIntent();
+      return false;
+    }
+    // The quote can take seconds. A checkout started by one account must not
+    // continue under another one's token.
+    if (getCurrentClerkUser()?.id !== user.id) {
+      _checkoutInFlight = false;
+      return false;
+    }
+  }
+
   let redirecting = false;
   // Fall back to the stored referral when the caller doesn't pass one.
   // A dashboard-origin upgrade click has no ref in hand — it arrives
@@ -694,11 +806,15 @@ export async function startCheckout(
         clearCheckoutAttempt('duplicate');
         const planKey = body?.subscription?.planKey;
         const planDisplayName = resolvePlanDisplayName(planKey);
-        showDuplicateSubscriptionDialog({
+        // A paused hold is not an upgrade case: the card has to be fixed first.
+        const paused = body?.subscription?.status === 'on_hold';
+        const isProBusinessUpgrade = !paused && await isProBusinessCheckoutTarget(productId);
+        const showGuidedDuplicateDialog = (): void => showDuplicateSubscriptionDialog({
           planDisplayName,
+          paused,
           // Picks the guided cancel-then-rebuy copy for the Pro → Pro Business
           // pairing; every other pairing keeps the portal line.
-          isProBusinessUpgrade: await isProBusinessCheckoutTarget(productId),
+          isProBusinessUpgrade,
           onConfirm: () => {
             // Pre-reserve the tab SYNCHRONOUSLY in the click handler
             // before the async work; popup blockers otherwise suppress
@@ -711,6 +827,36 @@ export async function startCheckout(
           },
           onDismiss: () => { /* user stays on the dashboard */ },
         });
+        // An active Pro Monthly moves to Pro Yearly in place, with the offer
+        // while it runs; the guided dialog stays the fallback.
+        if (!paused && planKey === 'pro_monthly' && await isProYearlyCheckoutTarget(productId)) {
+          await startProAnnualSwitch(planKey, showGuidedDuplicateDialog);
+          return false;
+        }
+        // An active Pro moves to Pro Business in place (prorated Dodo plan
+        // change); the guided dialog stays the fallback when no preview comes back.
+        // The plan check lives in the lazy chunk to keep this one small.
+        if (isProBusinessUpgrade) {
+          // A failed chunk load (stale deploy, flaky network) still gets the guided dialog.
+          const upgradeModule = await import('./pro-business-upgrade-dialog').catch(() => null);
+          if (!upgradeModule) {
+            showGuidedDuplicateDialog();
+            return false;
+          }
+          await upgradeModule.runProBusinessUpgradeFlow({
+            planKey,
+            planDisplayName,
+            fallback: showGuidedDuplicateDialog,
+            requestUpgrade: requestProBusinessUpgrade,
+            currentUserId: () => getCurrentClerkUser()?.id,
+            openPortal: openPortalFromDialog,
+            showDialog: showCheckoutConfirmDialog,
+            errorKind: extractBillingErrorKind,
+            reportError: reportPlanChangeError,
+          });
+        } else {
+          showGuidedDuplicateDialog();
+        }
         return false;
       }
       // 409 payment-in-progress (#4438) — a recent same-tier 3DS payment is
@@ -1002,7 +1148,6 @@ function renderCheckoutErrorSurface(
     const proUrl = buildAttributedProUrl(
       `${WEB_APP_ORIGIN}/pro`,
       checkoutContext?.origin.kind === 'mission-preview' ? checkoutContext.origin : undefined,
-      { desktopHandoff: isDesktopRuntime() },
     );
     // Same desktop rule as every other exit from this file (#5911): the
     // pricing page is a web surface, so it leaves for the OS browser instead

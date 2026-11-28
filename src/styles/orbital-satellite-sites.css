@@ -1,0 +1,87 @@
+/* A tracked satellite's coverage of watched sites, inside the globe satellite card.
+   Shared main.css tokens only, so the light and happy themes apply unchanged. */
+.osat-card {
+  background: var(--panel-bg) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+  font-family: var(--font-mono) !important;
+  max-width: min(320px, calc(100vw - 24px)) !important;
+  max-height: calc(100% - 16px);
+  overflow-y: auto;
+  box-shadow: 0 4px 16px var(--shadow-color);
+}
+
+.osat-card .osat-name {
+  color: var(--green-text, var(--green));
+  font-weight: 600;
+}
+
+.osat-card .osat-meta {
+  color: var(--text-dim);
+}
+
+.osat-sites {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.osat-sites-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  line-height: 16px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.osat-sites-note {
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.osat-sites-note[data-tone="stale"] {
+  color: var(--yellow-text, var(--yellow));
+}
+
+.osat-sites-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.osat-site {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0 8px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 11px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.osat-site:last-child {
+  border-bottom: 0;
+}
+
+.osat-site-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.osat-site-time {
+  color: var(--green-text, var(--green));
+}
+
+.osat-site-detail {
+  grid-column: 1 / -1;
+  color: var(--text-faint);
+}

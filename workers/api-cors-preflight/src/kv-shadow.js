@@ -38,14 +38,18 @@ function isPlainObject(value) {
   return prototype === Object.prototype || prototype === null;
 }
 
-/** Classify a raw KV value the way the serving path would decide to serve vs fall through. */
-export function classifyKvEnvelope(tier, raw, now) {
-  if (raw == null) return { outcome: 'fallback', reason: 'miss' };
+/**
+ * Parse and classify a raw KV value once. Returns `{ decision, envelope }` so
+ * callers that need the validated payload (kv-serve) avoid a second JSON.parse
+ * of the 700 KB–1.44 MB envelope string.
+ */
+export function parseAndClassifyKvEnvelope(tier, raw, now) {
+  if (raw == null) return { decision: { outcome: 'fallback', reason: 'miss' }, envelope: null };
   let envelope;
   try {
     envelope = JSON.parse(raw);
   } catch {
-    return { outcome: 'fallback', reason: 'invalid' };
+    return { decision: { outcome: 'fallback', reason: 'invalid' }, envelope: null };
   }
   if (!isPlainObject(envelope)
     || envelope.schemaVersion !== BOOTSTRAP_TIER_ENVELOPE_SCHEMA_VERSION
@@ -58,10 +62,17 @@ export function classifyKvEnvelope(tier, raw, now) {
     || !Array.isArray(envelope.payload.missing)) {
     // Unversioned legacy envelopes are invalid: the publisher is a separate Railway
     // deploy, so Stage 2 must not serve a pre-canadaAlerts-fallback payload (#7291).
-    return { outcome: 'fallback', reason: 'invalid' };
+    return { decision: { outcome: 'fallback', reason: 'invalid' }, envelope: null };
   }
-  if (now - envelope.generatedAt > TIER_MAX_AGE_MS[tier]) return { outcome: 'fallback', reason: 'stale' };
-  return { outcome: 'kv', reason: null };
+  if (now - envelope.generatedAt > TIER_MAX_AGE_MS[tier]) {
+    return { decision: { outcome: 'fallback', reason: 'stale' }, envelope: null };
+  }
+  return { decision: { outcome: 'kv', reason: null }, envelope };
+}
+
+/** Classify a raw KV value the way the serving path would decide to serve vs fall through. */
+export function classifyKvEnvelope(tier, raw, now) {
+  return parseAndClassifyKvEnvelope(tier, raw, now).decision;
 }
 
 function warnDeliveryFailure(failureClass) {

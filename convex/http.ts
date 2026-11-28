@@ -3,6 +3,8 @@ import type { Infer } from "convex/values";
 import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { lookupVerifiedAccountEmail, requireVerifiedAccountEmail } from "./lib/notificationEmail";
+import { isDeliveryError } from "./lib/notificationDelivery";
+import { redactChannelForSettings } from "./notificationChannels";
 import { timingSafeEqualStrings } from "./lib/svixVerify";
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
 import { briefOnlyUserIds, type BriefRuleFlags } from "./alertRules";
@@ -15,8 +17,11 @@ import { webhookHandler } from "./payments/webhookHandlers";
 import { resendWebhookHandler } from "./resendWebhookHandler";
 import { clerkWebhookHandler } from "./accountDeletion/clerkWebhook";
 import { channelTypeValidator, USER_PREFS_WRITE_RATE_LIMIT } from "./constants";
+import { ALERT_CAPABILITY_VIOLATION_CODES, ALERT_UPGRADE_URL } from "../shared/alert-capabilities";
+import { isRuleEnabledIntent, type RuleSaveResult } from "../shared/alert-rule-shape";
 import { isPreferenceVariant } from "../shared/cloud-preferences-contract";
 import { normalizeAcquisitionSource } from "../shared/acquisition-source";
+import { briefL10nDeliverableLanguages } from "../shared/ui-languages";
 import { verifyDunningPortalToken } from "./lib/identitySigning";
 import { buildUnsubscribeUrl, EMAIL_UNSUBSCRIBE_PATH, verifyUnsubscribeToken } from "./lib/emailUnsubscribe";
 import {
@@ -54,7 +59,7 @@ function allowedOrigin(origin: string | null): string | null {
     url.hostname = url.hostname.replace(/\.+$/, "");
     const candidate = `${url.protocol}//${url.host}`;
     if (TRUSTED_ORIGINS.some(pattern => pattern.test(candidate))) return origin;
-    if (process.env.NODE_ENV !== "production" && /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(candidate)) return origin;
+    if (process.env.CONVEX_IS_DEV === "true" && /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(candidate)) return origin;
     if (url.protocol === "https:" && !url.port && url.hostname.endsWith(".translate.goog")) {
       const encoded = url.hostname.slice(0, -".translate.goog".length);
       const decoded = encoded.replace(/--/g, "\0").replace(/-/g, ".").replace(/\0/g, "-");
@@ -148,6 +153,31 @@ function parseConvexErrorData(err: unknown): unknown {
   }
 }
 
+/**
+ * Alert-ladder capability denial (#4273) → 402 with the structured upsell
+ * payload (`error` code, message, upgradeUrl, and the limit or value that
+ * tripped). The error is the marketing surface: the client and agents route
+ * on the code and render the named rung.
+ */
+const ALERT_CAPABILITY_CODES = new Set<string>(ALERT_CAPABILITY_VIOLATION_CODES);
+
+function alertCapabilityDenialResponse(err: unknown): Response | null {
+  const code = extractConvexErrorCode(err);
+  if (!code || !ALERT_CAPABILITY_CODES.has(code)) return null;
+  const parsed = parseConvexErrorData(err);
+  const data = (parsed && typeof parsed === "object") ? parsed as Record<string, unknown> : {};
+  // COUNTRY_SCOPE is a 400, not a 402: a free caller fixes it by choosing
+  // countries, no payment required (upgradeUrl rides along as the alternative).
+  const status = code === "ALERT_COUNTRY_SCOPE_REQUIRED" ? 400 : 402;
+  return new Response(JSON.stringify({
+    error: code,
+    message: typeof data.message === "string" ? data.message : "",
+    upgradeUrl: typeof data.upgradeUrl === "string" ? data.upgradeUrl : ALERT_UPGRADE_URL,
+    ...(typeof data.limit === "number" ? { limit: data.limit } : {}),
+    ...(typeof data.value === "string" ? { value: data.value } : {}),
+  }), { status, headers: { "Content-Type": "application/json" } });
+}
+
 function extractConvexErrorCode(err: unknown): string | null {
   const parsed = parseConvexErrorData(err);
   if (typeof parsed === "string") return parsed;
@@ -166,8 +196,25 @@ const ALERT_RULE_SHAPE_CODES = new Set([
   "VARIANT_INVALID",
   "EVENT_TYPES_INVALID",
   "CHANNELS_INVALID",
+  "ORBITAL_SITES_INVALID",
+  "RESERVOIR_ALERT_INVALID",
   "RULE_LIMIT_EXCEEDED",
 ]);
+
+type ReservoirAlertBody = { reservoirs: string[]; belowPercent?: number; seasonalDrop?: boolean };
+
+/**
+ * The reservoir alert as the Convex validator needs it: an object holding only the three known
+ * keys, with the right types. Anything finer (id format, bounds) is the mutation's shape check, which answers 400.
+ */
+function isReservoirAlertBody(value: unknown): value is ReservoirAlertBody {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const { reservoirs, belowPercent, seasonalDrop, ...extra } = value as Record<string, unknown>;
+  return Object.keys(extra).length === 0
+    && Array.isArray(reservoirs) && reservoirs.every((id) => typeof id === "string")
+    && (belowPercent === undefined || typeof belowPercent === "number")
+    && (seasonalDrop === undefined || typeof seasonalDrop === "boolean");
+}
 
 function alertRuleValidationResponse(err: unknown, passthroughCodes: readonly string[] = []): Response | null {
   const code = extractConvexErrorCode(err);
@@ -347,6 +394,7 @@ export async function internalEntitlementsHttpHandler(
     );
     let billingStatus:
       | "subscription_lapsed"
+      | "payment_failed"
       | "renewal_verification_pending"
       | "renewal_verification_failed"
       | undefined;
@@ -416,7 +464,11 @@ export async function internalEntitlementsHttpHandler(
             verificationCouldExpandCoverage
           )
         ) {
-          billingStatus = verification.status;
+          billingStatus =
+            verification.status === "subscription_lapsed" &&
+            fallbackState?.paymentFailedHold
+              ? "payment_failed"
+              : verification.status;
           if ("retryAfterSeconds" in verification) {
             retryAfterSeconds = verification.retryAfterSeconds;
           }
@@ -976,6 +1028,35 @@ function isChannelType(value: unknown): value is Infer<typeof channelTypeValidat
 }
 
 http.route({
+  path: "/relay/delivery-result",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
+    if (unauthorized) return unauthorized;
+    const body = await parseJsonObjectBody<Record<string, unknown>>(request);
+    const inputs = body && Array.isArray(body.results) ? body.results : [body];
+    if (inputs.length === 0 || inputs.length > 100) {
+      return Response.json({ error: "INVALID_DELIVERY_RESULT" }, { status: 400 });
+    }
+    const results = [];
+    for (const input of inputs) {
+      const delivery = input?.delivery;
+      if (!input || typeof input.userId !== "string" || !input.userId || !isChannelType(input.channelType)
+        || !delivery || typeof delivery.channelId !== "string" || !delivery.channelId
+        || typeof delivery.linkedAt !== "number" || !Number.isFinite(delivery.linkedAt)
+        || (delivery.sequence !== undefined && (!Number.isSafeInteger(delivery.sequence) || delivery.sequence < 1))
+        || (delivery.error !== null && !isDeliveryError(delivery.error))) {
+        return Response.json({ error: "INVALID_DELIVERY_RESULT" }, { status: 400 });
+      }
+      results.push({ userId: input.userId, channelType: input.channelType,
+        delivery: { channelId: delivery.channelId, linkedAt: delivery.linkedAt, sequence: delivery.sequence, error: delivery.error } });
+    }
+    await ctx.runMutation(internal.notificationChannels.recordDeliveryResult, { results });
+    return Response.json({ ok: true });
+  }),
+});
+
+http.route({
   path: "/relay/deactivate",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
@@ -1113,7 +1194,7 @@ http.route({
     const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
     if (unauthorized) return unauthorized;
 
-    const body = await parseJsonObjectBody<{ userId?: string }>(request);
+    const body = await parseJsonObjectBody<{ userId?: string; deliveryChannels?: unknown }>(request);
     if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
@@ -1128,10 +1209,16 @@ http.route({
       });
     }
 
-    const channels: Array<{ channelType?: string; email?: string }> =
-      await ctx.runQuery((internal as any).notificationChannels.getChannelsByUserId, {
-        userId: body.userId,
-      }) ?? [];
+    const deliveryChannels = body.deliveryChannels;
+    if (deliveryChannels !== undefined && (!Array.isArray(deliveryChannels)
+      || deliveryChannels.length > CHANNEL_TYPES.size || !deliveryChannels.every(isChannelType))) {
+      return Response.json({ error: "INVALID_DELIVERY_CHANNELS" }, { status: 400 });
+    }
+    const channels = deliveryChannels === undefined
+      ? await ctx.runQuery(internal.notificationChannels.getChannelsByUserId, { userId: body.userId })
+      : await ctx.runMutation(internal.notificationChannels.beginChannelDeliveries, {
+        userId: body.userId, channelTypes: deliveryChannels,
+      });
 
     // Delivery workers send alert and digest mail to whatever this returns.
     // Drop email channels whose address bounced, complained or was suppressed
@@ -1187,6 +1274,7 @@ http.route({
       email?: string;
       variant?: string;
       enabled?: boolean;
+      enabledIntent?: unknown;
       eventTypes?: string[];
       sensitivity?: string;
       channels?: string[];
@@ -1211,7 +1299,10 @@ http.route({
       countries?: string[];
       tickers?: string[];
       chokepoints?: string[];
+      orbitalSites?: string[];
+      reservoirAlert?: unknown;
       scheduleWelcome?: boolean;
+      seedCountriesFromFollowed?: boolean;
     }>(request);
     if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
@@ -1231,15 +1322,10 @@ http.route({
     try {
       if (action === "get") {
         const [channels, alertRules] = await Promise.all([
-          ctx.runQuery((internal as any).notificationChannels.getChannelsByUserId, { userId }),
+          ctx.runQuery(internal.notificationChannels.getChannelsByUserId, { userId }),
           ctx.runQuery((internal as any).alertRules.getAlertRulesByUserId, { userId }),
         ]);
-        // The signing secret is only ever shown once, at registration; the
-        // settings UI needs to know whether a webhook is signed, not the key.
-        const visibleChannels = (channels ?? []).map(
-          ({ webhookSecret, ...channel }: { webhookSecret?: string; [key: string]: unknown }) =>
-            channel.channelType === "webhook" ? { ...channel, webhookSigned: Boolean(webhookSecret) } : channel,
-        );
+        const visibleChannels = channels.map(redactChannelForSettings);
         return new Response(JSON.stringify({ channels: visibleChannels, alertRules: alertRules ?? [] }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -1348,20 +1434,26 @@ http.route({
         if (
           typeof body.variant !== "string" || !body.variant ||
           typeof body.enabled !== "boolean" ||
+          (body.enabledIntent !== undefined && !isRuleEnabledIntent(body.enabledIntent)) ||
           !Array.isArray(body.eventTypes) ||
           !Array.isArray(body.channels) ||
           (body.sensitivity !== undefined && !VALID_SENSITIVITY.has(body.sensitivity as string)) ||
           (body.countries !== undefined && !Array.isArray(body.countries)) ||
           (body.tickers !== undefined && !Array.isArray(body.tickers)) ||
-          (body.chokepoints !== undefined && !Array.isArray(body.chokepoints))
+          (body.chokepoints !== undefined && !Array.isArray(body.chokepoints)) ||
+          (body.orbitalSites !== undefined && !Array.isArray(body.orbitalSites)) ||
+          (body.reservoirAlert !== undefined && !isReservoirAlertBody(body.reservoirAlert))
         ) {
           return new Response(JSON.stringify({ error: "MISSING_REQUIRED_FIELDS" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
+        let saved: RuleSaveResult;
         try {
-          await ctx.runMutation((internal as any).alertRules.setAlertRulesForUser, {
+          saved = await ctx.runMutation((internal as any).alertRules.setAlertRulesForUser, {
             userId,
+            enforceEntitlement: true,
             variant: body.variant,
             enabled: body.enabled,
+            enabledIntent: body.enabledIntent,
             eventTypes: body.eventTypes as string[],
             // Pass body.sensitivity through unchanged (may be undefined).
             // setAlertRulesForUser now accepts optional sensitivity and uses
@@ -1379,6 +1471,10 @@ http.route({
             tickers: Array.isArray(body.tickers) ? (body.tickers as string[]) : undefined,
             // Chokepoint-scope (#9217); mutation re-validates + normalizes.
             chokepoints: Array.isArray(body.chokepoints) ? (body.chokepoints as string[]) : undefined,
+            // Watched-site scope; the mutation validates the shape and gates it to Pro.
+            orbitalSites: Array.isArray(body.orbitalSites) ? (body.orbitalSites as string[]) : undefined,
+            // Reservoir level alert; the mutation validates the shape and gates it to Pro.
+            reservoirAlert: body.reservoirAlert as ReservoirAlertBody | undefined,
           });
         } catch (err: unknown) {
           // normalizeTickers/normalizeCountries throw ConvexError with a
@@ -1394,11 +1490,16 @@ http.route({
           if (code === "TICKERS_LIMIT_EXCEEDED" || code === "COUNTRIES_LIMIT_EXCEEDED" || code === "CHOKEPOINTS_INVALID") {
             return new Response(JSON.stringify({ error: code }), { status: 400, headers: { "Content-Type": "application/json" } });
           }
+          const capability = alertCapabilityDenialResponse(err);
+          if (capability) return capability;
           const validation = alertRuleValidationResponse(err, ["INCOMPATIBLE_DELIVERY"]);
           if (validation) return validation;
+          if (code === "PRO_REQUIRED") {
+            return new Response(JSON.stringify({ error: code }), { status: 402, headers: { "Content-Type": "application/json" } });
+          }
           throw err;
         }
-        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ ok: true, ...saved }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
       if (action === "set-quiet-hours") {
@@ -1412,6 +1513,7 @@ http.route({
         try {
           await ctx.runMutation((internal as any).alertRules.setQuietHoursForUser, {
             userId,
+            enforceEntitlement: true,
             variant: body.variant,
             quietHoursEnabled: body.quietHoursEnabled,
             quietHoursStart: body.quietHoursStart,
@@ -1421,6 +1523,8 @@ http.route({
             countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
           });
         } catch (err: unknown) {
+          const capability = alertCapabilityDenialResponse(err);
+          if (capability) return capability;
           const validation = alertRuleValidationResponse(err, ["COUNTRIES_LIMIT_EXCEEDED"]);
           if (validation) return validation;
           throw err;
@@ -1439,6 +1543,7 @@ http.route({
         try {
           await ctx.runMutation((internal as any).alertRules.setDigestSettingsForUser, {
             userId,
+            enforceEntitlement: true,
             variant: body.variant,
             digestMode: body.digestMode as "realtime" | "daily" | "twice_daily" | "weekly",
             digestHour: typeof body.digestHour === "number" ? body.digestHour : undefined,
@@ -1446,6 +1551,8 @@ http.route({
             countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
           });
         } catch (err: unknown) {
+          const capability = alertCapabilityDenialResponse(err);
+          if (capability) return capability;
           const validation = alertRuleValidationResponse(err, ["COUNTRIES_LIMIT_EXCEEDED", "INCOMPATIBLE_DELIVERY"]);
           if (validation) return validation;
           throw err;
@@ -1479,11 +1586,22 @@ http.route({
         if (body.chokepoints !== undefined && !Array.isArray(body.chokepoints)) {
           return new Response(JSON.stringify({ error: "CHOKEPOINTS_MUST_BE_ARRAY" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
+        if (body.orbitalSites !== undefined && !Array.isArray(body.orbitalSites)) {
+          return new Response(JSON.stringify({ error: "ORBITAL_SITES_MUST_BE_ARRAY" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        if (body.reservoirAlert !== undefined && !isReservoirAlertBody(body.reservoirAlert)) {
+          return new Response(JSON.stringify({ error: "RESERVOIR_ALERT_INVALID" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        if (body.enabledIntent !== undefined && !isRuleEnabledIntent(body.enabledIntent)) {
+          return new Response(JSON.stringify({ error: "ENABLED_INTENT_INVALID" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        let saved: RuleSaveResult;
         try {
-          await ctx.runMutation((internal as any).alertRules.setNotificationConfigForUser, {
+          saved = await ctx.runMutation((internal as any).alertRules.setNotificationConfigForUser, {
             userId,
             variant: body.variant,
             enabled: typeof body.enabled === "boolean" ? body.enabled : undefined,
+            enabledIntent: body.enabledIntent,
             eventTypes: Array.isArray(body.eventTypes) ? (body.eventTypes as string[]) : undefined,
             sensitivity: body.sensitivity as "all" | "high" | "critical" | undefined,
             channels: Array.isArray(body.channels) ? (body.channels as Array<"telegram" | "slack" | "email" | "discord" | "teams" | "webhook" | "web_push">) : undefined,
@@ -1494,6 +1612,10 @@ http.route({
             countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
             tickers: Array.isArray(body.tickers) ? (body.tickers as string[]) : undefined,
             chokepoints: Array.isArray(body.chokepoints) ? (body.chokepoints as string[]) : undefined,
+            orbitalSites: Array.isArray(body.orbitalSites) ? (body.orbitalSites as string[]) : undefined,
+            // Reservoir level alert; the mutation validates the shape and gates it to Pro.
+            reservoirAlert: body.reservoirAlert as ReservoirAlertBody | undefined,
+            seedCountriesFromFollowed: body.seedCountriesFromFollowed === true ? true : undefined,
           });
         } catch (err: unknown) {
           // Translate structured ConvexError codes into machine-readable HTTP
@@ -1515,6 +1637,8 @@ http.route({
             "INCOMPATIBLE_DELIVERY", "TICKERS_LIMIT_EXCEEDED", "COUNTRIES_LIMIT_EXCEEDED", "CHOKEPOINTS_INVALID",
           ]);
           if (validation) return validation;
+          const capability = alertCapabilityDenialResponse(err);
+          if (capability) return capability;
           if (code === "PRO_REQUIRED") {
             // 402 Payment Required — the canonical HTTP status for paywall-gated
             // content. Client reads `error: "PRO_REQUIRED"` to route to the
@@ -1523,7 +1647,7 @@ http.route({
           }
           throw err;
         }
-        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ ok: true, ...saved }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
       return new Response(JSON.stringify({ error: "Unknown action" }), { status: 400, headers: { "Content-Type": "application/json" } });
@@ -1532,6 +1656,8 @@ http.route({
       if (code === "EMAIL_OWNERSHIP_REQUIRED" || code === "PRO_REQUIRED") {
         return new Response(JSON.stringify({ error: code }), { status: code === "PRO_REQUIRED" ? 402 : 400, headers: { "Content-Type": "application/json" } });
       }
+      const capability = alertCapabilityDenialResponse(err);
+      if (capability) return capability;
       console.error('[notification-channels] Operation failed', err);
       return new Response(JSON.stringify({ error: 'Operation failed' }), { status: 500, headers: { "Content-Type": "application/json" } });
     }
@@ -1548,6 +1674,23 @@ http.route({
     const rules = await collectPages((cursor) =>
       ctx.runQuery((internal as any).alertRules.getDigestRules, { cursor }));
     return new Response(JSON.stringify(rules), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// Service-to-service: the digest cron reads the brief localization switch once
+// per run. BRIEF_L10N_ENABLED / BRIEF_L10N_LANGS on this deployment are the only
+// switch; users.getBriefLanguage serves the same list to the Settings page.
+http.route({
+  path: "/relay/brief-l10n-config",
+  method: "GET",
+  handler: httpAction(async (_ctx, request) => {
+    const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
+    if (unauthorized) return unauthorized;
+    const langs = briefL10nDeliverableLanguages(process.env);
+    return new Response(JSON.stringify({ enabled: langs.length > 0, langs }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
@@ -1609,7 +1752,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const unauthorized = await authorizeTenantRelay(request, ["delivery"]);
     if (unauthorized) return unauthorized;
-    const body = await parseJsonObjectBody<{ userId?: string; variant?: string }>(request);
+    const body = await parseJsonObjectBody<{ userId?: string; variant?: string; includeBriefLanguage?: boolean }>(request);
     if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
@@ -1632,7 +1775,18 @@ http.route({
       (internal as any).userPreferences.getPreferencesByUserId,
       { userId: body.userId, variant: body.variant },
     );
-    return new Response(JSON.stringify(prefs?.data ?? null), {
+    // Opt-in wrapped shape for the digest cron (brief l10n #10877). Without
+    // the flag the response stays the raw prefs blob older callers expect.
+    const payload = body.includeBriefLanguage === true
+      ? {
+        data: prefs?.data ?? null,
+        briefLanguage: await ctx.runQuery(
+          (internal as any).users.getBriefLanguageForUser,
+          { userId: body.userId },
+        ),
+      }
+      : prefs?.data ?? null;
+    return new Response(JSON.stringify(payload), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
@@ -2189,6 +2343,7 @@ http.route({
       discountCode?: string;
       referralCode?: string;
       attributionSource?: string;
+      checkoutChannel?: unknown;
       acquisition?: unknown;
       bypassPendingGuard?: boolean;
     }>(request);
@@ -2218,6 +2373,7 @@ http.route({
           discountCode: body.discountCode,
           referralCode: body.referralCode,
           attributionSource: body.attributionSource,
+          ...(body.checkoutChannel === "mcp" ? { checkoutChannel: "mcp" as const } : {}),
           acquisition: normalizeAcquisitionSource(body.acquisition) ?? undefined,
           bypassPendingGuard: body.bypassPendingGuard,
         },
@@ -2342,6 +2498,197 @@ http.route({
         headers: { "Content-Type": "application/json" },
       });
     }
+  }),
+});
+
+// In-place plan changes for /pro (the dashboard calls the public actions
+// directly). The edge handlers have already verified the Clerk JWT. Each plan
+// change has its own route, so an edge deployment never reaches a Convex
+// deployment that predates the change it relays: that route answers 404.
+const PRO_BUSINESS_UPGRADE_REFUSALS = new Set([
+  "NO_UPGRADEABLE_PRO",
+  "ALREADY_PRO_BUSINESS",
+  "PRO_CANCEL_SCHEDULED",
+  "UPGRADE_IN_PROGRESS",
+  "UPGRADE_RATE_LIMITED",
+  "ACCOUNT_DELETION_IN_PROGRESS",
+  // Pro Monthly → Pro Yearly.
+  "ALREADY_PRO_ANNUAL",
+  "PROMO_ENDED",
+  "PROMO_CODE_REJECTED",
+  // The re-checked charge is above the one the user accepted; nothing changed.
+  "CHARGE_CHANGED",
+  // Pro → API Starter: the account already has an API plan.
+  "ALREADY_API_PLAN",
+]);
+
+/** Runs one plan change and maps its typed refusals for the edge route. */
+async function planChangeRelayResponse(label: string, run: () => Promise<unknown>): Promise<Response> {
+  try {
+    return Response.json(await run(), { status: 200 });
+  } catch (err) {
+    const code = extractConvexErrorCode(err);
+    if (code && PRO_BUSINESS_UPGRADE_REFUSALS.has(code)) {
+      return Response.json({ error: code }, { status: 409 });
+    }
+    if (code === "DODO_PLAN_CHANGE_ERROR") {
+      return Response.json({ error: code }, { status: 502 });
+    }
+    console.error(`[${label}] Operation failed`, err);
+    return Response.json({ error: "Operation failed" }, { status: 500 });
+  }
+}
+
+http.route({
+  path: "/relay/pro-business-upgrade",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const unauthorized = await authorizeTenantRelay(request, ["gateway"]);
+    if (unauthorized) return unauthorized;
+
+    const body = await parseJsonObjectBody<{ userId?: unknown; confirm?: unknown; kind?: unknown }>(request);
+    if (!body) {
+      return Response.json({ error: "INVALID_JSON" }, { status: 400 });
+    }
+    if (typeof body.userId !== "string" || body.userId.length === 0 || typeof body.confirm !== "boolean") {
+      return Response.json({ error: "MISSING_FIELDS", required: ["userId", "confirm"] }, { status: 400 });
+    }
+    // Pro → Pro Business only. A Pro Yearly request belongs on
+    // /relay/pro-annual-switch; it is refused here, never run as this upgrade.
+    if (body.kind !== undefined && body.kind !== "pro_business") {
+      return Response.json({ error: "INVALID_KIND" }, { status: 400 });
+    }
+    const userId = body.userId;
+    const confirm = body.confirm;
+    return planChangeRelayResponse("pro-business-upgrade", () => ctx.runAction(
+      internal.payments.billing.internalUpgradeToProBusiness,
+      { userId, confirm },
+    ));
+  }),
+});
+
+http.route({
+  path: "/relay/pro-annual-switch",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const unauthorized = await authorizeTenantRelay(request, ["gateway"]);
+    if (unauthorized) return unauthorized;
+
+    const body = await parseJsonObjectBody<{
+      userId?: unknown;
+      confirm?: unknown;
+      discounted?: unknown;
+      acceptedChargeAmount?: unknown;
+      acceptedChargeCurrency?: unknown;
+      listPrice?: unknown;
+      kind?: unknown;
+    }>(request);
+    if (!body) {
+      return Response.json({ error: "INVALID_JSON" }, { status: 400 });
+    }
+    if (typeof body.userId !== "string" || body.userId.length === 0 || typeof body.confirm !== "boolean") {
+      return Response.json({ error: "MISSING_FIELDS", required: ["userId", "confirm"] }, { status: 400 });
+    }
+    // Pro Monthly → Pro Yearly only. Another plan change has its own route; a
+    // request naming one is refused here, never run as this switch.
+    if (body.kind !== undefined && body.kind !== "pro_annual") {
+      return Response.json({ error: "INVALID_KIND" }, { status: 400 });
+    }
+    if (body.discounted !== undefined && typeof body.discounted !== "boolean") {
+      return Response.json({ error: "INVALID_DISCOUNTED" }, { status: 400 });
+    }
+    // A confirm names the quote it accepts (see runPlanChange).
+    if (body.confirm && body.discounted === undefined) {
+      return Response.json({ error: "MISSING_FIELDS", required: ["discounted"] }, { status: 400 });
+    }
+    // Optional pair: the quote's immediate charge the user accepted, in minor units.
+    const namesCharge = body.acceptedChargeAmount !== undefined || body.acceptedChargeCurrency !== undefined;
+    if (
+      namesCharge &&
+      (typeof body.acceptedChargeAmount !== "number" ||
+        !Number.isSafeInteger(body.acceptedChargeAmount) ||
+        body.acceptedChargeAmount < 0 ||
+        typeof body.acceptedChargeCurrency !== "string" ||
+        !/^[A-Z]{3}$/.test(body.acceptedChargeCurrency))
+    ) {
+      return Response.json({ error: "INVALID_ACCEPTED_CHARGE" }, { status: 400 });
+    }
+    if (body.listPrice !== undefined && typeof body.listPrice !== "boolean") {
+      return Response.json({ error: "INVALID_LIST_PRICE" }, { status: 400 });
+    }
+
+    const args = {
+      userId: body.userId,
+      confirm: body.confirm,
+      ...(typeof body.discounted === "boolean" ? { discounted: body.discounted } : {}),
+      ...(namesCharge
+        ? {
+          acceptedChargeAmount: body.acceptedChargeAmount as number,
+          acceptedChargeCurrency: body.acceptedChargeCurrency as string,
+        }
+        : {}),
+      ...(typeof body.listPrice === "boolean" ? { listPrice: body.listPrice } : {}),
+    };
+    return planChangeRelayResponse("pro-annual-switch", () => ctx.runAction(
+      internal.payments.billing.internalSwitchToProAnnual,
+      args,
+    ));
+  }),
+});
+
+http.route({
+  path: "/relay/api-starter-switch",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const unauthorized = await authorizeTenantRelay(request, ["gateway"]);
+    if (unauthorized) return unauthorized;
+
+    const body = await parseJsonObjectBody<{
+      userId?: unknown;
+      confirm?: unknown;
+      acceptedChargeAmount?: unknown;
+      acceptedChargeCurrency?: unknown;
+      kind?: unknown;
+    }>(request);
+    if (!body) {
+      return Response.json({ error: "INVALID_JSON" }, { status: 400 });
+    }
+    if (typeof body.userId !== "string" || body.userId.length === 0 || typeof body.confirm !== "boolean") {
+      return Response.json({ error: "MISSING_FIELDS", required: ["userId", "confirm"] }, { status: 400 });
+    }
+    if (body.kind !== undefined && body.kind !== "api_starter") {
+      return Response.json({ error: "INVALID_KIND" }, { status: 400 });
+    }
+    // A confirm names the charge it accepted, in minor units (see runPlanChange).
+    const namesCharge = body.acceptedChargeAmount !== undefined || body.acceptedChargeCurrency !== undefined;
+    if (body.confirm && !namesCharge) {
+      return Response.json({ error: "MISSING_FIELDS", required: ["acceptedChargeAmount", "acceptedChargeCurrency"] }, { status: 400 });
+    }
+    if (
+      namesCharge &&
+      (typeof body.acceptedChargeAmount !== "number" ||
+        !Number.isSafeInteger(body.acceptedChargeAmount) ||
+        body.acceptedChargeAmount < 0 ||
+        typeof body.acceptedChargeCurrency !== "string" ||
+        !/^[A-Z]{3}$/.test(body.acceptedChargeCurrency))
+    ) {
+      return Response.json({ error: "INVALID_ACCEPTED_CHARGE" }, { status: 400 });
+    }
+
+    const args = {
+      userId: body.userId,
+      confirm: body.confirm,
+      ...(namesCharge
+        ? {
+          acceptedChargeAmount: body.acceptedChargeAmount as number,
+          acceptedChargeCurrency: body.acceptedChargeCurrency as string,
+        }
+        : {}),
+    };
+    return planChangeRelayResponse("api-starter-switch", () => ctx.runAction(
+      internal.payments.billing.internalSwitchToApiStarter,
+      args,
+    ));
   }),
 });
 

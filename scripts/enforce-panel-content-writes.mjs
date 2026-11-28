@@ -23,8 +23,8 @@
 // like `lint:safe-html`, it fires on the edit that matters.
 //
 // The guard is scoped to Panel subclasses (transitively). Classes with their
-// own unrelated `content` field — `CountryDeepDivePanel`, `RouteExplorer`,
-// `VirtualList` — have no Panel error state to latch and are correctly out of
+// own unrelated `content` field — `CountryDeepDivePanel` and `RouteExplorer`
+// — have no Panel error state to latch and are correctly out of
 // scope. `Panel` itself is exempted BY NAME below, not by the incidental fact
 // that `class Panel` currently has no `extends` clause.
 

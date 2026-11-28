@@ -136,6 +136,18 @@ test('Chile follows only the fixed official detail API and rejects incomplete de
     ? { data: [{ ocid: 'ocds-70d2nz-123-LE26' }] } : { error: 'changed' } }), /releases/);
 });
 
+test('Chile reports the Mercado Público error envelope instead of a missing-data parse failure', async () => {
+  const envelope = { status: 500, detail: 'Unable to connect to the remote server   at ChileCompra.OCDS.Dato.ListadoDescarga.Obtener(String añoMes) in D:\\a\\1\\s\\ListadoDescarga.cs:line 0' };
+  await assert.rejects(fetchChile({ now: NOW, fetchJsonFn: async () => envelope }), (error) => {
+    assert.equal(error.message, 'Mercado Público returned status 500: Unable to connect to the remote server');
+    assert.equal(error.status, 500);
+    return true;
+  });
+  await assert.rejects(fetchChile({ now: NOW, fetchJsonFn: async (url) => String(url).includes('listaOCDS')
+    ? { data: [{ ocid: 'ocds-70d2nz-123-LE26' }] } : { status: 404, detail: 'No se encontraron resultados.' } }),
+  /Mercado Público returned status 404: No se encontraron resultados\./);
+});
+
 test('Brazil reads active proposals across modalities and builds an official PNCP link', async () => {
   let requested;
   const result = await fetchBrazil({ now: NOW, fetchJsonFn: async (url) => {
@@ -266,7 +278,7 @@ test('each added source accepts valid empty responses and has a strict official 
   }
 });
 
-test('added sources retain last-good records only within their own 24-hour success clock', async () => {
+test('added sources retain last-good records only within their own 3-day success clock', async () => {
   const record = (await fetchKenya({ now: NOW, fetchJsonFn: async () => ({ data: [{ id: 1, title: 'Water supply',
     status_id: 1, terminated: 0, published: 1, close_at: '2026-11-09 10:00:00' }] }) })).records[0];
   const prior = { fetchedAt: NOW, dataAvailable: true, tenders: [record], sourceStatuses: [{
@@ -276,10 +288,10 @@ test('added sources retain last-good records only within their own 24-hour succe
     settled: [{ status: 'rejected', reason: new Error('HTTP 429') }], attemptedAt: new Date(now).toISOString() });
   const retained = failed(NOW + 60_000, prior);
   assert.equal(retained.sourceStatuses[0].state, 'stale');
-  const lateDay = failed(NOW + (24 * 60 - 1) * 60_000, retained);
+  const lateDay = failed(NOW + (3 * 24 * 60 - 1) * 60_000, retained);
   assert.equal(lateDay.sourceStatuses[0].state, 'stale');
   assert.equal(lateDay.tenders.length, 1);
-  const expired = failed(NOW + 24 * 60 * 60_000, lateDay);
+  const expired = failed(NOW + 3 * 24 * 60 * 60_000, lateDay);
   assert.equal(expired.tenders.length, 0);
   assert.equal(expired.sourceStatuses[0].state, 'error');
   assert.equal(expired.sourceStatuses[0].lastSuccessfulAt, new Date(NOW).toISOString());

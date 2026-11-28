@@ -35,6 +35,20 @@ import {
   type WebhookRecord,
 } from './webhook-shared';
 
+export const MAX_WEBHOOKS_PER_OWNER = 10;
+// Admission and all writes share one Redis operation; a SCARD followed by a
+// pipeline of writes would allow concurrent registrations to exceed the cap.
+export const REGISTER_WEBHOOK_SCRIPT = [
+  "if redis.call('SCARD', KEYS[2]) >= tonumber(ARGV[4]) or redis.call('SCARD', KEYS[4]) >= tonumber(ARGV[4]) then return 0 end",
+  "redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[3])",
+  "redis.call('SADD', KEYS[2], ARGV[2])",
+  "redis.call('EXPIRE', KEYS[2], ARGV[3])",
+  "redis.call('SADD', KEYS[4], ARGV[2])",
+  "redis.call('EXPIRE', KEYS[4], ARGV[3])",
+  "redis.call('SADD', KEYS[3], ARGV[2])",
+  'return 1',
+].join(' ');
+
 export async function registerWebhook(
   ctx: ServerContext,
   req: RegisterWebhookRequest,
@@ -51,6 +65,7 @@ export async function registerWebhook(
   const apiKeyResult = (await validateApiKey(ctx.request, { forceKey: true })) as {
     valid: boolean; required: boolean; error?: string; credential?: string;
   };
+  let quotaUserId: string | undefined;
   if (apiKeyResult.error === USER_API_KEY_GATEWAY_VALIDATION_ERROR) {
     const credential = getHeaderApiKey(ctx.request) as string;
     let userKey;
@@ -63,6 +78,7 @@ export async function registerWebhook(
     // Revalidate the credential rather than trusting a caller-supplied user ID.
     apiKeyResult.valid = true;
     apiKeyResult.credential = credential;
+    quotaUserId = userKey.userId;
   }
   if (apiKeyResult.required && !apiKeyResult.valid) {
     throw new ApiError(401, apiKeyResult.error ?? 'API key required', '');
@@ -143,13 +159,20 @@ export async function registerWebhook(
   }
 
   const ownerTag = await callerFingerprint(ctx.request, apiKeyResult.credential);
+  // Keep CRUD ownership per key, but share admission and delivery budgets across
+  // the validated user's keys. Never trust a client-supplied identity header.
+  const quotaTag = quotaUserId
+    ? await callerFingerprint(ctx.request, `webhook-user:${quotaUserId}`)
+    : ownerTag;
   await pruneOwnerWebhookIndex(ownerTag);
+  if (quotaTag !== ownerTag) await pruneOwnerWebhookIndex(quotaTag);
   const newSubscriberId = generateSubscriberId();
   const secret = await generateSecret();
 
   const record: WebhookRecord = {
     subscriberId: newSubscriberId,
     ownerTag,
+    quotaTag,
     callbackUrl,
     chokepointIds: chokepointIds.length ? chokepointIds : [...VALID_CHOKEPOINT_IDS],
     alertThreshold,
@@ -162,19 +185,17 @@ export async function registerWebhook(
     ...(isOccurrenceEvent(eventType) ? { scope } : {}),
   };
 
-  const results = await runRedisPipeline([
-    ['SET', webhookKey(newSubscriberId), JSON.stringify(record), 'EX', String(WEBHOOK_TTL)],
-    ['SADD', ownerIndexKey(ownerTag), newSubscriberId],
-    ['EXPIRE', ownerIndexKey(ownerTag), String(WEBHOOK_TTL)],
-    ['SADD', ALL_INDEX_KEY, newSubscriberId],
-  ]);
-
-  if (!Array.isArray(results) || results.length !== 4 || results.some(result => !result || result.error)
-    || results[0]?.result !== 'OK'
-    || ![0, 1, '0', '1'].includes(results[1]?.result as number | string)
-    || (results[2]?.result !== 1 && results[2]?.result !== '1')
-    || ![0, 1, '0', '1'].includes(results[3]?.result as number | string)) {
+  const results = await runRedisPipeline([[
+    'EVAL', REGISTER_WEBHOOK_SCRIPT, '4', webhookKey(newSubscriberId),
+    ownerIndexKey(ownerTag), ALL_INDEX_KEY, ownerIndexKey(quotaTag),
+    JSON.stringify(record), newSubscriberId, String(WEBHOOK_TTL), String(MAX_WEBHOOKS_PER_OWNER),
+  ]]);
+  if (results.length !== 1 || !results[0] || results[0].error
+    || ![0, 1, '0', '1'].includes(results[0].result as number | string)) {
     throw new ApiError(503, 'Webhook registration could not be confirmed', '');
+  }
+  if (Number(results[0].result) === 0) {
+    throw new ApiError(429, `Webhook limit reached (${MAX_WEBHOOKS_PER_OWNER}); delete an existing subscription before registering another`, '');
   }
 
   return { subscriberId: newSubscriberId, secret };

@@ -323,4 +323,13 @@ describe('entity corroboration prefers originPublisher (#6430)', () => {
       tier12SourceCount: 0,
     });
   });
+
+  it('an outlet running the wire headline corroborates as the wire', () => {
+    const headline = 'US and Iran close deal to ease Hormuz tensions';
+    const reprint = [
+      { ...base, source: 'Oil & Gas', originPublisher: 'Reuters', originPublisherTrusted: true, title: `${headline} - Reuters`, titleHash: 'h-1', publishedAt: now },
+      { ...base, source: 'Oil & Gas', originPublisher: 'Rock Hill Herald', originPublisherTrusted: true, title: `${headline} - Rock Hill Herald`, titleHash: 'h-2', publishedAt: now },
+    ] as unknown as EntityItems;
+    assert.equal(computeEntityCorroborationSignals(reprint, now).get('h-1'), undefined);
+  });
 });

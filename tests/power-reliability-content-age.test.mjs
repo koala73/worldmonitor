@@ -13,7 +13,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  yearToEndOfYearMs,
   powerReliabilityContentMeta,
   POWER_RELIABILITY_MAX_CONTENT_AGE_MIN,
 } from '../scripts/_power-reliability-helpers.mjs';
@@ -26,28 +25,6 @@ test('POWER_RELIABILITY_MAX_CONTENT_AGE_MIN is 36 thirty-day months', () => {
   // full derivation. Initial PR shipped 24mo, which Greptile P1 caught
   // as "false-positives mid-cycle when next-year data publishes late."
   assert.equal(POWER_RELIABILITY_MAX_CONTENT_AGE_MIN, 36 * 30 * 24 * 60);
-});
-
-// ── yearToEndOfYearMs ────────────────────────────────────────────────────
-
-test('yearToEndOfYearMs: 2024 → Dec 31 2024 23:59:59.999 UTC', () => {
-  const ms = yearToEndOfYearMs(2024);
-  assert.equal(new Date(ms).toISOString(), '2024-12-31T23:59:59.999Z');
-});
-
-test('yearToEndOfYearMs: numeric string "2024" parses identically', () => {
-  assert.equal(yearToEndOfYearMs('2024'), yearToEndOfYearMs(2024));
-});
-
-test('yearToEndOfYearMs: invalid shapes return null', () => {
-  assert.equal(yearToEndOfYearMs(undefined), null);
-  assert.equal(yearToEndOfYearMs(null), null);
-  assert.equal(yearToEndOfYearMs(''), null);
-  assert.equal(yearToEndOfYearMs('not-a-year'), null);
-  assert.equal(yearToEndOfYearMs(2024.5), null, 'non-integer rejected');
-  assert.equal(yearToEndOfYearMs(1899), null, 'pre-1900 rejected');
-  assert.equal(yearToEndOfYearMs(10000), null, '5-digit year rejected');
-  assert.equal(yearToEndOfYearMs({}), null);
 });
 
 // ── powerReliabilityContentMeta ──────────────────────────────────────────

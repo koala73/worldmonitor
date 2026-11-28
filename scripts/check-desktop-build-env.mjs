@@ -37,6 +37,7 @@ export const REQUIRED_DESKTOP_BUILD_ENV = [
   'VITE_ENABLE_CYBER_LAYER', // Cyber Threats layer; absent => hidden (#5829 half)
   'VITE_WS_RELAY_URL', //       desktop military-flights direct OpenSky path
   'VITE_PMTILES_URL_PUBLIC', // self-hosted basemap on desktop (else OpenFreeMap fallback)
+  'VITE_ENABLE_ORBITAL_WATCH', // Orbital Watch satellite-pass lookup; absent => hidden (launched on the web in #10768)
 ];
 
 // SPA-read VITE_ vars that desktop builds deliberately do NOT set.

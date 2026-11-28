@@ -130,16 +130,6 @@ describe('forecast evidence archive records (#7082)', () => {
     assert.ok(mod.utf8ByteLength(raw) > mod.FORECAST_EVIDENCE_MEMBER_MAX_BYTES);
     assert.equal(mod.parseForecastEvidenceMember(raw).oversized, true);
   });
-
-  it('uses one stable index identity for every refresh of a story hash', () => {
-    const hash = 'a'.repeat(64);
-    const first = mod.buildForecastEvidenceMember({ hash, title: 'first', link: 'x', description: '', publishedAt: 1 }, 2);
-    const refreshed = mod.buildForecastEvidenceMember({ hash, title: 'changed', link: 'x', description: '', publishedAt: 1 }, 3);
-    assert.notEqual(first, refreshed, 'the self-contained payload may refresh');
-    assert.equal(mod.forecastEvidenceRecordKey(hash), mod.forecastEvidenceRecordKey(hash));
-    assert.equal(hash, hash, 'the ZSet member remains the hash');
-  });
-
   it('reports malformed members as tombstones, never silently omitted', () => {
     for (const bad of ['not json', '42', 'null', JSON.stringify({ v: 99 }), JSON.stringify({ v: 1 })]) {
       const { record, malformed } = mod.parseForecastEvidenceMember(bad);

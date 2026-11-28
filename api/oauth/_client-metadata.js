@@ -46,6 +46,8 @@ const TRUSTED_CLIENT_METADATA_URLS = new Set([
   'https://www.skydive.com/api/v1/external-oauth/client-metadata',
   // MCPJam
   'https://www.mcpjam.com/.well-known/oauth/client-metadata.json',
+  // Manufact Cloud (the mcp-use inspector)
+  'https://manufact.com/oauth/client-metadata.json',
 ]);
 
 // Vendors that host one document per connector. The id is one path segment,

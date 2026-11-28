@@ -9,6 +9,7 @@ import {
   CHOKEPOINT_STATUS_KEY,
   FANOUT_LIST_KEY,
   LOCK_KEY,
+  MAX_DELIVERIES_PER_OWNER_PER_TICK,
   OCCURRENCE_CAP_FIELD,
   OCCURRENCE_RULES,
   WORKER_META_KEY,
@@ -359,6 +360,32 @@ const NEWS_SUB = newsRecord().subscriberId;
 const MARKET_SUB = marketRecord().subscriberId;
 
 describe('runTick: occurrence deliveries', () => {
+  it('shares the owner send budget across news subscriptions and retries unsent occurrences under the same ids', async () => {
+    const records = Array.from({ length: 3 }, (_, i) => newsRecord({}, {
+      subscriberId: `wh_news_${i}`, ownerTag: 'mallory',
+    }));
+    const messages = Array.from({ length: 20 }, (_, i) => rssMessage({ title: `Story ${i}`, link: `https://example.com/story/${i}` }));
+    const fake = seeded({ records, messages });
+    const first = deliverStub();
+    const summary = await tick(fake, first.deliver);
+    assert.equal(summary.deliveries, MAX_DELIVERIES_PER_OWNER_PER_TICK);
+    assert.equal(summary.ownerBudgetDeferred, 40);
+    assert.equal(JSON.parse(fake.store.get(WORKER_META_KEY)).ownerBudgetDeferred, 40);
+    assert.equal(fake.store.has(FANOUT_LIST_KEY), false);
+    const deferred = [];
+    for (const rec of records) {
+      for (const raw of Object.values(fake.store.get(stateKey(rec.subscriberId)))) {
+        const state = JSON.parse(raw);
+        if (state.pending) deferred.push(state.pending.deliveryId);
+      }
+    }
+    assert.equal(deferred.length, 40);
+    const second = deliverStub();
+    await tick(fake, second.deliver, NOW + 5 * 60_000);
+    assert.equal(second.sent.length, MAX_DELIVERIES_PER_OWNER_PER_TICK);
+    assert.ok(second.sent.every(delivery => deferred.includes(delivery.deliveryId)));
+  });
+
   it('drains the list oldest first, delivers once per subscriber and event, marks ids seen, trims the list and writes tombstones', async () => {
     const story = { title: 'Two tankers hit mines in the Strait of Hormuz', link: 'https://www.rferl.org/a/hormuz/1.html' };
     const fake = seeded({ messages: [

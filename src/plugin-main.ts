@@ -1,4 +1,6 @@
 import './bootstrap/zod-csp';
+import './bootstrap/abort-signal-fallbacks';
+import './bootstrap/dom-fallbacks';
 import mapLibreWorkerAsset from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import './styles/base-layer.css';
 import { pluginNewsViewSchema, PLUGIN_NEWS_VIEW_INPUT_SCHEMA, PLUGIN_MAP_LAYERS, type PluginNewsView } from '../shared/plugin-news-view';
@@ -21,6 +23,16 @@ import { initI18n } from '@/services/i18n';
 import { LAYER_REGISTRY } from '@/config/map-layer-definitions';
 import { loadPluginHazardSnapshot, type PluginHazardSnapshot } from '@/services/plugin-map-snapshot';
 import { newsPanelAdmissionSchema, type NewsPanelAdmission } from '../shared/panel-admission';
+import { hostContextFromInitialize, layoutFlags, mergeHostContext, type PluginHostContext } from './plugin-host-context';
+import { newsViewFromDeepLink } from './plugin-deep-link';
+import { applyHostLayout, createExpandButton, EXPAND_REFUSED } from './plugin-display-mode';
+import { loaderHostChannel } from './plugin-host-channel';
+import { timeRangeCutoff } from '@/utils/time-range';
+
+const DIGEST_RELOAD_FAILED = 'The news feed could not be loaded. Ask for the dashboard again.';
+
+type DashboardDigest = ListFeedDigestResponse & { requestedView?: unknown; panelRequest?: unknown; headlineAnalysis?: boolean };
+type HostBilling = { refresh: false } | { refresh: true; request_id?: string };
 
 function resolveNewsCategory(requested: string, keys: string[]): { category: string } | { reason: 'unknown_category' | 'ambiguous_category' } {
   if (keys.includes(requested)) return { category: requested };
@@ -40,7 +52,10 @@ function mountPlugin(): void {
   status.after(categoryNotice);
   const usageNotice = document.getElementById('pluginUsage')!;
   let admission: NewsPanelAdmission | undefined;
+  let headlineAnalysis = true;
   let hostView: unknown;
+  // How the host's own call was billed: a refresh is reused only through its request_id.
+  let hostBilling: HostBilling = { refresh: false };
   let refreshing: Promise<void> | undefined;
   let refreshAttempt: { id: string; startedAt: number } | undefined;
   const hazardCache = new Map<string, Promise<PluginHazardSnapshot>>();
@@ -69,6 +84,18 @@ function mountPlugin(): void {
   let openLinks = false;
   let hazardSnapshot: PluginHazardSnapshot | undefined;
   let mapStatus: HTMLElement;
+  let host: PluginHostContext = hostContextFromInitialize(undefined);
+  let expandButton: HTMLButtonElement | undefined;
+  let mounted = false;
+  let queuedResult: { params: unknown } | undefined;
+  let digestReloadAttempted = false;
+  let openingResultSeen = false;
+  let appliedDeepLink: string | undefined;
+  let applyingDeepLink: string | undefined;
+  let resolveMounted!: () => void;
+  let rejectMounted!: (error: unknown) => void;
+  const whenMounted = new Promise<void>((resolve, reject) => { resolveMounted = resolve; rejectMounted = reject; });
+  whenMounted.catch(() => {});
   const pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   const send = (message: object) => window.parent.postMessage({ jsonrpc: '2.0', ...message }, '*');
 
@@ -89,18 +116,23 @@ function mountPlugin(): void {
     return { summary: data.summary, model: data.model ?? '' };
   }
 
-  async function renderResult(result: unknown, keepCurrentView = false): Promise<boolean> {
+  async function renderResult(result: unknown, keepCurrentView = false, openingResult = false): Promise<boolean> {
     const inputView = keepCurrentView ? undefined : hostView;
-    if (!keepCurrentView) hostView = undefined;
+    const inputBilling = hostBilling;
+    if (!keepCurrentView) { hostView = undefined; hostBilling = { refresh: false }; }
     if (!result || typeof result !== 'object') return false;
-    const response = result as { isError?: boolean; content?: Array<{ text?: string }>; structuredContent?: ListFeedDigestResponse & { requestedView?: unknown; panelRequest?: unknown } };
+    const response = result as { isError?: boolean; content?: Array<{ type?: string; text?: string }>; structuredContent?: DashboardDigest };
     if (response.isError) {
       status.textContent = response.content?.find(item => item.text)?.text ?? 'News refresh failed. Previously loaded news remains visible.';
       for (const panel of panels.values()) panel.setRefreshDegraded(true);
       return false;
     }
-    const data = response.structuredContent;
-    if (!data?.categories || typeof data.categories !== 'object' || Array.isArray(data.categories)) {
+    const data = hasCategories(response.structuredContent) ? response.structuredContent : digestFromText(response.content);
+    if (!data) {
+      // Hosts may hand the view a file pointer in place of a large result; the view's own call returns it in full.
+      // Only the opening result is the dashboard's: later host results can echo the view's own tool calls.
+      // renderHostResult drops later results without a digest, so this point is reached only by a refresh.
+      if (openingResult) return reloadDigest(inputView, inputBilling);
       status.textContent = 'News data is unavailable. Previously loaded news remains visible.';
       return false;
     }
@@ -110,6 +142,10 @@ function mountPlugin(): void {
     const admissionChanged = !nextAdmission || nextAdmission.token !== admission?.token;
     if (admissionChanged) hazardCache.clear();
     admission = nextAdmission;
+    // A host that cannot summarize or translate headlines (ChatGPT) gets
+    // headlineAnalysis: false; the summarize and translate controls go.
+    headlineAnalysis = data.headlineAnalysis !== false;
+    document.documentElement.classList.toggle('no-headline-analysis', !headlineAnalysis);
     showUsage();
     digest = data;
     latestInteraction = null;
@@ -125,11 +161,53 @@ function mountPlugin(): void {
     return true;
   }
 
+  function carriesDigest(result: unknown): boolean {
+    const response = result as { isError?: boolean; content?: Array<{ type?: string; text?: string }>; structuredContent?: unknown } | undefined;
+    return Boolean(response) && typeof response === 'object' && !response!.isError && (hasCategories(response!.structuredContent) || Boolean(digestFromText(response!.content)));
+  }
+
+  function hasCategories(data: unknown): data is DashboardDigest {
+    const categories = (data as { categories?: unknown } | undefined)?.categories;
+    return Boolean(categories) && typeof categories === 'object' && !Array.isArray(categories);
+  }
+
+  function digestFromText(content: Array<{ type?: string; text?: string }> | undefined): DashboardDigest | undefined {
+    const text = content?.find(item => item.type === 'text' && typeof item.text === 'string')?.text;
+    if (!text) return undefined;
+    try {
+      const parsed: unknown = JSON.parse(text);
+      return hasCategories(parsed) ? parsed : undefined;
+    } catch { return undefined; }
+  }
+
+  async function reloadDigest(inputView: unknown, billing: HostBilling): Promise<boolean> {
+    // A refresh without a request_id got a one-off admission; reloading it would charge a second request.
+    if (digestReloadAttempted || !serverTools || (billing.refresh && !billing.request_id)) {
+      status.textContent = DIGEST_RELOAD_FAILED;
+      return false;
+    }
+    digestReloadAttempted = true;
+    const generation = renderGeneration;
+    let result: unknown;
+    // Repeat the host's billing arguments so the server reuses the original admission: a plain open
+    // reuses the current window, and a refresh reuses its request_id.
+    const args = billing.refresh ? { ...(inputView as object | undefined), refresh: true, request_id: billing.request_id } : inputView ?? {};
+    try { result = await request('tools/call', { name: 'open_news_dashboard', arguments: args }); }
+    catch {
+      status.textContent = DIGEST_RELOAD_FAILED;
+      return false;
+    }
+    if (generation !== renderGeneration) return false;
+    hostView = inputView;
+    hostBilling = billing;
+    return renderResult(result, false, true);
+  }
+
   function showUsage(): void {
     usageNotice.hidden = !admission;
     if (!admission) return;
     const { remaining, limit, resetsAt } = admission.usage;
-    usageNotice.textContent = `${remaining === null ? 'Unlimited allowance' : `${remaining} of ${limit} requests remaining`}, at the last dashboard request. Resets ${new Date(resetsAt).toLocaleString()}. Opening this dashboard uses 1 request; its news panels and map loads are included. Refresh uses 1 new request. AI summaries and translations are separate requests.`;
+    usageNotice.textContent = `${remaining === null ? 'Unlimited allowance' : `${remaining} of ${limit} requests remaining`}, at the last dashboard request. Resets ${new Date(resetsAt).toLocaleString()}. Opening this dashboard uses 1 request; its news panels and map loads are included. Refresh uses 1 new request.${headlineAnalysis ? ' AI summaries and translations are separate requests.' : ''}`;
   }
 
   function refreshDashboard(): Promise<void> {
@@ -140,6 +218,7 @@ function mountPlugin(): void {
       const result = await request('tools/call', { name: 'open_news_dashboard', arguments: { ...view, refresh: true, request_id: refreshAttempt!.id } });
       if (!await renderResult(result, true)) throw new Error(status.textContent || 'News refresh failed. Previously loaded news remains visible.');
       refreshAttempt = undefined;
+      applyDeepLink();
     })().finally(() => { refreshing = undefined; });
     return refreshing;
   }
@@ -173,19 +252,20 @@ function mountPlugin(): void {
             return { summary: result.summary, provider: 'openrouter', model: result.model, cached: false };
           },
           translateText: async (text, lang) => (await analyze({ headlines: [text], lang, mode: 'translate' })).summary,
+          // The host's paid plan admits the call; headlineAnalysis hides the control otherwise.
+          canTranslate: () => true,
         });
         panels.set(category, panel);
         grid.appendChild(panel.getElement());
       }
       const allItems = bucket.items.map(protoItemToNewsItem);
       news.push(...allItems);
-      const hours = { '1h': 1, '6h': 6, '24h': 24, '48h': 48, '7d': 168, all: Infinity }[view.time_range ?? 'all'];
-      const cutoff = Date.now() - hours * 3_600_000;
+      const cutoff = timeRangeCutoff(view.time_range ?? 'all');
       const terms = view.country ? countryMentionTerms(view.country) : null;
       const items = allItems.filter(item =>
         (!view.source || item.source === view.source) &&
         (!terms || mentionsCountry(`${item.title} ${item.locationName ?? ''}`, terms)) &&
-        (hours === Infinity || (!item.pubDateMissing && item.pubDate.getTime() >= cutoff)));
+        (cutoff == null || (!item.pubDateMissing && item.pubDate.getTime() >= cutoff)));
       panel.getElement().hidden = Boolean(view.category && view.category !== category);
       panel.setRefreshDegraded(digest.coverage?.servedStale === true);
       if (items.length || !allItems.length) panel.renderNews(items);
@@ -231,25 +311,31 @@ function mountPlugin(): void {
     return receipt;
   }
 
-  async function applyView(input: unknown, options: { reset?: boolean; keepCurrentView?: boolean; reloadLayers?: boolean; generation?: number } = {}): Promise<object> {
+  async function applyView(input: unknown, options: { reset?: boolean; keepCurrentView?: boolean; reloadLayers?: boolean; generation?: number; dropUnloadedCategory?: boolean } = {}): Promise<object> {
     const next = pluginNewsViewSchema.parse(input);
     const operation = viewQueue.then(() => {
       const desired = options.keepCurrentView ? { ...view } : { ...next };
       if (options.reloadLayers && desired.map_layers === undefined) desired.map_layers = view.map_layers ?? [];
-      return updateView(desired, options.reset ?? false, options.generation, Boolean(options.reset || (!options.keepCurrentView && next.category !== undefined)));
+      return updateView(desired, options.reset ?? false, options.generation, Boolean(options.reset || (!options.keepCurrentView && next.category !== undefined)), options.dropUnloadedCategory);
     });
     viewQueue = operation.catch(() => {});
     return operation;
   }
 
-  async function updateView(next: PluginNewsView, reset: boolean, generation?: number, clearCategoryNotice = false): Promise<object> {
+  // dropUnloadedCategory (deep links): a category the current digest lacks is dropped and the rest applies;
+  // a tool call keeps its category refusal. Checked when the queued update runs, against the digest then.
+  async function updateView(next: PluginNewsView, reset: boolean, generation?: number, clearCategoryNotice = false, dropUnloadedCategory = false): Promise<object> {
     const superseded = () => generation !== undefined && generation !== renderGeneration;
     if (superseded()) return { applied: false, superseded: true };
-    const requestedCategory = next.category;
+    let requestedCategory = next.category;
     if (requestedCategory) {
       const resolution = resolveNewsCategory(requestedCategory, loadedCategoryKeys());
-      if ('reason' in resolution) return refuseNewsCategory(requestedCategory, resolution.reason);
-      next = { ...next, category: resolution.category };
+      if ('reason' in resolution && !dropUnloadedCategory) return refuseNewsCategory(requestedCategory, resolution.reason);
+      if ('reason' in resolution) {
+        next = { ...next };
+        delete next.category;
+        requestedCategory = undefined;
+      } else next = { ...next, category: resolution.category };
     }
     const intended = { ...(reset ? { map_layers: view.map_layers } : view), ...next };
     const selectedLayers = intended.map_layers ?? [];
@@ -268,8 +354,9 @@ function mountPlugin(): void {
       if (superseded()) return { applied: false, superseded: true };
       if (requestedCategory) {
         const resolution = resolveNewsCategory(requestedCategory, loadedCategoryKeys());
-        if ('reason' in resolution) return refuseNewsCategory(requestedCategory, resolution.reason);
-        intended.category = resolution.category;
+        if ('reason' in resolution && !dropUnloadedCategory) return refuseNewsCategory(requestedCategory, resolution.reason);
+        if ('reason' in resolution) delete intended.category;
+        else intended.category = resolution.category;
       }
     }
     let renderer: object | undefined;
@@ -408,7 +495,105 @@ function mountPlugin(): void {
     return receipt;
   }
 
+  function onHostMessage(event: MessageEvent): void {
+    if (event.source !== window.parent || event.data?.jsonrpc !== '2.0') return;
+    const message = event.data;
+    if (!message.method && typeof message.id === 'number' && pending.has(message.id)) {
+      const call = pending.get(message.id)!;
+      pending.delete(message.id);
+      clearTimeout(call.timer);
+      if (message.error) call.reject(new Error(String(message.error.message ?? 'Host request failed')));
+      else call.resolve(message.result);
+    }
+    if (message.method === 'tools/list') send({ id: message.id, result: { tools: [
+      { name: 'apply_news_view', title: 'Apply news and map view', description: 'Apply news filters, selected hazard/reference map layers and map view; returns the effective state and bounded global snapshot coverage after the map settles.', inputSchema: PLUGIN_NEWS_VIEW_INPUT_SCHEMA },
+      { name: 'focus_news_article', title: 'Focus a news article', description: 'Focus an article already present in the current news snapshot and its supplied geographic location. Reports when no location is available.', inputSchema: { type: 'object', properties: { link: { type: 'string' } }, required: ['link'] } },
+    ] } });
+    if (message.method === 'tools/call') {
+      void whenMounted.then(() => message.params?.name === 'apply_news_view' ? applyView(message.params.arguments ?? {})
+        : message.params?.name === 'focus_news_article' && typeof message.params.arguments?.link === 'string' ? focusNews(message.params.arguments.link)
+        : Promise.reject(new Error('Unknown news action or invalid arguments.')))
+        .then(receipt => send({ id: message.id, result: { structuredContent: receipt, content: [{ type: 'text', text: JSON.stringify(receipt) }] } }))
+        .catch(error => send({ id: message.id, result: { isError: true, content: [{ type: 'text', text: error instanceof Error ? error.message : 'View action failed' }] } }));
+    }
+    if (message.method === 'ui/notifications/tool-input') {
+      const args = message.params?.arguments ?? {};
+      hostView = Object.fromEntries(Object.entries(args).filter(([key]) => !['jmespath', 'refresh', 'request_id'].includes(key)));
+      hostBilling = args.refresh === true ? { refresh: true, request_id: typeof args.request_id === 'string' ? args.request_id : undefined } : { refresh: false };
+    }
+    if (message.method === 'ui/notifications/tool-result') {
+      // The handshake finishes before the map exists; hold the latest result until it does.
+      if (!mounted) queuedResult = { params: message.params };
+      else renderHostResult(message.params);
+    }
+    if (message.method === 'ui/notifications/host-context-changed') {
+      host = mergeHostContext(host, message.params);
+      relayout();
+      applyDeepLink();
+    }
+  }
+
+  function renderHostResult(params: unknown): void {
+    const openingResult = !openingResultSeen;
+    openingResultSeen = true;
+    // Later host results can echo the view's own tool calls, whose responses the view already handled.
+    // Only a later digest renders; an echoed error or analysis result must not touch the status or panels.
+    if (!openingResult && !carriesDigest(params)) return;
+    void renderResult(params, false, openingResult).then(rendered => {
+      if (rendered) applyDeepLink();
+    }).catch(() => { status.textContent = 'The dashboard response is invalid. Previously loaded news remains visible.'; });
+  }
+
+  // A ChatGPT deep link opens this entrypoint with empty arguments and passes the view in the host context.
+  // Each new link applies once, after the first dashboard result that renders (the opening one, or a refresh
+  // after a failed opening), so that result's empty view cannot overwrite it.
+  // A link that fails (map data or the renderer) stays retryable: the next successful render, such as
+  // Refresh news, applies it again. A link the user interrupted by moving the map counts as applied.
+  function applyDeepLink(): void {
+    const url = host.deepLink;
+    if (!url || url === appliedDeepLink || url === applyingDeepLink || !digest) return;
+    const link = newsViewFromDeepLink(url);
+    if (!link) { appliedDeepLink = url; return; }
+    applyingDeepLink = url;
+    // The view is leaving the last applied link, so a return to it (A, B, then A again) must apply again.
+    appliedDeepLink = undefined;
+    // A finished link counts as applied only while it is still the host's link. When the host moved on and
+    // came back during the wait, the return was queued as a new application, so nothing is skipped.
+    const settle = () => { if (host.deepLink === url) appliedDeepLink = url; };
+    // A link replaces the whole view, so an omitted time range means all time for the news and the map alike.
+    const linked: PluginNewsView = { time_range: 'all', ...link.view };
+    // A category this dashboard did not load is dropped like any other invalid field; the rest still applies.
+    void applyView(linked, { reset: true, dropUnloadedCategory: true }).then(receipt => {
+      const outcome = receipt as { applied?: boolean; viewport?: { interruptedBy?: string } };
+      if (outcome.applied !== false || outcome.viewport?.interruptedBy === 'human') settle();
+    }, error => {
+      // An interrupted map move (the country focus) means the map moved on; repeating it later would undo that.
+      if (error instanceof ViewportTransitionError && error.reason === 'viewport_interrupted') { settle(); return; }
+      status.textContent = 'The linked view could not be applied. Showing news with the previous filters.';
+      mapStatus.textContent = error instanceof Error ? error.message : 'The linked map view is unavailable.';
+    }).then(() => { if (applyingDeepLink === url) applyingDeepLink = undefined; });
+  }
+
+  function reportSize(): void {
+    if (!layoutFlags(host).fillContainer) send({ method: 'ui/notifications/size-changed', params: { height: document.documentElement.scrollHeight } });
+  }
+
+  function relayout(): void {
+    if (applyHostLayout(host, expandButton)) reportSize();
+  }
+
   async function start(): Promise<void> {
+    const channel = loaderHostChannel();
+    if (!channel) window.addEventListener('message', onHostMessage);
+    // Handshake before the map: Claude drops views that report initialized late.
+    const initialized = await (channel?.initialized ?? request('ui/initialize', { appInfo: { name: 'WorldMonitor', version: '1.0.0' }, appCapabilities: { tools: {}, availableDisplayModes: ['inline', 'fullscreen'] }, protocolVersion: '2026-01-26' })) as { hostCapabilities?: { serverTools?: object; openLinks?: object; updateModelContext?: object } };
+    serverTools = Boolean(initialized.hostCapabilities?.serverTools);
+    modelContext = Boolean(initialized.hostCapabilities?.updateModelContext);
+    openLinks = Boolean(initialized.hostCapabilities?.openLinks);
+    host = hostContextFromInitialize(initialized);
+    relayout();
+    if (channel) channel.adopt(onHostMessage);
+    else send({ method: 'ui/notifications/initialized' });
     await initI18n({ waitForFullTranslation: true });
     const layers: MapLayers = { ...DEFAULT_MAP_LAYERS };
     for (const key of Object.keys(layers) as Array<keyof MapLayers>) layers[key] = false;
@@ -530,34 +715,6 @@ function mountPlugin(): void {
     searchButton.textContent = 'Search news';
     searchButton.addEventListener('click', () => search.open());
     document.getElementById('pluginActions')!.appendChild(searchButton);
-    window.addEventListener('message', event => {
-      if (event.source !== window.parent || event.data?.jsonrpc !== '2.0') return;
-      const message = event.data;
-      if (!message.method && typeof message.id === 'number' && pending.has(message.id)) {
-        const call = pending.get(message.id)!;
-        pending.delete(message.id);
-        clearTimeout(call.timer);
-        if (message.error) call.reject(new Error(String(message.error.message ?? 'Host request failed')));
-        else call.resolve(message.result);
-      }
-      if (message.method === 'tools/list') send({ id: message.id, result: { tools: [
-        { name: 'apply_news_view', description: 'Apply news filters, selected hazard/reference map layers and map view; returns the effective state and bounded global snapshot coverage after the map settles.', inputSchema: PLUGIN_NEWS_VIEW_INPUT_SCHEMA },
-        { name: 'focus_news_article', description: 'Focus an article already present in the current news snapshot and its supplied geographic location. Reports when no location is available.', inputSchema: { type: 'object', properties: { link: { type: 'string' } }, required: ['link'] } },
-      ] } });
-      if (message.method === 'tools/call') {
-        const operation = message.params?.name === 'apply_news_view' ? applyView(message.params.arguments ?? {})
-          : message.params?.name === 'focus_news_article' && typeof message.params.arguments?.link === 'string' ? focusNews(message.params.arguments.link)
-          : Promise.reject(new Error('Unknown news action or invalid arguments.'));
-        void operation.then(receipt => send({ id: message.id, result: { structuredContent: receipt, content: [{ type: 'text', text: JSON.stringify(receipt) }] } }))
-          .catch(error => send({ id: message.id, result: { isError: true, content: [{ type: 'text', text: error instanceof Error ? error.message : 'View action failed' }] } }));
-      }
-      if (message.method === 'ui/notifications/tool-input') {
-        hostView = Object.fromEntries(Object.entries(message.params?.arguments ?? {}).filter(([key]) => !['jmespath', 'refresh', 'request_id'].includes(key)));
-      }
-      if (message.method === 'ui/notifications/tool-result') void renderResult(message.params).catch(() => { status.textContent = 'The dashboard response is invalid. Previously loaded news remains visible.'; });
-
-      if (message.method === 'ui/notifications/host-context-changed' && ['light', 'dark'].includes(message.params?.theme)) document.documentElement.dataset.theme = message.params.theme;
-    });
     document.addEventListener('click', event => {
       const link = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null;
       if (!link) return;
@@ -584,15 +741,18 @@ function mountPlugin(): void {
       finally { refresh.disabled = false; }
     });
     document.getElementById('pluginActions')!.appendChild(refresh);
-    const initialized = await request('ui/initialize', { appInfo: { name: 'WorldMonitor', version: '1.0.0' }, appCapabilities: { tools: {} }, protocolVersion: '2026-01-26' }) as { hostCapabilities?: { serverTools?: object; openLinks?: object; updateModelContext?: object }; hostContext?: { theme?: string } };
-    serverTools = Boolean(initialized.hostCapabilities?.serverTools);
-    modelContext = Boolean(initialized.hostCapabilities?.updateModelContext);
-    openLinks = Boolean(initialized.hostCapabilities?.openLinks);
     refresh.disabled = !serverTools;
     refreshMap.disabled = !serverTools;
-    if (['light', 'dark'].includes(initialized.hostContext?.theme ?? '')) document.documentElement.dataset.theme = initialized.hostContext!.theme;
-    send({ method: 'ui/notifications/initialized' });
-    const observer = new ResizeObserver(() => send({ method: 'ui/notifications/size-changed', params: { height: document.documentElement.scrollHeight } }));
+    expandButton = createExpandButton({
+      className: 'search-btn plugin-expand-btn',
+      request,
+      getHost: () => host,
+      setHost: next => { host = next; relayout(); },
+      onRefused: () => { status.textContent = EXPAND_REFUSED; },
+    });
+    document.getElementById('pluginActions')!.appendChild(expandButton);
+    relayout();
+    const observer = new ResizeObserver(reportSize);
     observer.observe(document.body);
     window.addEventListener('pagehide', () => {
       mapClosed = true;
@@ -604,9 +764,19 @@ function mountPlugin(): void {
       for (const panel of panels.values()) panel.destroy();
       map.destroy();
     }, { once: true });
+    mounted = true;
+    resolveMounted();
+    if (queuedResult) {
+      const { params } = queuedResult;
+      queuedResult = undefined;
+      renderHostResult(params);
+    }
   }
 
-  void start().catch(error => { status.textContent = `WorldMonitor could not start: ${error instanceof Error ? error.message : 'unknown error'}`; });
+  void start().catch(error => {
+    rejectMounted(error);
+    status.textContent = `WorldMonitor could not start: ${error instanceof Error ? error.message : 'unknown error'}`;
+  });
 }
 
 if (document.documentElement.dataset.wmPluginManagedBoot === 'true') {

@@ -1,82 +1,81 @@
 ---
-title: "A Journalist's OSINT Workflow: Verifying Breaking News in Ten Minutes"
-description: "Cross-check breaking news against ship traffic, flight data, satellite fire detection, internet outages, and webcams with this OSINT workflow."
-metaTitle: "OSINT Breaking News Verification Workflow | World Monitor"
+title: "Investigate Breaking News with OSINT"
+description: "Compare breaking-news reports with flight, vessel and outage observations. Record source provenance, timestamps, coverage gaps and unresolved claims."
+metaTitle: "Investigate Breaking News with OSINT | World Monitor"
 keywords: "OSINT verification techniques, verify breaking news, OSINT for journalists, open source verification tools, fact-checking breaking news, news verification workflow"
 audience: "Journalists, fact-checkers, newsroom researchers, OSINT analysts, media literacy educators"
 heroImage: "/blog/images/blog/verify-breaking-news-osint-workflow-journalists.jpg"
 pubDate: "2026-06-04"
-modifiedDate: "2026-07-22"
+modifiedDate: "2026-11-17"
 ---
 
-A claim appears on social media: explosion at a major Gulf port, multiple casualties, operations halted. Three accounts are posting the same shaky video. Your editor wants to know if it is real, and wants to know now.
+To investigate a breaking-news claim, define its location and time, trace the original reporting, and compare relevant flight, vessel and connectivity observations. World Monitor brings these signals into one research workflow. Agreement can guide further checks; it does not establish the cause of an incident or authenticate a video.
 
-The traditional answer is to call sources and wait. The OSINT answer is that a real explosion at a real port leaves fingerprints in half a dozen independent datasets within minutes, and checking them takes less time than the phone call. Here is the workflow, using layers that all live on [one free dashboard](/blog/posts/osint-for-everyone-open-source-intelligence-democratized/).
+*Cover: an illustration of an intelligence research workspace, not evidence of a current event.*
 
-The principle underneath it: **independent sensors do not coordinate to lie.** One video can be old, mislocated, or generated. Ship transponders, satellite fire detection, flight tracking, and internet telemetry have no narrative agenda, and faking all of them at once is beyond almost any actor.
+## Split the claim into testable parts
 
-## Minute 0–2: Read the News Field, Not the Post
+Suppose a post claims that an incident has stopped operations at a port. Treat the incident, location, time and operational shutdown as separate claims. This example is hypothetical, not a report of an actual event.
 
-Before touching physical data, establish what the information environment is doing. Pull up the location's news and check:
+Preserve the original URL and retrieval time. A repost is not a second witness. A video existing online does not establish that it shows this port today. Each part of the claim needs appropriate evidence.
 
-- **Source diversity.** Is the claim carried only by anonymous accounts, or has it reached wire services and regional outlets? World Monitor aggregates sources across world, regional, defense, and government categories, including outlets in the region's own press sphere, with [localized interfaces](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/).
-- **Velocity.** GDELT-powered topic feeds show whether coverage volume is spiking or flat. A genuine mass-casualty event produces a near-vertical velocity curve. A recycled video produces social chatter with no news-side echo.
-- **Hotspot status.** If the location is one of the 29 tracked hotspots, has its escalation score moved? The score fuses news activity (35%), country instability (25%), geographic convergence (25%), and military activity (15%); movement here means multiple systems agree something changed.
+## Trace news to its original source
 
-None of this confirms the event. It tells you how seriously to take the next eight minutes.
+Open the linked reporting, identify attribution and group repeated claims. Three articles citing one statement are one source chain, not three independent confirmations. News volume can show attention without establishing truth.
 
-## Minute 2–5: Check the Physical Signals
+Write down whether the source directly observed the event, reports someone else's account, or offers an interpretation. Preserve qualifications. If sources disagree, retain that disagreement rather than resolving it with a majority count.
 
-Now the part most newsrooms skip: instruments that would have to be lying for the claim to be false.
+## Check observations relevant to the claim
 
-**Ship traffic (AIS).** A port explosion shows up in vessel behavior immediately: ships holding offshore, departures stopping, density dropping. World Monitor aggregates live AIS into a density grid and flags cells deviating more than 30% from their rolling baseline. Also check **dark ship events**: vessels whose transponders went silent for over an hour in a monitored region. One honest caveat: terrestrial AIS coverage is strongest in European and Atlantic waters and thinner in parts of the Gulf and Asia. Absence of AIS anomaly is weak evidence; presence is strong.
+| Observation | What it can help you inspect |
+| --- | --- |
+| Aircraft activity | Available positions and activity, with incomplete coverage and uncertain purpose. |
+| Vessel activity | Available positions and movement context, not a complete account of port operations. |
+| Internet outages | Reported connectivity changes at the source's geographic scale, not an explanation of cause. |
+| Reporting | Attributed accounts and statements that still need provenance and time checks. |
 
-**Thermal anomalies (FIRMS).** NASA's VIIRS satellites detect heat signatures globally. A large explosion or subsequent fire appears as a thermal hotspot at the exact coordinates, with a timestamp you can compare against the video's claimed time. This is the same layer used to track [wildfires and other disasters](/blog/posts/natural-disaster-monitoring-earthquakes-fires-volcanoes/), and it does not care what anyone tweeted.
+Not every incident affects every layer. A country-level connectivity change cannot precisely locate a port incident. A missing vessel observation may reflect reception or provider limits. See [AIS accuracy](/blog/posts/ais-vessel-tracking-accuracy/) and the [military-flight guide](/blog/posts/military-flight-tracking-osint/) for their specific limitations. For an event class with authoritative telemetry, check the original publisher: the [USGS earthquake catalog](https://earthquake.usgs.gov/earthquakes/search/) for seismic events and [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) for active-fire observations. Those feeds corroborate a specific claim; they do not authenticate an unrelated image or an eyewitness account.
 
-**Seismic data.** Major industrial explosions register on USGS seismographs. The Beirut port explosion measured as a magnitude-3.3 event. For a "massive explosion" claim, a silent seismic record near a station network is a real red flag.
+## Align geography and time
 
-**Aviation.** Authorities close airspace around genuine incidents. Check the registered airport delay and closure watchlist, including NOTAM-based closures across the MENA region, and whether flight paths are suddenly routing around the area. GPS jamming overlays add another tell in conflict-adjacent regions.
+Record event time, observation time and retrieval time separately. Keep the original timezone and a UTC equivalent where useful. Compare the same area and interval, not merely items that appeared on your screen together.
 
-**Internet connectivity.** Infrastructure damage and government responses both show up in Cloudflare Radar outage data. A localized connectivity drop at the claimed location and time is strong corroboration; nationwide throttling suggests a state response, itself a story.
+A current map does not establish an earlier state. Use historical evidence only where the source and product view actually provide it; do not assume every layer supports replay. The [freshness guide](/blog/posts/real-time-intelligence-data-freshness/) explains why a new fetch can contain an older observation.
 
-## Minute 5–8: Context and Convergence
+## Treat convergence as a research lead
 
-Individual signals can each have innocent explanations. The question is whether they converge.
+World Monitor's geographic convergence logic identifies co-occurring supported event types within a configured area and window. It does not prove that those events share a cause or that their sources are independent. News and outage displays should not be assumed to participate in every convergence calculation.
 
-World Monitor runs this logic automatically: its geographic convergence detector flags any one-degree cell where **three or more independent event types** (protests, military flights, naval vessels, earthquakes) cluster within 24 hours. If the dashboard has already flagged a convergence zone at your location, multiple instruments agree before you even started checking.
+Use a convergence flag to choose the next source to inspect. Do not turn it into “several instruments independently confirmed the claim.” Likewise, a quiet webcam view does not rule out an event outside its field of view or at another time.
 
-Then place the event in its context with the country's brief and [instability score](/blog/posts/country-risk-monitoring-workflow-for-analysts/): a port explosion in a country at CII 75 during active conflict carries a different prior than the same claim somewhere at 30. Context does not validate the claim; it calibrates how much corroboration you should demand.
+## Build a small evidence ledger
 
-## Minute 8–10: Look at It
+For each part of the claim, retain four things in your own notes: the observation, its original source, its time and its limits. This is a manual worksheet, not a product export feature.
 
-Sometimes you can simply look. World Monitor streams live webcams from geopolitical hotspots (Tehran, Tel Aviv, Kyiv, Taipei, and others) alongside live news channels. If the claimed event is in view of a camera, you have a primary source with a timestamp. Even nearby cameras help: a city skyline behaving completely normally fifteen minutes after a claimed "massive explosion" is evidence too.
+A bounded conclusion for the hypothetical port example might read:
 
-## What This Workflow Catches, and What It Does Not
+> The shutdown claim remains unconfirmed. Two reports repeat one statement. The available vessel observation does not establish whether the port is operating. Connectivity information covers a wider area. Next checks: a port-authority notice and reporting with a clear location and timestamp.
 
-It reliably catches: recycled footage from past events, mislocated videos, exaggerated scale, and fabricated events at instrumented locations. It struggles with: small events below sensor thresholds, regions with poor AIS and camera coverage, and anything where the claim is about intent rather than physics. The workflow tells you *whether something happened*; the *why* still needs reporting.
+The workflow has produced useful next steps without inventing a verdict. If you use an AI summary to organize the material, check it against the sources before quoting it.
 
-For ongoing stories, the platform's snapshot system keeps seven days of history, so you can scrub back to what the map looked like before, during, and after the event window. That is useful when you write the timeline. Teams that want machine assistance can run the same checks programmatically: the [MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/) exposes maritime activity, conflict events, and news intelligence as tools, so a newsroom agent can pre-assemble the evidence file while the desk is still arguing about the headline.
-
-## Primary Verification Feeds
-
-For event classes with authoritative telemetry, check the original publisher: the [USGS earthquake catalog](https://earthquake.usgs.gov/earthquakes/search/) for seismic events and [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) for active-fire observations. These feeds corroborate specific claims; they do not authenticate unrelated images or eyewitness accounts.
+The public [geographic convergence implementation](https://github.com/koala73/worldmonitor/blob/5c50df116c/shared/analysis-geo-convergence.ts) documents the behavior behind this guide.
 
 ## Frequently Asked Questions
 
-**What is OSINT verification?**
+**Can World Monitor verify that a breaking-news claim is true?**
 
-Open-source intelligence verification is the practice of testing claims against publicly available data, including satellite detections, ship and flight transponders, seismic records, connectivity telemetry, and primary imagery, rather than relying on the claim's own provenance.
+It helps organize relevant reporting and observations. Evaluate provenance, timing and coverage; a dashboard or summary alone is not a verdict.
 
-**What free tools can journalists use to verify breaking news?**
+**Do several data types count as independent corroboration?**
 
-USGS (earthquakes), NASA FIRMS (thermal anomalies), Cloudflare Radar (internet outages), public AIS aggregators (ship traffic), and flight-tracking services each cover one signal. World Monitor's value is having all of them as layers on one map, with anomaly detection such as convergence flags, density alerts, and dark-ship events running continuously.
+Not automatically. Trace their origins. Different displays can reuse a dataset or report, and co-occurrence does not establish causation.
 
-**How fast can an event be verified with open sources?**
+**Does an empty layer mean nothing happened?**
 
-Physical signals appear within minutes (AIS behavior, airspace changes, connectivity drops) to a few hours (satellite thermal passes). The ten-minute workflow establishes a confidence level immediately and identifies which confirming signal to wait for.
+No. Check geographic coverage, observation time and whether the source could detect the claimed event.
 
-For the evergreen task page that keeps this procedure durable and product-handoff oriented, see [Verify breaking news](/use-cases/verify-breaking-news/). This article remains dated OSINT editorial with minute-by-minute narrative.
+**How long does verification take?**
 
----
+There is no fixed verification time. An initial review can identify leads and missing evidence; confirmation depends on the sources available.
 
-**Bookmark [worldmonitor.app](https://www.worldmonitor.app) next to your CMS. The next time a claim breaks, run the ten minutes before the call. Your editor gets "three independent signals corroborate" instead of "Twitter says."**
+Use [Verify breaking news](/use-cases/verify-breaking-news/) for the task overview, then open [World Monitor](https://www.worldmonitor.app) with a specific claim and keep unsupported parts marked unknown.

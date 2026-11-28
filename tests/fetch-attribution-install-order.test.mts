@@ -63,6 +63,7 @@ const NON_FETCH_BOOTSTRAP = new Set([
   'initI18n()',
   'initLiveChannelsWindow()',
   'initMetaTags()',
+  'initPwaInstall()',
   'initSettingsWindow()',
   'initVercelAnalytics()',
   'installLcpAttributionDebug()',

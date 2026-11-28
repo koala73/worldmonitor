@@ -959,6 +959,34 @@ describe('registry shape validation', () => {
       /dockerfile must be a non-empty string/,
     );
   });
+
+  it('rejects duplicate service names or entry paths in the registry', () => {
+    const duplicateService = [
+      managedRegistry[0],
+      { ...managedRegistry[0], entry: 'scripts/seed-example-other.mjs' },
+    ];
+    assert.throws(
+      () => managedRailwayServices(duplicateService),
+      /duplicate service "seed-example"/,
+    );
+    assert.throws(
+      () => auditRailwayServiceConfig(liveConfig, serviceIds, duplicateService),
+      /duplicate service "seed-example"/,
+    );
+
+    const duplicateEntry = [
+      managedRegistry[0],
+      { ...managedRegistry[0], service: 'seed-example-other' },
+    ];
+    assert.throws(
+      () => managedRailwayServices(duplicateEntry),
+      /duplicate entry "scripts\/seed-example\.mjs"/,
+    );
+    assert.throws(
+      () => auditRailwayServiceConfig(liveConfig, serviceIds, duplicateEntry),
+      /duplicate entry "scripts\/seed-example\.mjs"/,
+    );
+  });
 });
 
 describe('planned Railway service lifecycle', () => {
@@ -1011,6 +1039,12 @@ describe('planned Railway service lifecycle', () => {
       // 441a7f0d-b3a7-464a-8328-9638c00c226c runs
       // `node seed-bundle-regional-energy.mjs` on cron */15 * * * *. Leaving it
       // planned would exempt a live cron from the watch-path and deploy-drift checks.
+      // seed-comtrade-bilateral-hs4-ext is deliberately ABSENT now: #10939
+      // landed it planned until the Railway service existed, and service
+      // 0d46fcc7-19ec-484f-ab8e-506510205704 now runs
+      // `node seed-comtrade-bilateral-hs4-ext.mjs` on cron 0 6 15 * *. Leaving
+      // it planned would exempt a live cron from the watch-path and
+      // deploy-drift checks, and the fleet guard would refuse the whole fleet.
       'seed-crypto-sectors',
       'seed-market-quotes',
       'seed-service-statuses',
@@ -1079,6 +1113,19 @@ describe('planned Railway service lifecycle', () => {
     assert.ok(managedRailwayServices(RAILWAY_SERVICE_REGISTRY).includes(live));
   });
 
+  it('audit-manages provisioned seed-comtrade-bilateral-hs4-ext', () => {
+    // Service 0d46fcc7-19ec-484f-ab8e-506510205704 exists, so the row must
+    // carry no lifecycle field. Asserting ABSENCE is what stops `planned`
+    // being reinstated to quiet a red gate. The 15th keeps it off the core
+    // run's day of the shared Comtrade quota.
+    const ext = RAILWAY_SERVICE_REGISTRY.find((entry) => entry.service === 'seed-comtrade-bilateral-hs4-ext');
+    assert.ok(ext, 'seed-comtrade-bilateral-hs4-ext must remain in the Railway registry');
+    assert.equal(Object.hasOwn(ext, 'lifecycle'), false);
+    assert.equal(ext.cronSchedule, '0 6 15 * *');
+    assert.deepEqual(ext.requiredEnv, ['COMTRADE_API_KEYS']);
+    assert.ok(managedRailwayServices(RAILWAY_SERVICE_REGISTRY).includes(ext));
+  });
+
   it('audit-manages provisioned seed-live-video-resolved', () => {
     // Service 11581ac4-24ea-4cfc-bf17-471e41305364 exists and has published
     // once, so the row must carry no lifecycle field. Asserting ABSENCE is
@@ -1088,11 +1135,8 @@ describe('planned Railway service lifecycle', () => {
     assert.equal(Object.hasOwn(live, 'lifecycle'), false);
     assert.equal(live.cronSchedule, '0 */6 * * *');
     assert.equal(live.startCommand, 'node seed-live-video-resolved.mjs');
-    assert.deepEqual(live.requiredEnv, [
-      'UPSTASH_REDIS_REST_URL',
-      'UPSTASH_REDIS_REST_TOKEN',
-      ['LIVE_VIDEO_PROXY_URL', 'PROXY_URL'],
-    ]);
+    // The proxy is only a fallback for pages the direct read cannot answer, so the seeder runs without it.
+    assert.deepEqual(live.requiredEnv, ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN']);
     assert.ok(managedRailwayServices(RAILWAY_SERVICE_REGISTRY).includes(live));
   });
 
@@ -1583,6 +1627,7 @@ describe('critical ingestion Railway registry contract', () => {
     ['seed-bundle-derived-signals', '*/5 * * * *'],
     ['seed-bundle-portwatch', '0 */1 * * *'],
     ['seed-bundle-portwatch-port-activity', '0 */12 * * *'],
+    ['seed-natural-events', '*/30 * * * *'],
   ]);
 
   // Closure coverage is DERIVED from the same predicate the audit uses to decide

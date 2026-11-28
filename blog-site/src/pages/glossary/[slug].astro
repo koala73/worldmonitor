@@ -3,7 +3,11 @@ import Base from '../../layouts/Base.astro';
 import { GLOSSARY_TERMS, PIZZINT_LEVELS } from '../../data/glossary';
 // One renderer with middleware.ts, which swaps in the current level at request
 // time. Its markup sits outside this component, so its styles are global below.
-import { renderPizzaIndexSection } from '../../../../scripts/live-pages/pentagon-pizza-index.mjs';
+import { glossaryPizzaIndex, renderPizzaIndexSection } from '../../../../scripts/live-pages/pentagon-pizza-index.mjs';
+
+// The weekly pulse freeze publishes the last Pizza Index reading in the
+// snapshots the corpus pages also build from.
+const pulses = import.meta.glob('../../../../docs/snapshots/crawlable-live-pulse-*.json', { eager: true, import: 'default' });
 
 export function getStaticPaths() {
   return GLOSSARY_TERMS.map((term) => ({
@@ -27,6 +31,10 @@ const metaDescription = description.length <= 160
   ? description
   : `${description.slice(0, 157).replace(/\s+\S*$/, '')}...`;
 
+const { reading: publishedReading, dateModified } = term.liveReading === 'pizzint'
+  ? glossaryPizzaIndex(pulses, term.modifiedDate)
+  : { reading: null, dateModified: term.modifiedDate };
+
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'WebPage',
@@ -35,6 +43,7 @@ const jsonLd = {
   name: `What is ${termLabel}?`,
   description: metaDescription,
   inLanguage: 'en-US',
+  ...(dateModified ? { dateModified } : {}),
   isPartOf: { '@id': 'https://www.worldmonitor.app/#website' },
   publisher: { '@id': 'https://www.worldmonitor.app/#organization' },
   speakable: {
@@ -114,7 +123,7 @@ const faqLd = {
       <p class="glossary-lede">{term.short}</p>
     </header>
 
-    {term.liveReading === 'pizzint' && <Fragment set:html={renderPizzaIndexSection(null)} />}
+    {term.liveReading === 'pizzint' && <Fragment set:html={renderPizzaIndexSection(publishedReading, { live: false })} />}
 
     <div class="prose">
       {term.body.map((para) => (

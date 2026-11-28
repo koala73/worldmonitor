@@ -6,7 +6,7 @@ keywords: "positive news website, good news dashboard, uplifting news aggregator
 audience: "General readers, educators, parents, mental-health-conscious news consumers, optimists who want evidence"
 heroImage: "/blog/images/blog/positive-news-dashboard-happy-worldmonitor.jpg"
 pubDate: "2026-07-21"
-modifiedDate: "2026-07-22"
+modifiedDate: "2026-11-17"
 ---
 
 The news industry has a structural bias, not a conspiracy: bad news is sudden and good news is gradual. A pipeline explosion is an event; a species recovering is a decade. Feeds optimized for events will always overweight catastrophe — which is how you end up with an audience that knows every disaster and none of the progress.
@@ -15,7 +15,7 @@ WorldMonitor's answer isn't a filter that hides the bad news. It's a dedicated d
 
 ## Same engine, inverted filter
 
-The Happy variant is not a greeting-card site. It runs the same infrastructure as the geopolitical dashboard — feed ingestion, deduplication, classification, mapping — over a curated positive-news catalog: dedicated positive outlets (Good News Network, Positive.News, Reasons to be Cheerful, Optimist Daily, and others), science sources (Nature News, ScienceDaily, New Scientist, Human Progress), conservation reporting (Mongabay, Conservation Optimism), health, community, and everyday-hero stories.
+The Happy variant is not a greeting-card site. It runs the same infrastructure as the geopolitical dashboard — feed ingestion, deduplication, classification, mapping — over a curated positive-news catalog: dedicated positive outlets ([Good News Network](https://www.goodnewsnetwork.org/), Positive.News, [Reasons to be Cheerful](https://reasonstobecheerful.world/), [Optimist Daily](https://www.optimistdaily.com/), and others), science sources (Nature News, ScienceDaily, New Scientist, [Human Progress](https://humanprogress.org/)), conservation reporting ([Mongabay](https://news.mongabay.com/), [Conservation Optimism](https://conservationoptimism.org/)), health, community, and everyday-hero stories.
 
 The panels are built around measurable progress, not just pleasant headlines:
 

@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { NEWS_DASHBOARD_META } from '../api/mcp/ui/news-dashboard-app';
+import { evidenceScreenshot } from './evidence-screenshot';
 test.use({ launchOptions: { args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] } });
 
 let dist: string;
@@ -65,6 +66,8 @@ test.describe('2D basemap with enforced CSP', () => {
       catch { return route.abort(); }
     });
     const domains = NEWS_DASHBOARD_META.ui.csp;
+    // connect-src lists only the declared connectDomains, as the MCP Apps reference host builds it,
+    // so a data: fetch (deck.gl loading a data: URL icon atlas) counts as a violation.
     const csp = `default-src 'none'; script-src 'unsafe-inline' ${origin} data:; worker-src blob:; style-src 'unsafe-inline' ${origin}; font-src ${origin} data:; img-src ${origin} ${domains.resourceDomains.join(' ')}; connect-src ${origin} ${domains.connectDomains.join(' ')}; base-uri ${origin}`;
     const strictHtml = html.replace('<head>', `<head><meta http-equiv="Content-Security-Policy" content="${csp}"><script>(() => {
       const createObjectURL = URL.createObjectURL;
@@ -112,7 +115,7 @@ document.documentElement.dataset.cspViolations='0';document.addEventListener('se
     await expect(app.locator('.panel:visible')).toHaveCount(1);
     await app.getByRole('button', { name: 'Clear filters' }).press('Enter');
     await expect(app.locator('.panel:visible')).toHaveCount(12);
-    await page.screenshot({ path: testInfo.outputPath('news-map-2d-csp.png'), fullPage: true });
+    await evidenceScreenshot(page, { path: testInfo.outputPath('news-map-2d-csp.png'), fullPage: true });
     await app.locator('#pluginMapLayers').getByLabel('Military Bases', { exact: true }).check();
     await expect(app.locator('#pluginMapStatus')).toContainText('reference data');
     await app.locator('#pluginMapLayers').getByLabel('Natural Events', { exact: true }).check();
@@ -138,16 +141,18 @@ document.documentElement.dataset.cspViolations='0';document.addEventListener('se
     await expect(app.locator('#mapContainer').getByTitle('Fire — Fixture', { exact: true })).toBeVisible();
     await expect(app.locator('html')).toHaveAttribute('data-csp-violations', '0');
     expect(errors).toEqual([]);
-    await page.screenshot({ path: testInfo.outputPath('domain-maps-globe.png'), fullPage: true });
+    await evidenceScreenshot(page, { path: testInfo.outputPath('domain-maps-globe.png'), fullPage: true });
+    await expect(app.locator('html')).toHaveAttribute('data-worker-blob-url', /^blob:/);
+    await app.locator('html').evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide')));
+    await expect(app.locator('html')).toHaveAttribute('data-worker-blob-revoked', 'true');
     await page.evaluate(() => {
       (window as any).rejectInit = true;
       const frame = document.querySelector('iframe')!;
       frame.setAttribute('srcdoc', frame.srcdoc);
     });
     await expect(app.locator('#pluginStatus')).toContainText('Fixture initialization failed');
-    await expect(app.locator('html')).toHaveAttribute('data-worker-blob-url', /^blob:/);
-    await app.locator('html').evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide')));
-    await expect(app.locator('html')).toHaveAttribute('data-worker-blob-revoked', 'true');
+    // The handshake runs before the map is built, so a failed startup never creates the map worker.
+    await expect(app.locator('html')).not.toHaveAttribute('data-worker-blob-url', /.*/);
   });
 });
 test.afterAll(async () => { if (dist) await rm(dist, { recursive: true, force: true }); });
@@ -187,14 +192,14 @@ test('real WorldMonitor panels, search, map and host refresh in an opaque sandbo
   window.addEventListener('message',e=>{if(e.source!==frame.contentWindow)return;const m=e.data;window.calls.push(m);const send=o=>frame.contentWindow.postMessage({jsonrpc:'2.0',...o},'*');
   if(m.method==='ui/initialize')send({id:m.id,result:{hostCapabilities:{serverTools:{},openLinks:{},updateModelContext:{}},hostContext:{theme:'dark'}}});
   if(m.method==='ui/notifications/initialized')window.sendResult({structuredContent:{...${JSON.stringify(payload)},requestedView:{map_layers:['natural']}}});
-  if(m.method==='tools/call')send({id:m.id,result:m.params.name==='get_natural_disasters'?(window.hazardBudgetLimit&&m.params.arguments.limit>window.hazardBudgetLimit?{structuredContent:{_budget_exceeded:true,budget_bytes:131072,actual_bytes:200000}}:window.hazards):{isError:true,content:[{type:'text',text:'Fixture access denied'}]}});
+  if(m.method==='tools/call')send({id:m.id,result:m.params.name==='get_natural_disasters'?(window.hazardBudgetLimit&&m.params.arguments.limit>window.hazardBudgetLimit?{structuredContent:{_budget_exceeded:true,budget_bytes:131072,actual_bytes:200000}}:window.hazards):m.params.name==='open_news_dashboard'&&window.dashboard?{structuredContent:window.dashboard}:{isError:true,content:[{type:'text',text:'Fixture access denied'}]}});
   if(m.method==='ui/open-link'||m.method==='ui/update-model-context')send({id:m.id,result:{}});
   });frame.srcdoc=${JSON.stringify(html).replace(/</g, '\\u003c')};</script>`);
   const app = page.frameLocator('iframe');
   await expect(app.locator('[data-panel="politics"]')).toContainText('Ports review shipping');
   await expect(app.locator('[data-panel="europe"]')).toContainText('Energy ministers');
   await expect(app.locator('#pluginStatus')).toContainText('requested view could not be applied');
-  await page.screenshot({ path: testInfo.outputPath('news-initial-hazard-denied.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('news-initial-hazard-denied.png'), fullPage: true });
   await page.evaluate(value => { (window as any).hazards = value; }, hazards);
   await expect(app.locator('#mapContainer svg').first()).toBeVisible();
   await expect(app.locator('.news-location-marker')).toHaveCount(4);
@@ -214,18 +219,21 @@ test('real WorldMonitor panels, search, map and host refresh in an opaque sandbo
   await page.evaluate(data => (window as any).sendResult({ structuredContent: data }), payload);
   await expect(app.locator('.news-location-marker')).toHaveCount(4);
   await page.evaluate(() => document.querySelector('iframe')!.contentWindow!.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/tool-input', params: { arguments: { query: 'Energy', map_latitude: 52.5, map_longitude: 13.4, map_zoom: 4 } } }, '*'));
+  // Tool input only records the requested view; the tool result that follows applies it.
+  await page.evaluate(data => (window as any).sendResult({ structuredContent: data }), payload);
   await expect(app.locator('.search-input:visible')).toHaveValue('Energy');
   await expect.poll(() => page.evaluate(() => (window as any).calls.filter((call: any) => call.method === 'ui/update-model-context').at(-1)?.params?.content?.[0]?.text)).toContain('52.5');
   await app.locator('.search-input:visible').press('Escape');
   await app.getByRole('button', { name: 'Clear filters' }).press('Enter');
   await expect(app.locator('.news-location-marker')).toHaveCount(4);
-  await page.screenshot({ path: testInfo.outputPath('news-markers-desktop.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('news-markers-desktop.png'), fullPage: true });
   await app.locator('.news-location-marker').first().click();
   await expect(app.locator('.map-popup')).toContainText('Ports review shipping schedules as trade routes shift');
   await app.locator('.map-popup .popup-close').press('Enter');
   await expect(app.locator('.map-popup')).toHaveCount(0);
-  await app.locator('[data-panel="politics"] a[href=""]').first().click();
-  await expect(app.locator('#pluginStatus')).toContainText('source link is unavailable');
+  // A headline without a source link renders as plain text, not as a link.
+  await expect(app.locator('[data-panel="politics"] span.item-title', { hasText: 'Headline with no supplied source URL' })).toHaveCount(1);
+  await expect(app.locator('[data-panel="politics"] a.item-title', { hasText: 'Headline with no supplied source URL' })).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).calls.filter((call: any) => call.method === 'ui/open-link').length)).toBe(0);
   await app.locator('[data-panel="politics"] a[href="https://example.com/news"]').first().click();
   await expect.poll(() => page.evaluate(() => (window as any).calls.filter((call: any) => call.method === 'ui/open-link').length)).toBe(1);
@@ -236,7 +244,7 @@ test('real WorldMonitor panels, search, map and host refresh in an opaque sandbo
   await expect(app.locator('.search-scope')).toHaveCount(2);
   await expect(app.locator('.tip-item, .search-chip, .search-all-commands-link')).toHaveCount(0);
   await expect(app.locator('.search-input:visible')).toHaveAttribute('placeholder', 'Search news');
-  await page.screenshot({ path: testInfo.outputPath('news-search-desktop.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('news-search-desktop.png'), fullPage: true });
   await app.locator('.search-input:visible').fill('Energy');
   await expect(app.locator('.search-results')).toContainText('Energy ministers');
   await app.locator('.search-input:visible').press('Escape');
@@ -271,7 +279,8 @@ test('real WorldMonitor panels, search, map and host refresh in an opaque sandbo
   await app.locator('.time-btn[data-range="1h"]').click();
   await expect(app.locator('.news-location-marker')).toHaveCount(3);
   await app.getByRole('button', { name: 'Refresh news' }).press('Enter');
-  await expect(app.locator('#pluginStatus')).toContainText('refresh failed');
+  // A failed refresh shows the host's error text and keeps the loaded news.
+  await expect(app.locator('#pluginStatus')).toContainText('Fixture access denied');
   await expect(app.locator('[data-panel="politics"]')).toContainText('Ports review shipping');
   await expect(app.locator('.news-location-marker')).toHaveCount(3);
   await app.getByRole('button', { name: 'Clear filters' }).press('Enter');
@@ -292,24 +301,26 @@ test('real WorldMonitor panels, search, map and host refresh in an opaque sandbo
   await expect(app.locator('#pluginMapLayers').getByLabel('Natural Events', { exact: true })).toBeChecked();
   await app.getByRole('button', { name: 'Clear filters' }).press('Enter');
   await expect(app.locator('#pluginMapLayers').getByLabel('Fires', { exact: true })).toBeChecked();
+  // Refreshing the map refreshes the dashboard; a new digest reloads the selected hazard layers.
+  await page.evaluate(data => { (window as any).dashboard = data; }, payload);
   await page.evaluate(() => { (window as any).hazardBudgetLimit = 20; });
   await app.getByRole('button', { name: 'Refresh map data' }).press('Enter');
   await expect(app.locator('#pluginMapStatus')).toContainText('up to 20/source');
   const budgetCalls = await page.evaluate(() => (window as any).calls.filter((call: any) => call.params?.name === 'get_natural_disasters').slice(-2).map((call: any) => call.params.arguments.limit));
   expect(budgetCalls).toEqual([100, 20]);
   await expect(app.locator('.earthquake-marker[title*="Fixture Berlin"]')).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath('domain-maps-budget-recovery.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('domain-maps-budget-recovery.png'), fullPage: true });
   await page.evaluate(() => { (window as any).hazardBudgetLimit = undefined; });
   await page.evaluate(() => { (window as any).hazards = { isError: true, structuredContent: { data: {} } }; });
   await app.getByRole('button', { name: 'Refresh map data' }).press('Enter');
   await expect(app.locator('#pluginMapStatus')).toContainText('denied or unavailable');
   await expect(app.locator('.earthquake-marker[title*="Fixture Berlin"]')).toBeVisible();
   await expect(app.locator('#pluginMapLayers').getByLabel('Natural Events', { exact: true })).toBeChecked();
-  await page.screenshot({ path: testInfo.outputPath('domain-maps-desktop.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('domain-maps-desktop.png'), fullPage: true });
   await page.evaluate(value => { (window as any).hazards = value; }, hazards);
   await app.getByRole('button', { name: 'Refresh map data' }).press('Enter');
   await expect(app.locator('#pluginMapStatus')).toContainText('Global hazard snapshot');
-  await page.screenshot({ path: testInfo.outputPath('news-maps-desktop.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('news-maps-desktop.png'), fullPage: true });
   await page.setViewportSize({ width: 390, height: 1000 });
   await expect(app.locator('[data-panel="politics"]')).toContainText('Ports review shipping');
   await expect(app.getByRole('button', { name: 'Refresh news' })).toBeInViewport();
@@ -319,11 +330,11 @@ test('real WorldMonitor panels, search, map and host refresh in an opaque sandbo
   await app.getByRole('button', { name: 'Search news' }).click();
   await expect(app.locator('.search-scope')).toHaveCount(2);
   await expect(app.locator('.tip-item, .search-chip, .search-all-commands-link')).toHaveCount(0);
-  await page.screenshot({ path: testInfo.outputPath('news-search-mobile.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('news-search-mobile.png'), fullPage: true });
   await app.locator('.search-input:visible').press('Escape');
   await expect(app.getByRole('dialog')).toBeHidden();
-  await page.screenshot({ path: testInfo.outputPath('news-maps-mobile.png'), fullPage: true });
-  await page.screenshot({ path: testInfo.outputPath('domain-maps-mobile.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('news-maps-mobile.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('domain-maps-mobile.png'), fullPage: true });
   await page.evaluate(() => { (window as any).hazards = { structuredContent: { data: { earthquakes: { earthquakes: [] }, events: { dataAvailable: true, events: [] }, fires: { dataAvailable: true, fireDetections: [] } } } }; });
   await app.getByRole('button', { name: 'Refresh map data' }).press('Enter');
   await expect(app.locator('#pluginMapStatus')).toContainText('earthquakes: 0 valid');
@@ -342,10 +353,16 @@ test('real WorldMonitor panels, search, map and host refresh in an opaque sandbo
   await page.evaluate(() => document.querySelector('iframe')!.contentWindow!.postMessage({ jsonrpc: '2.0', id: 'fixture-mobile-news', method: 'tools/call', params: { name: 'apply_news_view', arguments: { map_layers: [], map_latitude: 52.5, map_longitude: 13.4, map_zoom: 3 } } }, '*'));
   await expect.poll(() => page.evaluate(() => (window as any).calls.find((call: any) => call.id === 'fixture-mobile-news')?.result?.structuredContent?.applied)).toBe(true);
   await expect(app.locator('.news-location-marker')).toHaveCount(4);
-  await page.screenshot({ path: testInfo.outputPath('news-markers-mobile.png'), fullPage: true });
-  await app.locator('.news-location-marker').first().press('Enter');
-  await expect(app.locator('.map-popup-sheet')).toContainText('Ports review shipping schedules as trade routes shift');
-  await page.screenshot({ path: testInfo.outputPath('news-marker-mobile-details.png'), fullPage: true });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('news-markers-mobile.png'), fullPage: true });
+  // The applied view re-renders the overlays a few hundred ms later, replacing every
+  // marker element. A marker focused just before that loses focus to the body, and
+  // Enter then opens nothing (twice on CI). Press again until a marker that survived
+  // the re-render opens the sheet; a marker that never opens one still fails here.
+  await expect(async () => {
+    await app.locator('.news-location-marker').first().press('Enter');
+    await expect(app.locator('.map-popup-sheet')).toContainText('Ports review shipping schedules as trade routes shift', { timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+  await evidenceScreenshot(page, { path: testInfo.outputPath('news-marker-mobile-details.png'), fullPage: true });
   await app.locator('.map-popup .popup-close').press('Enter');
   await expect(app.locator('.map-popup')).toHaveCount(0);
   await page.evaluate(items => (window as any).sendResult({ structuredContent: { categories: { politics: { items } }, feedStatuses: {}, generatedAt: '', requestedView: { map_layers: [] } } }), crowded);

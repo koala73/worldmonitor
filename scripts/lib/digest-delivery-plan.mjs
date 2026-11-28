@@ -68,12 +68,24 @@ function sourceCountsByClusterId(rawStories) {
   return sourceCountByClusterId;
 }
 
-export function buildDigestDeliveryPlan({ briefStories, rawStories }) {
+export function buildDigestDeliveryPlan({ briefStories, rawStories, localizedBriefStories }) {
   const raw = Array.isArray(rawStories) ? rawStories : [];
   const hasBriefStories = Array.isArray(briefStories) && briefStories.length > 0;
+  const corroborations = hasBriefStories ? corroborationsByClusterId(raw) : null;
+  const canonicalFormatterStories = hasBriefStories
+    ? briefStoriesToFormatterShape(briefStories, corroborations)
+    : raw;
+  // Localized stories only drive channel bodies; cooldown, the delivered log
+  // and the webhook keep the canonical English copies.
+  const useLocalized = hasBriefStories
+    && Array.isArray(localizedBriefStories)
+    && localizedBriefStories.length === briefStories.length;
 
   return {
-    formatterStories: hasBriefStories ? briefStoriesToFormatterShape(briefStories, corroborationsByClusterId(raw)) : raw,
+    formatterStories: useLocalized
+      ? briefStoriesToFormatterShape(localizedBriefStories, corroborations)
+      : canonicalFormatterStories,
+    canonicalFormatterStories,
     cooldownIterableStories: hasBriefStories
       ? briefStories
       : raw.map(normalizeRawStoryForCooldown),

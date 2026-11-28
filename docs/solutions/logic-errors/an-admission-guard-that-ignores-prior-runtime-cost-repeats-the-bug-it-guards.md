@@ -127,7 +127,7 @@ Three further changes close the routes around it:
 
 1. A declared-but-unusable budget throws instead of reading as "no budget" (`scripts/_bundle-runner.mjs:351-356`). Every guard is gated on `Number.isFinite(maxBundleMs)`, so `maxBundleMs: '570000'` or a `NaN` from `Number(process.env.X)` would disable the startup check *and* the per-tick deferral — the same outage by a different route.
 2. A tick that admitted nothing while deferring due work exits non-zero (`scripts/_bundle-runner.mjs:478-490`). `ran:0 deferred:>0` is otherwise indistinguishable from a healthy no-op in Railway's badge, which is what hid #6556 for six hours.
-3. The section timeouts were right-sized to measured runtime, with the measurement written down next to each number (`scripts/seed-bundle-resilience.mjs:31`, `:35`, `:40`): `240_000` / `420_000` / `480_000` against `maxBundleMs: 570_000` (`scripts/seed-bundle-resilience.mjs:48`). The cheapest now needs `265_000`ms of `570_000`ms. The file also records why a timeout above Railway's 10-minute cap never bounded anything: the container is SIGKILLed first, taking the logs with it (`scripts/seed-bundle-resilience.mjs:12-18`).
+3. The section timeouts were right-sized to measured runtime, with the measurement written down next to each number (`scripts/seed-bundle-resilience.mjs:31`, `:35`, `:40`): `240_000` / `420_000` / `480_000` against `maxBundleMs: 570_000` (`scripts/seed-bundle-resilience.mjs:48`). The cheapest now needs `265_000`ms of `570_000`ms. The file also records why a timeout above the budget never bounded anything: the admission check deferred the section before it could start (`scripts/seed-bundle-resilience.mjs:12-18`).
 
 `tests/bundle-budget-admission.test.mjs` is the repo-wide tripwire. It parses every `scripts/seed-bundle-*.mjs` statically and applies the runner's own threshold, headroom included (`tests/bundle-budget-admission.test.mjs:184`):
 
@@ -135,7 +135,7 @@ Three further changes close the routes around it:
 if (section.worstCaseMs + ADMISSION_HEADROOM_MS <= bundle.maxBundleMs) continue;
 ```
 
-It calls `sectionWorstCaseMs` from the runner rather than restating `timeoutMs + KILL_GRACE_MS` (`tests/bundle-budget-admission.test.mjs:147-150`), and it also asserts each budget is below Railway's 600_000ms container cap (`tests/bundle-budget-admission.test.mjs:109-113`) — nothing checked that, so a 900_000 budget satisfied every per-section assertion while the container still died mid-publish. All six budgeted bundles pass (3/3 tests green, 246ms).
+It calls `sectionWorstCaseMs` from the runner rather than restating `timeoutMs + KILL_GRACE_MS` (`tests/bundle-budget-admission.test.mjs:147-150`), and it also asserts each budget is below the 600_000ms bundle wall cap (`tests/bundle-budget-admission.test.mjs:109-113`) — nothing checked that, so a 900_000 budget satisfied every per-section assertion. (This document first called that cap a Railway container kill. Railway does not kill cron runs; the cap is a project limit. See `scripts/_bundle-runner.mjs`.) All six budgeted bundles pass (3/3 tests green, 246ms).
 
 ## Why This Works
 

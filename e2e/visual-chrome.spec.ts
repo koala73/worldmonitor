@@ -57,8 +57,6 @@ const prepareVisualScenario = async (
 };
 
 test.describe('chrome screenshot story', () => {
-  test.describe.configure({ retries: 1 });
-
   test('captures named deterministic harness states', async ({ page }, testInfo) => {
     test.setTimeout(180_000);
 

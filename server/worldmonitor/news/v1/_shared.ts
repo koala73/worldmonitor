@@ -17,17 +17,19 @@ export {
   selectUniqueHeadlinePairs,
 } from '../../../../src/utils/summary-cache-key';
 import { MAX_BODY_LEN } from '../../../../src/utils/summary-cache-key';
-import { NEWS_LANGUAGES } from '../../../../src/shared/public-rpc-cache';
 
 // ========================================================================
 // Output languages: the dashboard UI languages (src/services/i18n.ts
 // SUPPORTED_LANGUAGES, pinned by tests/summarize-output-lang.test.mts): the
-// digest set plus Traditional Chinese, which the digest folds into `zh`.
+// summary targets stay separate from publisher content languages.
 // `lang` (brief/analysis) and the translate target are interpolated into the
 // prompt, so both are this closed set.
 // ========================================================================
 
-export const SUMMARY_OUTPUT_LANGUAGES: ReadonlySet<string> = new Set([...NEWS_LANGUAGES, 'zh-TW']);
+export const SUMMARY_OUTPUT_LANGUAGES: ReadonlySet<string> = new Set([
+  'en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl',
+  'sv', 'sw', 'ru', 'uk', 'ar', 'fa', 'zh', 'zh-TW', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi',
+]);
 
 /**
  * Maps a BCP 47 tag to a supported output language: exact codes in any case,
@@ -62,7 +64,8 @@ export { deduplicateHeadlines } from './dedup.mjs';
 // Translate mode: the text is a delimited data block, never instructions
 // ========================================================================
 
-// Translate is free to anonymous callers, so its prompt is the steerable
+// Translate text is caller-supplied (anonymous callers may send Hebrew alert
+// text), so its prompt is the steerable
 // surface: the text sits between these markers in the user turn and the system
 // prompt says the block is data. Pattern: chat-analyst-prompt.ts.
 export const TRANSLATE_TEXT_OPEN = '<<<TEXT>>>';
@@ -217,6 +220,14 @@ Rules:
     userPrompt = isTechVariant
       ? `Each headline is a separate story. What's the key tech trend?\n${headlineText}${intelSection}`
       : `Each headline is a separate story. What's the key pattern or risk?\n${headlineText}${intelSection}`;
+  } else if (opts.mode === 'article') {
+    systemPrompt = `Summarize the one news story below in 2 concise sentences MAX (under 50 words total).
+Rules:
+- Use ONLY facts stated in the headline and its Context line; never add people, places, numbers or events that are not there
+- Start directly with the subject of the story
+- Never describe the headline, the task or the input (no "The headline...", "This story...", "The most important...")
+- No bullet points, no meta-commentary${langInstruction}`;
+    userPrompt = headlineText;
   } else if (opts.mode === 'translate') {
     const targetLang = translateLanguageName(opts.variant);
     systemPrompt = `You are a professional news translator. Translate news text into ${targetLang}.

@@ -29,20 +29,20 @@ const longitude = (description: string) => ({ type: 'number', minimum: -180, max
 export const GEO_FILTER_PROPERTIES = {
   bbox: {
     type: 'object',
-    description: 'Keep events inside this box. sw_lon > ne_lon crosses the antimeridian. Not combinable with lat/lon/radius_km.',
+    description: 'Keep only events inside this box, given by its south-west and north-east corners in decimal degrees. sw_lon > ne_lon crosses the antimeridian. Use either bbox or lat/lon/radius_km, not both.',
     required: [...BBOX_FIELDS],
     additionalProperties: false,
     properties: {
-      sw_lat: latitude('South edge latitude.'),
-      sw_lon: longitude('West edge longitude.'),
-      ne_lat: latitude('North edge latitude.'),
-      ne_lon: longitude('East edge longitude.'),
+      sw_lat: latitude('Latitude of the south-west corner, in decimal degrees (north positive); must not exceed ne_lat.'),
+      sw_lon: longitude('Longitude of the south-west corner, in decimal degrees (east positive).'),
+      ne_lat: latitude('Latitude of the north-east corner, in decimal degrees (north positive).'),
+      ne_lon: longitude('Longitude of the north-east corner, in decimal degrees (east positive).'),
     },
   },
-  lat: latitude('Centre latitude for radius_km; requires lon and radius_km.'),
-  lon: longitude('Centre longitude for radius_km; requires lat and radius_km.'),
-  radius_km: { type: 'number', exclusiveMinimum: 0, maximum: 2000, description: 'Keep events within this great-circle distance of lat/lon (max 2000).' },
-  since_days: { type: 'integer', minimum: 1, maximum: 365, description: 'Keep events dated within the last N days.' },
+  lat: latitude('Latitude of the search centre, in decimal degrees (north positive). Give lat, lon and radius_km together.'),
+  lon: longitude('Longitude of the search centre, in decimal degrees (east positive). Give lat, lon and radius_km together.'),
+  radius_km: { type: 'number', exclusiveMinimum: 0, maximum: 2000, description: 'Search radius in kilometres around lat/lon, measured along the Earth\'s surface.' },
+  since_days: { type: 'integer', minimum: 1, maximum: 365, description: 'Look-back window in days: keep events dated within that many days of now. Omit to apply no date filter.' },
 };
 
 function record(value: unknown): value is Row {

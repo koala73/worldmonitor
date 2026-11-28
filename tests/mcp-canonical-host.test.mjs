@@ -18,7 +18,8 @@ import {
   MCP_CANONICAL_ENDPOINT_ERROR_MESSAGE,
   MCP_CANONICAL_LINK,
   MCP_CANONICAL_ORIGIN,
-  MCP_PRODUCTION_ALIAS_LABELS,
+  MCP_RETIRED_ALIAS_LABELS,
+  MCP_SERVED_ALIAS_LABELS,
   MCP_PRODUCT_PATHS,
 } from '../shared/mcp-host-policy.ts';
 
@@ -117,7 +118,7 @@ describe('canonical apex transport is unchanged', () => {
 });
 
 describe('alias ordinary GET/HEAD redirect', () => {
-  for (const label of MCP_PRODUCTION_ALIAS_LABELS) {
+  for (const label of MCP_RETIRED_ALIAS_LABELS) {
     for (const path of MCP_PRODUCT_PATHS) {
       it(`${label} GET ${path} 308s to the canonical location without copying query`, async () => {
         const res = await mcpHandler(
@@ -137,8 +138,22 @@ describe('alias ordinary GET/HEAD redirect', () => {
     }
   }
 
-  it('HEAD /mcp on www matches GET status and Location and has no body', async () => {
-    const res = await mcpHandler(request(aliasUrl('www', '/mcp'), {
+  // Served aliases keep the transport but never publish a server card.
+  for (const label of MCP_SERVED_ALIAS_LABELS) {
+    for (const path of ['/.well-known/mcp', '/.well-known/mcp.json']) {
+      it(`${label} GET ${path} still 308s to the canonical card`, async () => {
+        const res = await mcpHandler(
+          request(`${aliasUrl(label, path)}?token=secret`, { headers: { Accept: 'text/html,*/*' } }),
+          explodingDeps(),
+        );
+        assert.equal(res.status, 308, `${label} ${path}`);
+        assert.equal(res.headers.get('location'), `${MCP_CANONICAL_ORIGIN}${path}`);
+      });
+    }
+  }
+
+  it('HEAD /mcp on tech matches GET status and Location and has no body', async () => {
+    const res = await mcpHandler(request(aliasUrl('tech', '/mcp'), {
       method: 'HEAD',
       headers: { Accept: 'text/html' },
     }), explodingDeps());
@@ -158,14 +173,14 @@ describe('alias ordinary GET/HEAD redirect', () => {
 
 describe('alias transport 410', () => {
   it('POST with a numeric id returns HTTP 410 JSON-RPC and does not call deps', async () => {
-    const res = await post(aliasUrl('www', '/mcp'), rpc('initialize', { id: 0 }));
+    const res = await post(aliasUrl('tech', '/mcp'), rpc('initialize', { id: 0 }));
     assert.equal(res.status, 410);
     assertNoStoreCorsCanonical(res, 'id 0');
     assertGoneRpc(await res.json(), 0);
   });
 
   it('preserves an empty-string id', async () => {
-    const res = await post(aliasUrl('api', '/api/mcp'), rpc('ping', { id: '' }));
+    const res = await post(aliasUrl('energy', '/api/mcp'), rpc('ping', { id: '' }));
     assert.equal(res.status, 410);
     assertGoneRpc(await res.json(), '');
   });
@@ -213,7 +228,7 @@ describe('alias transport 410', () => {
   });
 
   it('HEAD SSE has status 410 and no body', async () => {
-    const res = await mcpHandler(request(aliasUrl('www', '/mcp'), {
+    const res = await mcpHandler(request(aliasUrl('happy', '/mcp'), {
       method: 'HEAD',
       headers: { Accept: 'text/event-stream' },
     }), explodingDeps());
@@ -223,13 +238,13 @@ describe('alias transport 410', () => {
   });
 
   it('OPTIONS on an alias is still 204 CORS', async () => {
-    const res = await mcpHandler(request(aliasUrl('www', '/mcp'), { method: 'OPTIONS' }), explodingDeps());
+    const res = await mcpHandler(request(aliasUrl('tech', '/mcp'), { method: 'OPTIONS' }), explodingDeps());
     assert.equal(res.status, 204);
     assert.equal(await res.text(), '');
   });
 
   it('unsupported methods are 405 with Allow and canonical Link', async () => {
-    const res = await mcpHandler(request(aliasUrl('api', '/mcp'), { method: 'PUT' }), explodingDeps());
+    const res = await mcpHandler(request(aliasUrl('finance', '/mcp'), { method: 'PUT' }), explodingDeps());
     assert.equal(res.status, 405);
     assert.match(res.headers.get('allow') ?? '', /POST/);
     assertNoStoreCorsCanonical(res, 'PUT');

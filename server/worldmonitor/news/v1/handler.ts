@@ -11,6 +11,8 @@ import { listLabelChanges } from './list-label-changes';
 import { listErrorReports, reviewErrorReport, submitErrorReport } from './error-reports';
 import { searchFactChecks } from './search-fact-checks';
 import { searchClaimHeadlines } from './search-claim-headlines';
+import { searchHeadlineArchive, searchHeadlines } from './search-headlines';
+import { listSentAlerts } from './list-sent-alerts';
 
 export const newsHandler: NewsServiceHandler = {
   summarizeArticle,
@@ -26,4 +28,7 @@ export const newsHandler: NewsServiceHandler = {
   reviewErrorReport,
   searchFactChecks,
   searchClaimHeadlines,
+  searchHeadlines,
+  searchHeadlineArchive,
+  listSentAlerts,
 };

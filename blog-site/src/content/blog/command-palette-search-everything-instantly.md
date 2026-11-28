@@ -55,7 +55,7 @@ Open any panel: news feed, intelligence brief, CII rankings, markets, commoditie
 
 The command palette uses **case-insensitive fuzzy matching** with intelligent ranking. You don't need exact names:
 
-- Type "taiwan" → Shows Taiwan country brief, Taiwan Strait theater, nearby bases
+- Type "taiwan" → Shows Taiwan country brief, [Taiwan Strait](https://www.worldmonitor.app/crises/taiwan-strait-tensions/) theater, nearby bases
 - Type "crypto" → Shows crypto panel, stablecoin monitor, BTC signals
 - Type "fire" → Shows [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) layer, fire-related news
 - Type "base" → Shows military bases layer

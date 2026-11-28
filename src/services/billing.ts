@@ -610,6 +610,96 @@ export async function updateBillingEmail(email: string): Promise<{ email: string
   );
 }
 
+export type ProBusinessUpgradeResponse =
+  | {
+      kind: 'preview';
+      fromPlanKey: string;
+      toPlanKey: string;
+      chargeAmount: number;
+      currency: string;
+      renewalAmount: number | null;
+      renewalCurrency: string | null;
+      renewalDate: string | null;
+      billingPeriod: 'monthly' | 'annual';
+      /** The quote carries the running offer's code; the Pro Yearly confirm echoes it. Optional across a mixed deploy. */
+      discounted?: boolean;
+      /** Dodo's whole percent off the first period on a discounted quote, else null. */
+      percentOff?: number | null;
+      /** Pro Yearly quotes: the server takes listPrice and the accepted charge. */
+      acceptsQuoteGuards?: boolean;
+      /** The offer runs, but this quote is at list price. */
+      offerNotApplied?: boolean;
+    }
+  | { kind: 'upgraded'; fromPlanKey: string; toPlanKey: string };
+
+/**
+ * Preview (confirm=false) or apply (confirm=true) the in-place Pro → Pro
+ * Business upgrade. Rejects with a ConvexError whose `data.kind`
+ * (NO_UPGRADEABLE_PRO, ALREADY_PRO_BUSINESS, PRO_CANCEL_SCHEDULED, UPGRADE_IN_PROGRESS,
+ * UPGRADE_RATE_LIMITED,
+ * DODO_PLAN_CHANGE_ERROR, ...) the checkout dialog maps to copy.
+ */
+export async function requestProBusinessUpgrade(confirm: boolean): Promise<ProBusinessUpgradeResponse> {
+  const userId = requireSignedInUserId('upgrade to Pro Business');
+  const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
+  if (!client || !api) throw new Error('Convex unavailable');
+  await requireCurrentConvexUser(userId, 'upgrading to Pro Business');
+  return settleAccountOperation(
+    userId,
+    'upgrading to Pro Business',
+    () => client.action(api.payments.billing.upgradeToProBusiness, { confirm }),
+  );
+}
+
+/**
+ * Preview or apply the in-place Pro Monthly → Pro Yearly switch. The confirm
+ * passes the quote's `discounted` flag, and the quote's charge when the server
+ * checks it; the server refuses with PROMO_ENDED, PROMO_CODE_REJECTED or
+ * CHARGE_CHANGED when that price no longer holds, and with
+ * PLAN_CHANGE_QUOTE_REQUIRED when the flag is missing.
+ */
+export async function requestProAnnualSwitch(
+  request:
+    | { confirm: false; listPrice?: true }
+    | { confirm: true; discounted: boolean; acceptedChargeAmount?: number; acceptedChargeCurrency?: string },
+): Promise<ProBusinessUpgradeResponse> {
+  const userId = requireSignedInUserId('switch to Pro Yearly');
+  const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
+  if (!client || !api) throw new Error('Convex unavailable');
+  await requireCurrentConvexUser(userId, 'switching to Pro Yearly');
+  return settleAccountOperation(
+    userId,
+    'switching to Pro Yearly',
+    // Its own action: a Convex deployment that predates the switch has none,
+    // so the call fails instead of running a Pro Business upgrade.
+    () => client.action(api.payments.billing.switchToProAnnual, request),
+  );
+}
+
+/**
+ * Preview or apply the in-place individual Pro → API Starter switch. Every
+ * confirm names the charge the quote showed; the server refuses a higher one
+ * with CHARGE_CHANGED, and an account with no Pro to switch with
+ * NO_UPGRADEABLE_PRO or ALREADY_API_PLAN.
+ */
+export async function requestApiStarterSwitch(
+  request:
+    | { confirm: false }
+    | { confirm: true; acceptedChargeAmount: number; acceptedChargeCurrency: string },
+): Promise<ProBusinessUpgradeResponse> {
+  const userId = requireSignedInUserId('switch to API Starter');
+  const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
+  if (!client || !api) throw new Error('Convex unavailable');
+  await requireCurrentConvexUser(userId, 'switching to API Starter');
+  return settleAccountOperation(
+    userId,
+    'switching to API Starter',
+    // Its own action: a Convex deployment that predates the switch has none,
+    // so the call fails and the caller continues to the normal checkout.
+    () => client.action(api.payments.billing.switchToApiStarter, request),
+  );
+}
+
 export interface EnterpriseSeat {
   memberId: string;
   email: string | null;

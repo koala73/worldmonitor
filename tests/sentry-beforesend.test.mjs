@@ -158,6 +158,15 @@ describe('default PII collection', () => {
 });
 
 describe('ignoreErrors filters', () => {
+  it('suppresses the DuckDuckGo script-message-handler bridge rejection (WORLDMONITOR-1EH)', () => {
+    assert.ok(isIgnored('Script message handler is unavailable', 'Error'));
+  });
+
+  it('does NOT suppress a longer first-party message sharing the bridge phrase', () => {
+    assert.ok(!isIgnored('Script message handler is unavailable for panel news', 'Error'));
+    assert.ok(!isIgnored('Message handler is unavailable', 'Error'));
+  });
+
   it('suppresses Clerk SDK UI chunk load failure', () => {
     assert.ok(
       isIgnored('[clerk] failed to load https://clerk.worldmonitor.app/npm/@clerk/ui@1/dist/ui.browser.js'),
@@ -1125,6 +1134,39 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
       [{ filename: '<anonymous>', lineno: 1 }, { filename: '<anonymous>', lineno: 1 }],
     );
     assert.equal(beforeSend(event), null);
+  });
+
+  // WORLDMONITOR-1F5: the same insertion path, but the injected source parses
+  // and then redeclares a top-level binding it already declared on an earlier
+  // insertion. Chrome folds that into the same appendChild prefix. Our bundle
+  // is ES modules, so no first-party top-level `const` lands in the global
+  // lexical scope, and a duplicate inside one module fails the build.
+  it("suppresses an injected script's appendChild redeclaration with only <anonymous> frames", () => {
+    const event = makeEvent(
+      "Failed to execute 'appendChild' on 'Node': Identifier 'API_URL' has already been declared",
+      'SyntaxError',
+      [{ filename: '<anonymous>', lineno: 6 }, { filename: '<anonymous>', lineno: 7 }],
+    );
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('lets through an appendChild redeclaration attributed to a first-party script loader', () => {
+    const event = makeEvent(
+      "Failed to execute 'appendChild' on 'Node': Identifier 'API_URL' has already been declared",
+      'SyntaxError',
+      [{ filename: 'src/services/analytics.ts', lineno: 494, function: 'loadUmamiScript' },
+        { filename: '<anonymous>', lineno: 1 }],
+    );
+    assert.ok(beforeSend(event) !== null);
+  });
+
+  it('keeps a bare redeclaration (no appendChild prefix) frame-blind rules cannot attribute', () => {
+    // Only the DOM-insertion prefix ties the error to an inserted script; a
+    // bare redeclaration of an identifier the ignoreErrors list does not name
+    // still reports.
+    const event = makeEvent("Identifier 'API_URL' has already been declared", 'SyntaxError',
+      [{ filename: '<anonymous>', lineno: 6 }]);
+    assert.ok(beforeSend(event) !== null);
   });
 
   it("suppresses an injected script's Unexpected identifier with only <anonymous> frames", () => {
@@ -3126,6 +3168,33 @@ describe('fetch failures while the page unloads (WORLDMONITOR-1AY)', () => {
 
   it('keeps a non-TypeError carrying fetch-failure wording while unloading', () => {
     assert.ok(beforeSend(claimedLoadFailure('Load failed (api.worldmonitor.app)', 'Error'), DESKTOP_NAVIGATOR, 'production', true));
+  });
+});
+
+// ─── WORLDMONITOR-19D: worker throw forwarded to the page as `Uncaught TypeError` ─
+//
+// A NetCast TV browser without `String.prototype.replaceAll` crashed inside the
+// maplibre-gl worker chunk. WebKit forwards the worker's uncaught throw to the
+// page as a plain `Error` whose message carries the `Uncaught TypeError: `
+// prefix, which the vendor-internal TypeError rule did not recognise.
+describe('beforeSend — vendor worker TypeError forwarded with an `Uncaught` prefix (WORLDMONITOR-19D)', () => {
+  const MSG = 'Uncaught TypeError: t.slice(...).replaceAll is not a function';
+  const workerFrame = { filename: 'https://www.worldmonitor.app/assets/maplibre-gl-worker-Ab12Cd.js', lineno: 5, colno: 100, function: '?' };
+
+  it('drops it when the only frame is the maplibre worker chunk', () => {
+    assert.equal(beforeSend(makeEvent(MSG, 'Error', [workerFrame])), null);
+  });
+
+  it('keeps it when a first-party frame shares the stack', () => {
+    assert.ok(beforeSend(makeEvent(MSG, 'Error', [workerFrame, firstPartyFrame('/assets/main-AbC123.js', 'boot')])) !== null);
+  });
+
+  it('keeps it when the only frame is a first-party chunk', () => {
+    assert.ok(beforeSend(makeEvent(MSG, 'Error', [firstPartyFrame('/assets/main-AbC123.js', 'boot')])) !== null);
+  });
+
+  it('keeps a non-TypeError `Uncaught` message from the same worker chunk', () => {
+    assert.ok(beforeSend(makeEvent('Uncaught Error: worker failed', 'Error', [workerFrame])) !== null);
   });
 });
 

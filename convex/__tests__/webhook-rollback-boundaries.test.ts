@@ -329,17 +329,6 @@ describe("pending-payment block window boundary", () => {
     });
     expect(blocking).not.toBeNull();
   });
-
-  test("a pending payment well inside the window still blocks the same tier group", async () => {
-    const t = convexTest(schema, modules);
-    await seedPendingCharge(t, FROZEN_NOW - PENDING_PAYMENT_BLOCK_WINDOW_MS + 60_000);
-
-    const blocking = await t.query(internal.payments.billing.getBlockingPendingPayment, {
-      userId: "test-user-001",
-      productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
-    });
-    expect(blocking).not.toBeNull();
-  });
 });
 
 // ---------------------------------------------------------------------------

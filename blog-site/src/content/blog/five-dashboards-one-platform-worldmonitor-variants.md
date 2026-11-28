@@ -9,7 +9,7 @@ pubDate: "2026-02-12"
 modifiedDate: "2026-07-22"
 ---
 
-Most intelligence platforms force you into a single vertical. A financial terminal. A cybersecurity feed. A conflict tracker. If your work spans multiple domains, you're left juggling subscriptions.
+Most intelligence platforms force you into a single vertical. A financial terminal. A cybersecurity feed. A [conflict tracker](/blog/posts/best-global-conflict-trackers-2026/). If your work spans multiple domains, you're left juggling subscriptions.
 
 World Monitor runs specialized dashboards from a single codebase. Switch between them with one click. Each variant curates panels, layers, and data feeds for its specific audience while sharing the same underlying intelligence engine, map infrastructure, and AI capabilities.
 
@@ -23,7 +23,7 @@ This is the flagship. World Monitor is built for OSINT analysts, defense researc
 
 **Key features:**
 
-- Country Instability Index (CII) for real-time risk scoring across its published country set
+- Country [Instability Index](/blog/posts/country-instability-index-methodology-explained/) (CII) for real-time risk scoring across its published country set
 - Strategic Theater Posture for operational theaters including the Taiwan Strait, Persian Gulf, Baltic, and Korean Peninsula
 - Military bases from reviewed operators mapped globally
 - Live ADS-B [aircraft tracking with military enrichment](/blog/posts/military-flight-tracking-osint/)
@@ -32,7 +32,7 @@ This is the flagship. World Monitor is built for OSINT analysts, defense researc
 - OREF rocket alert integration with Hebrew-to-English translation
 - GPS/GNSS jamming zone detection
 - Hotspot escalation scoring with geographic convergence detection
-- AI Deduction panel for geopolitical forecasting
+- AI Deduction panel for [geopolitical forecasting](/blog/posts/prediction-markets-ai-forecasting-geopolitics/)
 
 **Who it's for:** OSINT researchers, geopolitical analysts, defense academics, journalists covering conflict, humanitarian organizations monitoring field conditions.
 
@@ -135,7 +135,7 @@ Energy Atlas tracks the critical infrastructure that keeps the world powered, pr
 
 **Key features:**
 
-- Global chokepoint strip monitoring
+- Global [chokepoint](/blog/posts/what-is-a-maritime-chokepoint/) strip monitoring
 - Live status for mapped oil and gas pipelines
 - Global energy storage atlas
 - Real-time fuel shortage alerts

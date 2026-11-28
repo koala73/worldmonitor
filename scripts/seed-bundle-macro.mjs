@@ -118,6 +118,12 @@ const MACRO_SECTIONS = [
   { label: 'Food-CSBLV', script: 'seed-food-prices-csblv.mjs', seedMetaKey: 'economic:food-prices-csblv', canonicalKey: 'economic:food-prices:csblv:v1', completionMetaKey: 'seed-completion:economic:food-prices-csblv', intervalMs: DAY, timeoutMs: 115_000 },
   { label: 'Food-MAKSTAT', script: 'seed-food-prices-makstat.mjs', seedMetaKey: 'economic:food-prices-makstat', canonicalKey: 'economic:food-prices:makstat:v1', completionMetaKey: 'seed-completion:economic:food-prices-makstat', intervalMs: DAY, timeoutMs: 115_000 },
   { label: 'Food-NSOMN', script: 'seed-food-prices-nsomn.mjs', seedMetaKey: 'economic:food-prices-nsomn', canonicalKey: 'economic:food-prices:nsomn:v1', completionMetaKey: 'seed-completion:economic:food-prices-nsomn', intervalMs: DAY, timeoutMs: 85_000 },
+  { label: 'Food-ODEPA', script: 'seed-food-prices-odepa.mjs', seedMetaKey: 'economic:food-prices-odepa', canonicalKey: 'economic:food-prices:odepa:v1', completionMetaKey: 'seed-completion:economic:food-prices-odepa', intervalMs: DAY, timeoutMs: 100_000 },
+  { label: 'Food-STATCAN', script: 'seed-food-prices-statcan.mjs', seedMetaKey: 'economic:food-prices-statcan', canonicalKey: 'economic:food-prices:statcan:v1', completionMetaKey: 'seed-completion:economic:food-prices-statcan', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-IBGE', script: 'seed-food-prices-ibge.mjs', seedMetaKey: 'economic:food-prices-ibge', canonicalKey: 'economic:food-prices:ibge:v1', completionMetaKey: 'seed-completion:economic:food-prices-ibge', intervalMs: DAY, timeoutMs: 85_000 },
+  // Malaysia DOSM monthly trade by SITC section: two small CSV documents (<0.3 MB),
+  // read by GetMonthlySitcTrade. Tail placement for the same admission reason as US-CPI.
+  { label: 'SITC-Trade-MY', script: 'seed-trade-sitc-my.mjs', seedMetaKey: 'trade:monthly-sitc-my', canonicalKey: 'trade:monthly-sitc:my:v1', completionMetaKey: 'seed-completion:trade:monthly-sitc-my', intervalMs: DAY, timeoutMs: 120_000 },
 
 ];
 
@@ -142,11 +148,11 @@ const sections = orderMacroSections(
 );
 
 await runBundle('macro', sections, {
-  // Railway kills cron containers at 10 minutes. Defer sections whose full
+  // Limit section admission to the configured budget. Defer sections whose full
   // timeout plus SIGTERM/SIGKILL grace cannot fit, preserving completed work
   // and the terminal reason in logs. Bounded parallel freshness reads prevent
   // late per-member Redis reads from consuming the cursor's acknowledgement
-  // window. The 550s budget leaves 50s before Railway's kill, covering the
+  // window. The 550s budget leaves 50s under the 600s cap, covering the
   // <=5s lease claim, <=5s acknowledgement and process/module cleanup.
   maxBundleMs: 550_000,
   prefetchFreshness: true,

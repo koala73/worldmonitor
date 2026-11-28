@@ -126,12 +126,18 @@ function permalinkFor(handle, postId) {
   return `https://x.com/${handle}/status/${postId}`;
 }
 
+// X API v2 returns post text with &, < and > HTML-escaped. &amp; goes last so
+// literal entity text the author typed (&amp;lt;) decodes exactly one level.
+function decodeXText(text) {
+  return text.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+}
+
 function normalizeXPost(tweet, account, options = {}) {
   const maxChars = Number.isFinite(options.maxTextChars) ? options.maxTextChars : DEFAULT_MAX_TEXT_CHARS;
   const postId = normalizeAccountId(tweet?.id);
   const handle = normalizeHandle(account?.handle);
   if (!postId || !handle) return null;
-  const textRaw = toText(tweet?.text);
+  const textRaw = decodeXText(toText(tweet?.text));
   const createdAtMs = tweet?.created_at ? Date.parse(String(tweet.created_at)) : Date.now();
   if (!Number.isFinite(createdAtMs)) return null;
   const createdAt = new Date(createdAtMs).toISOString();

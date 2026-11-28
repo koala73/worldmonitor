@@ -48,6 +48,8 @@ export const PERSONAL_DELETE_TABLES = [
   // Appended next to the end: in-flight deletions store a table index, and an
   // insert earlier in the list would make them skip a table.
   "enterpriseMembers",
+  "proBusinessUpgradeAdmissions",
+  "alertScopeNotices",
   "users",
 ] as const;
 
@@ -97,6 +99,11 @@ async function takePersonalRows(
     case "alertRules":
       return ctx.db
         .query("alertRules")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .take(limit);
+    case "alertScopeNotices":
+      return ctx.db
+        .query("alertScopeNotices")
         .withIndex("by_user", (q) => q.eq("userId", userId))
         .take(limit);
     case "agentFeedback":
@@ -173,6 +180,11 @@ async function takePersonalRows(
       return ctx.db
         .query("enterpriseMembers")
         .withIndex("by_userId", (q) => q.eq("userId", userId))
+        .take(limit);
+    case "proBusinessUpgradeAdmissions":
+      return ctx.db
+        .query("proBusinessUpgradeAdmissions")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
         .take(limit);
     case "users":
       return ctx.db
@@ -417,7 +429,43 @@ async function eraseGrants(
     }
   }
   const leftover = await collectGrantIds(ctx, deletion);
-  return { writes, done: leftover.length === 0 };
+  if (leftover.length > 0) return { writes, done: false };
+  return eraseOwnedTeamDashboards(ctx, deletion, budget, writes);
+}
+
+/**
+ * An API Business team ends with its owner's account (the seats above are
+ * gone and the subscriptions are cancelled), so the dashboards it shared go
+ * too. Enterprise dashboards belong to the contract account and stay.
+ */
+async function eraseOwnedTeamDashboards(
+  ctx: MutationCtx,
+  deletion: DeletionDoc,
+  budget: number,
+  writes: number,
+): Promise<{ writes: number; done: boolean }> {
+  for (const dodoSubscriptionId of deletion.dodoSubscriptionIds ?? []) {
+    const teamKey = `business:${dodoSubscriptionId}`;
+    while (writes < budget) {
+      const rows = await ctx.db
+        .query("teamDashboards")
+        .withIndex("by_team_variant", (q) => q.eq("teamKey", teamKey))
+        .take(budget - writes);
+      if (rows.length === 0) break;
+      for (const row of rows) {
+        await ctx.db.delete(row._id);
+        writes += 1;
+      }
+    }
+    if (writes >= budget) {
+      const more = await ctx.db
+        .query("teamDashboards")
+        .withIndex("by_team_variant", (q) => q.eq("teamKey", teamKey))
+        .first();
+      if (more) return { writes, done: false };
+    }
+  }
+  return { writes, done: true };
 }
 
 async function anonymizeBilling(
@@ -926,6 +974,13 @@ export const completeEmailKeyedErasure = internalMutation({
 
     const writes = grants.writes + keyed.writes;
     const done = grants.done && keyed.done;
+    // markExternalComplete clears verifiedEmail, but on this repair path it
+    // already ran. Drop the proof once the sweep finishes so a completed
+    // erasure does not keep the subject's address. A row still in progress
+    // keeps it; markExternalComplete clears it when that row completes.
+    if (done && withProof.status === "complete") {
+      await ctx.db.patch(row._id, { verifiedEmail: undefined });
+    }
     if (!done) {
       await ctx.scheduler.runAfter(
         0,

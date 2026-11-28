@@ -29,6 +29,23 @@ Signals to watch:
 
 // ── escapeHtml ───────────────────────────────────────────────────────────────
 
+describe('section labels in scripts without capitals', () => {
+  it('emphasises a Japanese or Arabic label in every channel format', () => {
+    for (const label of ['評価', 'التقييم']) {
+      const md = `${label}：安定\nbody`;
+      assert.match(markdownToEmailHtml(md), new RegExp(`<strong[^>]*>${label}:</strong>`));
+      assert.match(markdownToTelegramHtml(md), new RegExp(`^<b>${label}:</b>`));
+      assert.match(markdownToSlackMrkdwn(md), new RegExp(`^\\*${label}:\\*`));
+      assert.match(markdownToDiscord(md), new RegExp(`^\\*\\*${label}:\\*\\*`));
+    }
+  });
+
+  it('does not turn an uncased sentence with a colon into a label', () => {
+    const md = '外務省の報道官は記者会見で次のように述べた：協議は続く';
+    assert.doesNotMatch(markdownToTelegramHtml(md), /<b>/);
+  });
+});
+
 describe('escapeHtml', () => {
   it('escapes &, <, >, "', () => {
     assert.equal(escapeHtml('a & b <c> "d"'), 'a &amp; b &lt;c&gt; &quot;d&quot;');
@@ -305,5 +322,25 @@ describe('realistic AI summary — cross-channel smoke test', () => {
     // Discord is told the raw markdown — it should NOT have the escaped entities
     assert.match(out, /<unknown>/);
     assert.match(out, / & still/);
+  });
+});
+
+describe('section headers across scripts', () => {
+  it('section headers are detected for accented and Cyrillic labels', () => {
+    assert.match(markdownToTelegramHtml('Évaluation: le détroit reste ouvert.'), /<b>Évaluation:<\/b> le détroit/);
+    assert.match(markdownToTelegramHtml('Оценка: пролив открыт.'), /<b>Оценка:<\/b> пролив/);
+    assert.match(markdownToEmailHtml('Signaux à surveiller: x'), />Signaux à surveiller:<\/strong> x/);
+    assert.match(markdownToSlackMrkdwn('Ausblick: y'), /\*Ausblick:\* y/);
+    assert.match(markdownToDiscord('Перспектива: z'), /\*\*Перспектива:\*\* z/);
+  });
+
+  it('ASCII header behaviour is unchanged', () => {
+    assert.match(markdownToTelegramHtml('Assessment: steady.'), /<b>Assessment:<\/b> steady\./);
+    assert.match(markdownToSlackMrkdwn('Signals to watch: a'), /\*Signals to watch:\* a/);
+    assert.doesNotMatch(markdownToTelegramHtml('note: lower case'), /<b>/);
+  });
+
+  it('a full-width colon is accepted', () => {
+    assert.match(markdownToTelegramHtml('Évaluation： ouvert'), /<b>Évaluation:<\/b> ouvert/);
   });
 });

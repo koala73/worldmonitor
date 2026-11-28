@@ -89,6 +89,37 @@ describe('docs locale pair + hreflang cluster', () => {
       tags,
     );
   });
+
+  it('keeps the cluster for a methodology page and its zh twin', () => {
+    const tags = buildDocsHreflangLinkTags('/docs/methodology/cii-risk-scores');
+    assert.deepEqual(tags, [
+      `<link rel="alternate" hreflang="x-default" href="${DOCS_PUBLIC_ORIGIN}/docs/methodology/cii-risk-scores" />`,
+      `<link rel="alternate" hreflang="en" href="${DOCS_PUBLIC_ORIGIN}/docs/methodology/cii-risk-scores" />`,
+      `<link rel="alternate" hreflang="${DOCS_ZH_HREFLANG}" href="${DOCS_PUBLIC_ORIGIN}/docs/zh/methodology/cii-risk-scores" />`,
+    ]);
+    assert.deepEqual(buildDocsHreflangLinkTags('/docs/zh/methodology/cii-risk-scores'), tags);
+  });
+
+  it('emits no alternates for English pages without a zh twin', () => {
+    for (const pathname of [
+      '/docs/api-reference/aviationservice/getairportopssummary',
+      '/docs/methodology/known-limitations',
+      '/docs/no-such-page',
+    ]) {
+      assert.deepEqual(buildDocsHreflangLinkTags(pathname), [], pathname);
+    }
+  });
+
+  it('keeps lang="en" but strips upstream alternates on a page without a zh twin', () => {
+    const pathname = '/docs/api-reference/aviationservice/getairportopssummary';
+    const seed = `<!DOCTYPE html><html lang="zh"><head>
+<link rel="alternate" hreflang="zh-Hans" href="${DOCS_PUBLIC_ORIGIN}/docs/zh${pathname.slice('/docs'.length)}"/>
+<title>Airport ops</title></head><body></body></html>`;
+    const html = rewriteDocsLocaleHtml(seed, pathname);
+    assert.match(html, /<html[^>]*\blang="en"/);
+    assert.doesNotMatch(html, /hreflang=/);
+    assert.match(html, new RegExp(`rel="canonical" href="${DOCS_PUBLIC_ORIGIN}${pathname}"`));
+  });
 });
 
 describe('rewriteDocsLocaleHtml', () => {

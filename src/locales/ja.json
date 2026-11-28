@@ -16,7 +16,7 @@
     "predictionMarkets": "予測市場",
     "loadingMarkets": "予測市場を読み込み中...",
     "infrastructure": "インフラ露出度",
-    "briefUnavailable": "AIブリーフ利用不可 — 設定でOPENROUTER_API_KEYを構成してください。",
+    "briefUnavailable": "AI ブリーフは現在利用できません。",
     "cached": "キャッシュ済",
     "fresh": "最新",
     "noMarkets": "予測市場が見つからない",
@@ -126,13 +126,13 @@
     },
     "fallback": {
       "instabilityIndex": "**不安定性指数：{{score}}/100**（{{level}}、{{trend}}）",
-      "protestsDetected": "{{count}}件の活発な抗議活動を検知",
-      "aircraftTracked": "{{count}}機の軍用機を追跡中",
-      "vesselsTracked": "{{count}}隻の軍艦を追跡中",
-      "internetOutages": "{{count}}件のインターネット障害",
-      "recentEarthquakes": "{{count}}件の最近の地震",
+      "protestsDetected": "活動中のデモ: {{count}}",
+      "aircraftTracked": "監視中の軍用機: {{count}}",
+      "vesselsTracked": "監視中の軍艦: {{count}}",
+      "internetOutages": "インターネット中断: {{count}}",
+      "recentEarthquakes": "最近の地震: {{count}}",
       "stockIndex": "株価指数：{{value}}",
-      "activeStrikes": "{{count}}件の活発なストライキを検知"
+      "activeStrikes": "攻撃および迎撃: {{count}}"
     },
     "countryFacts": "国の基本情報",
     "loadingFacts": "国の基本情報を読み込み中...",
@@ -299,6 +299,40 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "PRO にアップグレードして武器供給業者の依存関係と軍事能力を表示"
+    },
+    "intelMemory": {
+      "title": "過去の情報アーカイブ",
+      "help": "過去180日間の重要な紛争、軍事、エネルギー、騒乱、サイバー、海事、自然災害、航空の事象のアーカイブ。オンデマンドで意味的な先例照合が可能です。",
+      "loading": "過去の情報アーカイブを読み込み中…",
+      "proLocked": "PRO にアップグレードして、180日間の過去情報アーカイブと先例検索を利用可能にする",
+      "unavailable": "過去の情報アーカイブは現在利用できません。",
+      "retry": "再試行",
+      "empty": "この国と領域に一致するアーカイブされた情報イベントは、180日間のウィンドウ内に見つかりません。",
+      "partial": "このクエリのアーカイブカバレッジは部分的です。利用可能なレコードは引き続き表示されます。",
+      "domainFilterLabel": "領域で過去の情報をフィルタリング",
+      "domains": {
+        "all": "すべて",
+        "conflict": "紛争",
+        "military": "軍事",
+        "energy": "エネルギー",
+        "unrest": "騒乱",
+        "cyber": "サイバー",
+        "maritime": "海事",
+        "natural": "自然災害",
+        "aviation": "航空"
+      },
+      "loadMore": "もっと読み込む",
+      "loadingMore": "読み込み中…",
+      "loadMoreError": "追加のイベントを読み込めませんでした。もう一度試してください。",
+      "sourceLink": "ソース ↗",
+      "similarTitle": "似た過去のイベントを検索",
+      "useLatestHeadline": "最新の見出しを使用",
+      "similarPlaceholder": "進行中の状況を説明してください（最低10文字）…",
+      "findSimilar": "似たイベントを検索",
+      "similarMinLength": "過去の先例を検索するには、少なくとも10文字入力してください。",
+      "similarLoading": "過去の先例を検索中…",
+      "similarEmpty": "類似度の閾値を超えた似た過去のイベントはありません。",
+      "similarUnavailable": "先例検索は現在利用できません。もう一度試してください。"
     }
   },
   "header": {
@@ -490,7 +524,9 @@
     "marketBreadth": "市場の広がり",
     "climateNews": "気候ニュース",
     "fx": "外国為替レート",
-    "ukmtoIncidents": "UKMTO事案"
+    "ukmtoIncidents": "UKMTO事案",
+    "reservoirLevels": "戦略的水位",
+    "gridDisruptionClock": "米国各州の停電時計"
   },
   "commands": {
     "prefixes": {
@@ -627,7 +663,8 @@
         "techevent": "テックイベント",
         "techhq": "テック本社",
         "accelerator": "アクセラレーター",
-        "flight": "フライト"
+        "flight": "フライト",
+        "alert": "アラート"
       },
       "flightOnGround": "地上",
       "flightAirborne": "FL{{fl}} · {{kts}} ノット",
@@ -635,7 +672,9 @@
       "flightMilitaryOnGround": "軍用機 · {{type}} · 地上",
       "flightSearchHint": "Enterキーを押すか、クリックしてライブ位置を検索",
       "flightNotFound": "{{callsign}} のライブ位置が見つかりません",
-      "addPanel": "追加"
+      "addPanel": "追加",
+      "sentAlerts": "あなたに送信されたアラート",
+      "sentAlertTime": "{{time}}に送信"
     },
     "signal": {
       "title": "インテリジェンス所見",
@@ -803,7 +842,7 @@
       "fresh": "最新",
       "noMarkets": "予測市場が見つからない",
       "predictionMarkets": "予測市場",
-      "unavailable": "AIブリーフ利用不可 — 設定でOPENROUTER_API_KEYを構成してください。"
+      "unavailable": "AI ブリーフは現在利用できません。"
     },
     "countryBrief": {
       "identifying": "国を特定中...",
@@ -819,7 +858,7 @@
       "predictionMarkets": "予測市場",
       "loadingMarkets": "予測市場を読み込み中...",
       "infrastructure": "インフラ露出度",
-      "briefUnavailable": "AIブリーフ利用不可 — 設定でOPENROUTER_API_KEYを構成してください。",
+      "briefUnavailable": "AI ブリーフは現在利用できません。",
       "cached": "キャッシュ済",
       "fresh": "最新",
       "noMarkets": "予測市場が見つからない",
@@ -972,7 +1011,7 @@
       "upstreamUnavailable": "サプライチェーンデータが一時的に利用不可 — キャッシュデータを表示中",
       "spikeAlert": "スパイク検出 — 料金が52週平均を大幅に上回っています（週次）",
       "warnings": "件の警告",
-      "aisDisruptions": "船舶追跡の中断",
+      "aisDisruptions_other": "船舶追跡の中断 {{count}}件",
       "disruption": "混乱",
       "vessels": "隻",
       "incidents7d": "件（7 日間）",
@@ -983,6 +1022,7 @@
       "topProducers": "主要生産国",
       "risk": "リスク",
       "wowChange": "週間変化率",
+      "asOf": "{{date}} 時点",
       "riskLevel": "リスクレベル",
       "flowUnavailable": "フロー数据が利用できません",
       "containerRates": "コンテナ運賃",
@@ -1091,7 +1131,8 @@
       "skipToStart": "最初へ移動",
       "previous": "前へ",
       "next": "次へ",
-      "skipToEnd": "最後へ移動"
+      "skipToEnd": "最後へ移動",
+      "storageUnavailable": "このブラウザがサイトストレージをブロックしているため、再生機能が利用できません。このサイトのサイトデータを許可して、スナップショットの保存を開始してください。"
     },
     "pizzint": {
       "indexSource": "指数: World Monitor",
@@ -1157,7 +1198,7 @@
         "auxiliary": "補助艦",
         "navalVessels": "海軍艦艇"
       },
-      "infoTooltip": "<strong>Methodology</strong><p>軍用航空機および海軍艦艇を作戦劇場別に集約します。</p><ul><li><strong>Normal:</strong> ベースラインアクティビティ</li><li><strong>Elevated:</strong> 閾値超過(航空機50機以上)</li><li><strong>Critical:</strong> 高集中(航空機100機以上)</li></ul><p><strong>Strike Capable:</strong> 給油機 + 早期警戒機 + 戦闘機が継続的な作戦に必要な数で存在。</p>",
+      "infoTooltip": "<strong>方法論</strong><p>各軍事作戦地域における軍用機と追跡中の海上艦艇の数をカウントします。</p><ul><li><strong>通常:</strong> 作戦地域の閾値未満</li><li><strong>上昇:</strong> カウントが作戦地域ごとに3～8に達する</li><li><strong>重大:</strong> カウントが作戦地域ごとに8～20に達する</li></ul><p>艦艇は上昇閾値の半分までカウントに含まれるため、艦艇のみではレベルが上昇することはありません。</p><p><strong>ストライク能力あり:</strong> タンカー、早期警戒機、戦闘機が継続作戦に十分な数で存在している。</p>",
       "scanningTheaters": "戦域スキャン中",
       "positions": "航空機の位置",
       "navalVesselsLoading": "海軍艦艇",
@@ -1199,13 +1240,21 @@
       },
       "emojiKeyLabel": "絵文字キー",
       "emojiKeyAir": "空中資産",
-      "emojiKeyNaval": "海上資産"
+      "emojiKeyNaval": "海上資産",
+      "instabilityChip": "不安定性 {{score}}",
+      "instabilityNote": "{{nation}}の不安定性スコア: {{score}}/100。参考情報として表示されます。このスコアはレベルに影響しません。レベルは当該作戦地域の航空機と艦船の数によって決定されます。"
     },
     "countryBrief": {
+      "moreActions": "その他の操作",
       "shareLink": "リンクを共有",
       "shareStory": "ストーリーを共有",
       "printPdf": "印刷 / PDF",
-      "exportData": "データをエクスポート"
+      "exportData": "データをエクスポート",
+      "sources": {
+        "summary": "ソースと期間 · {{count}} 系統",
+        "note": "ソースの期間は異なります。24時間の合計ではありません。",
+        "footer": "CII/CRI の入力ではありません。"
+      }
     },
     "relatedAssets": {
       "pipeline": "パイプライン",
@@ -1305,7 +1354,8 @@
         "canadaRoads": "カナダ道路情報",
         "canadaAlerts": "カナダ警報",
         "notamAirspace": "NOTAM飛行制限空域",
-        "no2Activity": "産業活動"
+        "no2Activity": "産業活動",
+        "reservoirLevels": "水位"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1422,7 +1472,8 @@
           "canadaRoads": "対応するカナダの管轄区域における公式の道路事故、警報、路面状況、通行止め、工事、危険情報",
           "canadaAlerts": "Alberta Emergency Alert、B.C. Evacuation Orders and Alerts、SaskAlert による州の公共安全警報",
           "notamAirspace": "FAA NOTAMの一時的飛行制限および制限空域、危険空域、禁止空域。現在有効、または24時間以内に開始予定",
-          "no2Activity": "Sentinel-5P の NO2 活動の方向（167 か国と 32 の工業クラスター）: 直近 56 日間のウィンドウを過去数年の同じ日付と比較し、10% のデッドバンドを適用。改変された Copernicus Sentinel データを含みます。"
+          "no2Activity": "Sentinel-5P の NO2 活動の方向（167 か国と 32 の工業クラスター）: 直近 56 日間のウィンドウを過去数年の同じ日付と比較し、10% のデッドバンドを適用。改変された Copernicus Sentinel データを含みます。",
+          "reservoirLevels": "NASAの衛星ライダーICESat-2による戦略的な貯水池と湖の水面水位を、その月の平年水位と比較して表示します。NASAは各観測パスを測定の約2か月後に公開します。"
         },
         "notes": {
           "timeAffects": "影響: 地震、気象、抗議活動、障害"
@@ -1533,7 +1584,7 @@
       "briefFreshness": "{{minutes}}m前に生成 · 最新ソース{{hours}}h前",
       "briefStoryDetails": "記事の詳細 ({{count}})",
       "streamIdleStopLabel": "アイドル時にライブ動画を停止",
-      "streamIdleStopDesc": "設定した時間、操作がない状態が続くと、ライブニュースとライブウェブカメラを停止し、パネルに通知を表示します。",
+      "streamIdleStopDesc": "設定した時間、操作がない状態が続くと、ライブニュースとライブウェブカメラを停止し、パネルに通知を表示します。音声がオンの間、ライブニュースは再生を続けます。",
       "streamIdleStopNever": "なし",
       "liveNewsAutoplayLabel": "ライブニュースの自動再生",
       "liveNewsAutoplayDesc": "ライブニュースビデオが画面に表示されると同時にミュート状態で自動再生されます。これをオフにすると、自分で再生を開始したときだけビデオが読み込まれます。"
@@ -1604,7 +1655,7 @@
       "noData": "データなし",
       "enable": "有効にする",
       "convergenceMetric": "収束",
-      "ciiDeviation": "Country Instability Index 乖離",
+      "topCiiScore": "国別不安定スコアの最高値",
       "infraEvents": "インフラ関連イベント",
       "highAlerts": "高レベル警報",
       "topRisks": "主要リスク",
@@ -1641,6 +1692,10 @@
       "infoTooltip": "<strong>テックイベント</strong> 今後および最近のテクノロジーイベント：カンファレンス、製品ローンチ、規制公聴会、決算コール。公式イベントカレンダーおよび業界ソースから集約。"
     },
     "techReadiness": {
+      "ranked": "順位あり",
+      "unranked": "順位なし",
+      "coverageRequirement": "順位付けに必要な指標数",
+      "coverageLabel": "利用可能な指標",
       "internetUsers": "インターネットユーザー",
       "mobileSubscriptions": "モバイル契約数",
       "rdSpending": "研究開発支出",
@@ -1656,10 +1711,16 @@
       "dataPreparing": "技術準備状況データを更新中 — すぐに表示されます。"
     },
     "populationExposure": {
-      "totalAffected": "影響を受ける総人口",
-      "affectedCount": "{{count}}人が影響",
-      "radiusKm": "半径{{km}}km",
-      "infoTooltip": "<strong>人口露出推定</strong> イベント影響半径内の推定人口。WorldPopの国別人口密度データに基づく。<ul><li>紛争: 半径50km</li><li>地震: 半径100km</li><li>洪水: 半径100km</li><li>山火事: 半径30km</li></ul>"
+      "estimateWithin": "半径{{km}} km圏内に約{{count}}人",
+      "method": "推計には各国の平均人口密度を使用します。",
+      "empty": "条件を満たすイベント地点がありません",
+      "infoTooltip": "国の人口密度データがあるイベントを表示します。位置精度の情報がないUCDPイベントの場所には更新待ちと表示されます。推定地域は重複する場合があります。 騒乱イベントには正確な位置が必要です。位置が不正確とされたUCDPイベントは除外されます。同じ場所が2つの情報源（騒乱とUCDP）から報告された場合、2行で表示されます。",
+      "eventCount_other": "{{count}}件のイベント",
+      "locationPending": "位置精度の更新待ち",
+      "unrestCoverage": "騒乱の集計範囲",
+      "ucdpPending": "UCDP集計の更新待ち",
+      "coverageShown": "表示中のイベント: {{total}}件中{{shown}}件",
+      "coverageLeftOut": "非表示: 正確な位置なし {{imprecise}}件、人口密度データのない国 {{noEstimate}}件、各ソースの最初の10地点以降 {{otherPlaces}}件"
     },
     "securityAdvisories": {
       "loading": "渡航情報を取得中...",
@@ -1706,7 +1767,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS衛星による監視対象紛争地域の熱検知。高強度 = 輝度>360K & 信頼度>80%。",
       "possibleExplosions": "{{count}} 件の爆発の可能性を検出",
-      "explosionTooltip": "熱署名が爆発と一致(火放射電力>80 MW、輝度>380 K)"
+      "explosionTooltip": "熱署名が爆発と一致(火放射電力>80 MW、輝度>380 K)",
+      "agencyReports": "機関が報告した火災",
+      "agencyDates": "機関の日付",
+      "shownOfTotal": "火災記録 {{total}} 件中 {{shown}} 件を表示"
     },
     "ucdpEvents": {
       "stateBased": "国家間",
@@ -1771,6 +1835,7 @@
       "refugees": "難民",
       "asylumSeekers": "庇護申請者",
       "idps": "国内避難民",
+      "stateless": "無国籍者",
       "total": "合計",
       "origins": "出身国",
       "hosts": "受入国",
@@ -1875,7 +1940,8 @@
         "minutesAgo": "{{count}}分前",
         "hoursAgo": "{{count}}時間前",
         "daysAgo": "{{count}}日前"
-      }
+      },
+      "breakingAlertsNotSaved": "保存できません。このサイトのサイトデータを許可するか、ブラウザストレージを解放してからもう一度お試しください。"
     },
     "countryTimeline": {
       "now": "現在",
@@ -2095,12 +2161,20 @@
       "channelUrlHint": "チャンネル URL (youtube.com/channel/UC…) またはライブ動画 URL を貼り付けてください",
       "youtubeChannel": "YouTube チャンネル",
       "insecureStream": "{{name}} は安全でない (http) ストリームを使用しており、ブラウザがブロックします。安全な (https) ストリーム URL で再度追加してください",
-      "httpsStreamHint": "ブラウザは安全でない (http) ストリームをブロックします。安全な (https) ストリーム URL を貼り付けてください"
+      "httpsStreamHint": "ブラウザは安全でない (http) ストリームをブロックします。安全な (https) ストリーム URL を貼り付けてください",
+      "tapToPlay": "タップして再生"
     },
     "map": {
       "showMap": "地図を表示",
       "hideMap": "地図を非表示",
-      "clearTrails": "トレイルをクリア"
+      "clearTrails": "トレイルをクリア",
+      "locate": "現在地を表示"
+    },
+    "mapLocate": {
+      "locating": "現在地を取得中…",
+      "denied": "位置情報へのアクセスが拒否されました。検索で場所を探してください。",
+      "unavailable": "現在地が見つかりません。検索で場所を探してください。",
+      "noCountry": "現在地に国がありません。検索で場所を探してください。"
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>インターネット障害</strong> 世界のネットワーク監視によるリアルタイムのインターネット障害、DDoS 攻撃、トラフィック異常:<ul><li><strong>障害</strong>: BGP で検出された国別の接続障害</li><li><strong>DDoS</strong>: プロトコル・ベクトル別の大量攻撃レポート</li><li><strong>異常</strong>: Cloudflare Radar による異常なトラフィックパターン</li></ul>",
@@ -2252,6 +2326,7 @@
       "infoTooltip": "<strong>金融ストレス指標</strong> World Monitorの高利回り格付債からロング米国債への比率を株式ボラティリティとハイイールドスプレッドで調整：(HYG / TLT) / (VIX × ハイイールドスプレッド / 100)。これはカンザスシティ連邦準備銀行の金融ストレス指数ではありません。1.5以上は低ストレス、0.3未満は高ストレスです。",
       "title": "金融ストレス指数",
       "usFsiValue": "米国金融ストレス指標値",
+      "asOf": "{{date}} 時点",
       "cissTitle": "EU CISS(ユーロ圏システミックストレス)",
       "notAvailable": "N/A",
       "interpretation": {
@@ -2311,7 +2386,7 @@
       "proLocked": "PRO にアップグレードして商品脆弱性スコアを表示"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>ホルムズ海峡貿易トラッカー</strong> WTO DataLabがホルムズ海峡の日次出荷指数を提供：湾岸を出港する原油、LNG、肥料、到着する農産物。数量ベース、2025年1～3月平均 = 100、AIS追跡可能な船舶のみ。ステータスと日付はWTOの最新分析に基づいています。",
+      "infoTooltip": "<strong>ホルムズ海峡貿易トラッカー</strong> WTO DataLabがホルムズ海峡の日次出荷指数を提供：湾岸を出港する原油、LNG、肥料、到着する農産物。数量ベース、2025年1～3月平均 = 100、AIS追跡可能な船舶のみ。チャートは日次、ステータスはWTOコメンタリーより。",
       "title": "ホルムズ海峡貿易トラッカー",
       "noData": "データなし",
       "notAvailable": "利用不可",
@@ -2324,8 +2399,10 @@
         "unavailable": "ホルムズデータは利用できません",
         "failedToLoad": "読み込みに失敗しました"
       },
-      "analysisDate": "WTO分析 {{date}}",
-      "indexNote": "出荷量指数、2025年1～3月平均 = 100"
+      "analysisDate": "WTO解説 {{date}}",
+      "indexNote": "出荷量指数、2025年1～3月平均 = 100",
+      "dataThrough": "{{date}}までの日次データ",
+      "noShipments": "{{from}}～{{to}}の期間で記録された海運はありません"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>ライブウェブカメラ</strong> 世界中の地政学的に重要な場所からのライブ映像：紛争地域、首都、国境検問所、戦略的チョークポイント。YouTubeおよび公共ネットワークからのストリーム。"
@@ -2364,7 +2441,15 @@
       "noData": "エネルギーデータは一時的に利用できません - 再試行します",
       "liveTape": "ライブテープ",
       "liveTapeSource": "市場相場",
-      "infoTooltip": "<strong>エネルギー複合体</strong> 物理的およびトレード可能なエネルギーシグナルを一箇所に：<ul><li><strong>米国エネルギー情報局指標</strong>：WTI、ブレント、米国生産、在庫</li><li><strong>ライブテープ</strong>：原油や天然ガスなどのトレード可能なエネルギー価格</li><li><strong>目的</strong>：物理的なエネルギー・ストレスをより広いマクロおよび商品パネルから分離</li></ul>"
+      "infoTooltip": "<strong>エネルギー複合体</strong> 物理的およびトレード可能なエネルギーシグナルを一箇所に：<ul><li><strong>米国エネルギー情報局指標</strong>：WTI、ブレント、米国生産、在庫</li><li><strong>ライブテープ</strong>：原油や天然ガスなどのトレード可能なエネルギー価格</li><li><strong>目的</strong>：物理的なエネルギー・ストレスをより広いマクロおよび商品パネルから分離</li></ul>",
+      "marketTape": "市場相場",
+      "futures": "先物",
+      "dailySpot": "日次スポット価格",
+      "eiaWeeklySpot": "EIAスポット価格 · 週平均",
+      "weekEnding": "{{date}}までの週",
+      "unknownPriceDate": "観測時刻不明",
+      "unknownQuoteSource": "価格情報源不明",
+      "stalePrice": "更新期限超過"
     },
     "consumerPrices": {
       "tabs": {
@@ -2512,7 +2597,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>燃料価格</strong> 30以上の国でのガソリンとディーゼル燃料の小売ポンプ価格（比較のためUSD/リットルに統一）。価格は政府公開データプログラムから取得され、週単位で更新されます。最も安い国と最も高い国がハイライトされています。前週のデータが利用可能な場合、週間変動が表示されます。",
-      "countries": "か国"
+      "countries": "か国",
+      "observedStale": "{{date}}（{{days}}日前）",
+      "monthlyMean": "{{month}}平均"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO食料価格指数</strong> 国連食糧農業機関の食料価格指数は、食料品バスケット（穀類、乳製品、肉、油、砂糖）の国際輸出価格を追跡します。ベース2014-2016=100。毎月第1金曜日に更新。",
@@ -2530,7 +2617,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>気候ニュース</strong>Carbon Brief、UNEP、NASA、The Guardian等の信頼できるソースから最新の環境・気候インテリジェンスを配信。30分ごとに更新。",
-      "loadError": "気候ニュースは一時的に利用不可"
+      "loadError": "気候ニュースは一時的に利用不可",
+      "restoreOriginal": "原文に戻す",
+      "translate": "翻訳"
     },
     "liquidityShifts": {
       "title": "流動性シフト",
@@ -2565,7 +2654,13 @@
       "headline": "毎日のAIブリーフをメールまたはSlackで受け取る",
       "tagline": "WM Analyst、アラートルール、Claude向けMCP付き",
       "cta": "Pro にアップグレード →",
-      "dismiss": "閉じる"
+      "dismiss": "閉じる",
+      "promoBadge": "ブラックフライデー",
+      "promoHeadline": "初年度Pro料金が{{savings}}%オフ",
+      "promoTagline": "{{perMonth}}/月（年間課金）- 通常{{monthly}}/月。いつでもキャンセル可能。{{date}}まで。",
+      "promoHeadlineYearlyOnly": "初年度Pro年間プランが{{percent}}%オフ",
+      "promoTaglineYearlyOnly": "いつでもキャンセル可能。{{date}}に終了。",
+      "promoCta": "オファーを受け取る"
     },
     "billingState": {
       "onHoldDesc": "お支払いに失敗しました。プレミアムアクセスを復元するには、お支払い方法を更新してください。",
@@ -2688,7 +2783,7 @@
     },
     "sanctionsPressure": {
       "title": "制裁・指定",
-      "infoTooltip": "米国外資資産管理局指定国民・統合リストおよびカナダ世界問題局SEMA/JVCFOA指定。どの国が最も高い指定圧力に直面しているか、どのプログラムがそれを推進しているか、最後の更新以降に新たに追加されたものを表示。",
+      "infoTooltip": "OFAC SDN・統合リストおよびカナダのSEMA/JVCFOA制裁指定。国別の行は直接の関連付けを使用します。船籍国と航空機登録国は登録の欄で別に集計されるため、国別の資産数がゼロでも制裁対象の資産がないとは限りません。",
       "loading": "制裁データを読み込み中...",
       "unavailable": "制裁データは利用できません。",
       "summary": {
@@ -2700,7 +2795,9 @@
       "sections": {
         "countries": "制裁国",
         "entries": "最近の指定",
-        "programs": "プログラム"
+        "programs": "プログラム",
+        "flagRegistries": "船籍・航空機登録国",
+        "regulationTargets": "SEMA規則の対象国"
       },
       "empty": {
         "countries": "国の帰属情報がありません。",
@@ -2722,7 +2819,8 @@
         "unattributed": "未帰属",
         "program": "プログラム",
         "undated": "日付なし"
-      }
+      },
+      "targetExplanation": "規則の対象国は、国籍や住所を示す証拠ではありません。国別リスクスコアやブリーフの集計から除外されます。"
     },
     "radiationWatch": {
       "title": "放射能監視",
@@ -2793,7 +2891,21 @@
       "saved": "最後に確認できた更新 {{time}} · 更新を確認中",
       "savedOffline": "最後に確認できた更新 {{time}} · オフライン",
       "localSignals": "ダッシュボードに読み込まれたシグナルに基づく",
-      "emptySaved": "最後に確認できた更新では収束はありませんでした。"
+      "emptySaved": "最後に確認できた更新では収束はありませんでした。",
+      "signalTypes": {
+        "militaryFlight": "軍用機の飛行",
+        "militaryVessel": "軍用艦船",
+        "aisGap": "AIS途絶",
+        "conflictEvent": "紛争イベント",
+        "escalationOutage": "通信障害",
+        "newsSeverity": "深刻なニュース",
+        "sanctionsNews": "制裁ニュース",
+        "marketMove": "市場変動",
+        "commoditySpike": "商品価格急騰",
+        "earthquake": "地震",
+        "infraOutage": "インフラ障害",
+        "other": "シグナル"
+      }
     },
     "thermalEscalation": {
       "title": "熱的エスカレーション",
@@ -3089,6 +3201,151 @@
           "placeholder": "オプション"
         }
       }
+    },
+    "githubStarPrompt": {
+      "title": "World Monitor を気に入っていただけましたか？",
+      "body": "GitHub でスターをつけると、他のユーザーが見つけやすくなります。",
+      "star": "GitHub でスターをつける",
+      "dismiss": "非表示にして二度と表示しない"
+    },
+    "reservoirLevels": {
+      "note": "NASAの衛星ライダーICESat-2による水面水位。NASAは各パスを測定の約2か月後に公開するため、日単位ではなく週や季節単位の変化を追跡します。水位のみで、貯水量ではありません。",
+      "source": "出典:",
+      "processedWith": "処理:",
+      "empty": "まだ測定値はありません",
+      "filterEmpty": "このフィルターに一致する水域はありません",
+      "unavailable": "水位データは現在利用できません",
+      "filterLabel": "水域を絞り込む",
+      "filter": {
+        "all": "すべて",
+        "attention": "要注意",
+        "transboundary": "国際河川・湖沼"
+      },
+      "status": {
+        "record_low": "過去最低",
+        "record_high": "過去最高",
+        "falling_fast": "急低下",
+        "rising_fast": "急上昇",
+        "low": "季節平年より低い",
+        "high": "季節平年より高い",
+        "normal": "平年並み",
+        "insufficient_history": "履歴不足",
+        "no_recent_data": "最近のパスなし",
+        "lowInRange": "範囲内で低い",
+        "highInRange": "範囲内で高い"
+      },
+      "vsUsual": "{{month}}の平年比 {{value}}",
+      "in12Months": "12か月で{{value}}",
+      "noComparison": "まだ比較なし",
+      "measured": "{{date}}測定（{{age}}）",
+      "noPass": "有効なパスはまだありません",
+      "popup": {
+        "level": "水位",
+        "levelValue": "海抜{{value}}（EGM2008）",
+        "anomaly": "{{month}}の平年比",
+        "anomalyPlain": "その月の平年比",
+        "changePrev": "前回のパス以降",
+        "change90": "90日間",
+        "change365": "12か月間",
+        "measured": "測定日",
+        "sparkline": "36か月の水位"
+      },
+      "nextPass": {
+        "label": "次のICESat-2通過",
+        "loading": "読み込み中…",
+        "at": "{{date}}（{{epoch}}の軌道データによる予測。雲でライダーが遮られる場合があります）",
+        "none": "この期間に測定なし（{{date}}まで）。{{epoch}}の軌道データ",
+        "unavailable": "軌道データを取得できません"
+      },
+      "siteContext": {
+        "label": "この地点の戦略的貯水池"
+      },
+      "energyContext": {
+        "heading": "戦略的貯水池",
+        "hydro": "水力は一次エネルギーの{{share}}%"
+      },
+      "countryEvidence": {
+        "heading": "水位",
+        "empty": "この国の戦略的貯水池で、最新の通過時に季節的基準線を外れているものはありません。",
+        "measured": "{{date}} 計測"
+      },
+      "card": {
+        "measured": "計測 {{date}} · {{age}}",
+        "noCrossing": "この期間内になし（{{date}}まで）",
+        "crossing": "ICESat-2 の予測通過",
+        "summary": "{{total}} 貯水池中 {{beyond}} が季節基準外",
+        "latestPass": "最新の ICESat-2 通過 {{date}}",
+        "sparkline": "36か月の水位（季節基準は破線）",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC)。日付付き通過のライダー水面高で、リアルタイム値や貯水量ではありません。"
+      },
+      "water": {
+        "heading": "{{name}}の水",
+        "level": "ライダー水位",
+        "extent": "レーダー水域面積",
+        "extentValue": "{{date}}時点で開水面 {{percent}}%（{{area}} km²）",
+        "extentChange": "同じ軌道の{{date}}から{{delta}}ポイント",
+        "extentNoComparison": "比較できる同じ軌道の過去の観測はありません",
+        "extentNone": "レーダー観測はまだありません",
+        "unavailable": "読み込めませんでした。開き直して再試行してください",
+        "optical": "最新の光学画像",
+        "opticalNone": "30日以内の光学画像はありません",
+        "note": "各行は別々の通過による日付付きの測定値で、リアルタイムの値ではありません。レーダーは貯水池の中心区域の開水面を測定します。風で波立った水面は陸地と判定されることがあります。"
+      }
+    },
+    "gridDisruptionClock": {
+      "region": "州を選択",
+      "unknown": "不明",
+      "customers": "停電が報告された契約件数",
+      "lastCustomers": "前回報告時の停電契約件数",
+      "denominatorUnknown": "集計対象の総契約件数は不明",
+      "tracked": "集計対象の契約件数：{{amount}} 件",
+      "dataAge": "報告からの経過時間",
+      "minutes": "{{amount}} 分",
+      "hours": "{{amount}} 時間",
+      "warnings": "警報",
+      "recovery": "報告された変化",
+      "decreased": "報告された停電契約件数が {{amount}} 件減少",
+      "increased": "報告された停電契約件数が {{amount}} 件増加",
+      "unchanged": "報告された件数に変動なし",
+      "since": "比較時点",
+      "peakLoad": "通常のピーク負荷の {{percent}}% まで復旧",
+      "noComparison": "比較可能な停電件数はありません。",
+      "history": "直近の停電件数（記録数：{{total}}）",
+      "priorNotice": "以前に報告された警報",
+      "sources": "警報の情報源と確認状況",
+      "operatorLink": "電力網のお知らせはこちら：",
+      "issued": "発表",
+      "until": "有効期限",
+      "noActive": "確認対象の情報源に有効な警報はありません。",
+      "unknownWarnings": "現在、一部の警報情報を確認できていません。",
+      "noObservation": "現在の件数と集計範囲は不明です。",
+      "loadError": "停電時計のデータを取得できません。",
+      "retained": "更新できませんでした。最後に受信した報告を表示しています。",
+      "phase": {
+        "unknown": "影響不明",
+        "monitoring": "監視中",
+        "watch": "警戒",
+        "disrupted": "停電の報告あり",
+        "recovering": "復旧作業中との報告",
+        "restored": "復旧の報告あり"
+      },
+      "kind": {
+        "grid": "電力網のお知らせ",
+        "weather": "気象警報",
+        "space-weather": "宇宙天気"
+      },
+      "checks": {
+        "available": "確認済み",
+        "unavailable": "利用不可",
+        "not_monitored": "事業者の発表を直接確認",
+        "stale": "最終確認から時間が経過"
+      },
+      "warningAge": "現在有効な最初の警報からの経過時間",
+      "days": "{{amount}} 日"
+    },
+    "externalNavigation": {
+      "blocked": "ブラウザが新しいタブをブロックしました。",
+      "openLink": "{{host}}を開く"
     }
   },
   "popups": {
@@ -3126,7 +3383,6 @@
       }
     },
     "protest": {
-      "acledVerified": "ACLED（検証済）",
       "gdelt": "GDELT",
       "records": "件の記録",
       "mediaSignal": "未確認のメディア情報",
@@ -4064,6 +4320,21 @@
       "yellowWarning": "黄色警報",
       "orangeWarning": "オレンジ警報",
       "redWarning": "赤色警報"
+    },
+    "displacement": {
+      "event": "事象",
+      "cause": "原因",
+      "date": "日付",
+      "operation": "オペレーション",
+      "reportDate": "報告日",
+      "measure": "指標",
+      "kinds": {
+        "outflow": "流出",
+        "return": "帰還",
+        "arrival": "到着",
+        "death": "死亡",
+        "encounter": "遭遇"
+      }
     }
   },
   "signals": {
@@ -4157,7 +4428,13 @@
     "alert": "アラート: {{location}}",
     "multipleRegions": "複数地域",
     "trending": "\"{{term}}\" トレンド中 — {{hours}}時間で{{count}}件の言及",
-    "eventsDetected": "地域（{{lat}}°, {{lon}}°）で{{count}}件のイベントを検出"
+    "eventsDetected": "{{count}}件のイベントを検出: {{types}}（{{lat}}°, {{lon}}°）",
+    "eventTypes": {
+      "protest": "抗議活動",
+      "military_flight": "軍用機の飛行",
+      "military_vessel": "艦艇",
+      "earthquake": "地震活動"
+    }
   },
   "intel": {
     "topics": {
@@ -4254,7 +4531,6 @@
     "dataAndCommunity": "データとコミュニティ",
     "theme": "テーマ",
     "themeDesc": "自動でシステム設定に従います。",
-    "themeAuto": "自動（システムに従う）",
     "themeDark": "ダーク",
     "themeLight": "ライト",
     "mapProvider": "マップタイルプロバイダー",
@@ -4313,7 +4589,9 @@
   },
   "contextMenu": {
     "openCountryBrief": "国の概要を開く",
-    "copyCoordinates": "座標をコピー"
+    "copyCoordinates": "座標をコピー",
+    "satellitePasses": "この地点を通過した衛星",
+    "imageryEvidenceHere": "この地点の衛星画像の証拠"
   },
   "shell": {
     "documentTitle": "ワールドモニター — リアルタイム グローバルインテリジェンスダッシュボード",
@@ -4408,7 +4686,9 @@
   "auth": {
     "signIn": "サインイン",
     "createAccount": "アカウントを作成",
+    "freeReason": "無料: レイアウト保存、国のフォロー、アラート",
     "settings": "設定",
+    "planBilling": "プラン・課金",
     "passkeyOffer": {}
   },
   "mcp": {
@@ -4452,7 +4732,17 @@
     "renameHint": "{{name}} — ダブルクリックして名前を変更",
     "deleteTab": "タブを削除",
     "deleteTabAria": "タブ {{name}} を削除",
-    "tabNameAria": "タブ名"
+    "tabNameAria": "タブ名",
+    "addTabTitleSaved": "新しいタブ（保存したパネルから開始）",
+    "newTabOptions": "新しいタブのオプション",
+    "newTabStartsDefault": "新しいタブはデフォルトパネルから開始します。",
+    "newTabStartsSaved": "新しいタブは保存したパネルから開始します。",
+    "newTabOptionsHint": "既に作成したタブは変わりません。",
+    "useThisTabPanels": "このタブのパネルを使用",
+    "useDefaultPanels": "デフォルトパネルを使用",
+    "newTabPanelsNotSaved": "保存できませんでした。このブラウザはサイトストレージをブロックしています。",
+    "team": "チーム",
+    "teamDashboards": "チームダッシュボード"
   },
   "theaterPresets": {
     "label": "カバレッジプリセット",
@@ -4545,6 +4835,21 @@
         "related": {
           "0": "中国活動ナウキャスト",
           "1": "国別ブリーフ"
+        }
+      },
+      "reservoirLevels": {
+        "category": "気候",
+        "purpose": "戦略的な貯水池と湖を、水面水位が同じ時期の平年値と比べてどうか、またどれだけ速く変化しているかで示します。",
+        "source": "NSIDC経由のNASA ICESat-2 ATL13内水面高度。SlideRule Earthで処理し、seed-reservoir-levelsサービスが衛星パスごとに集約しています。",
+        "freshness": "毎日更新。NASAは各パスを測定の50〜70日後に公開し、各貯水池は数日から約1か月ごとに再観測されます。",
+        "confidence": "パスは少なくとも5つの水面区間が0.25 m以内で一致した場合のみ採用されます。季節比較には同じ時期の過去3年以上のパスが必要です。",
+        "limitations": {
+          "0": "水位のみで、貯水量ではありません。同じ低下でも貯水池ごとに失われる貯水量は異なります。",
+          "1": "150日間パスがない水域は「最近のパスなし」と表示されますが、最後の値、変化、日付は引き続き表示されます。"
+        },
+        "related": {
+          "0": "戦略的水位パネル",
+          "1": "気候異常"
         }
       },
       "conflicts": {
@@ -4721,7 +5026,7 @@
         "category": "自然災害",
         "purpose": "状況を把握するため、地震、重大な災害警報、進行中の地球観測イベントを示します。",
         "source": "USGSの地震、GDACSの警報、NASA EONETのイベントです。自然イベントのサービスにまとめています。",
-        "freshness": "自然イベントは3時間ごとにシードします。USGSの地震は、およそ5分のソース周期として文書化されています。",
+        "freshness": "自然イベントは30分ごとにシードします。USGSの地震は、およそ5分のソース周期として文書化されています。",
         "confidence": "検知された公の災害シグナルについては強いです。信頼度は、災害の種類と上流の報告の遅れで変わります。",
         "limitations": {
           "0": "地図を読みやすくするため、深刻度の低いGDACS警報は除きます。",
@@ -4790,7 +5095,8 @@
     "current": "情報源確認済み",
     "reportedClaims": "発行元の報告です。主張は調査中の場合があります。",
     "occurred": "発生",
-    "reported": "公開"
+    "reported": "公開",
+    "listed": "掲載"
   },
   "panelVariants": {
     "finance": {
@@ -4814,6 +5120,828 @@
     },
     "happy": {
       "map": "グッドニュースマップ"
+    }
+  },
+  "pwaInstall": {
+    "title": "アプリをインストール",
+    "share": "Safariで共有（上向き矢印のある四角）をタップします。先にその他のメニューを開く必要がある場合があります。",
+    "add": "ホーム画面に追加を選びます。",
+    "confirm": "追加をタップし、ホーム画面からWorld Monitorを開きます。",
+    "close": "閉じる",
+    "alertsHint": "このiPhoneまたはiPadで通知を受け取るには、World Monitorをホーム画面にインストールしてください。",
+    "how": "インストール方法"
+  },
+  "teamDashboards": {
+    "desc": "チームが共有しているダッシュボード。クリックして新しいタブとして追加できます。",
+    "empty": "チームはまだダッシュボードを共有していません。このタブを共有して、チームメンバー全員にパネル、サイズ、マップを提供できます。",
+    "open": "{{name}}を新しいタブとして開く",
+    "stopSharing": "{{name}}の共有を停止",
+    "confirmStop": "{{name}}をチームとの共有を停止しますか？既に開いているタブはそのままです。",
+    "shareTab": "このタブをチームと共有",
+    "shareChanges": "このタブの変更をチームと共有",
+    "behind": "チームがこのダッシュボードを開いた後に変更しました。",
+    "getLatest": "最新版を取得",
+    "opened": "{{name}}をチームから開きました。",
+    "shared": "{{name}}をチームと共有しました。",
+    "updated": "このタブはチームの最新版になりました。",
+    "stopped": "{{name}}の共有を停止しました。",
+    "failed": "チームのダッシュボードに接続できません。もう一度試してください。",
+    "limit": "チームは既に{{limit}}個のダッシュボードを共有しています。まず1つの共有を停止してください。",
+    "focusNotEntitled": "このプランでは、フォーカスしたダッシュボードの共有はできません。このタブのフォーカスを解除してパネルを共有してください。",
+    "focusUnreadable": "{{name}}にはこのバージョンで表示できないフォーカスが設定されています。再度読み込んでから開き直してください。"
+  },
+  "focus": {
+    "barLabel": "フォーカス",
+    "summary": "{{countries}}にフォーカス中",
+    "neighboursOff": "隣国は含まれていません",
+    "chosenLabel": "選択済み",
+    "neighboursLabel": "隣国",
+    "neighbourItem": "隣国: {{name}}",
+    "range": "{{start}} 〜 {{end}}",
+    "windowEnded": "ウィンドウは{{date}}に終了しました",
+    "windowStarts": "{{date}}に開始",
+    "windowUntil": "{{date}}まで",
+    "windowFrom": "{{date}}から",
+    "edit": "編集",
+    "clear": "クリア",
+    "clearAria": "フォーカスをクリアして世界全体を表示する",
+    "clearFocus": "フォーカスをクリア",
+    "notFiltered": "フィルタリングなし",
+    "notFilteredGlobal": "グローバルデータ: 国別フィルタリングなし",
+    "notFilteredYet": "まだ国別フィルタリングなし",
+    "gateSignedOutDesc": "サインインして、担当する国にダッシュボードタブをフォーカスします。",
+    "gateUpgradeDesc": "タブを選択した国にフォーカスする機能はPro Business、API Business、Enterpriseに含まれています。",
+    "gateUpgradeCta": "アップグレード",
+    "tabButton": "フォーカス",
+    "tabButtonTitle": "このタブを選択した国にフォーカスする",
+    "tabButtonTitleActive": "このタブのフォーカスを編集する",
+    "newTitle": "このタブをフォーカスする",
+    "editTitle": "フォーカスを編集",
+    "intro": "国別にフィルタリングできるパネルはこれらの国のみを表示します。その他は「フィルタリングなし」と表示されます。",
+    "countriesLabel": "国",
+    "count": "{{n}}/{{max}}",
+    "searchPlaceholder": "国を検索",
+    "resultsLabel": "マッチした国",
+    "limitReached": "{{max}}個の国を選択しました。これはフォーカスが保有できる最大数です。",
+    "removeCountry": "{{name}}を削除",
+    "includeNeighbours": "隣国を含める",
+    "neighboursHint": "リスクは国境を越えます。隣国はそのようにマークされており、{{max}}にはカウントされません。",
+    "startLabel": "開始日（オプション）",
+    "endLabel": "終了日（オプション）",
+    "datesHint": "出張やタスク用。ウィンドウの終了時は、フォーカスは保持され、バーにその旨が表示されます。",
+    "errorNoCountries": "少なくとも1つの国を選択してください。",
+    "errorTooMany": "フォーカスは最大{{max}}個の国を保有できます。",
+    "errorDates": "終了日が開始日より前です。",
+    "save": "保存",
+    "cancel": "キャンセル",
+    "saved": "このタブは{{countries}}にフォーカスされています。",
+    "cleared": "フォーカスがクリアされました。このタブは世界全体を表示します。",
+    "notSaved": "保存できませんでした。このブラウザはサイトストレージをブロックしています。",
+    "plusNeighbours_other": "+ {{count}}個の隣国",
+    "filter": {
+      "showing": "{{countries}}を表示中",
+      "showingNeighbours": "{{countries}}と隣国を表示中",
+      "showAll": "すべて表示",
+      "focusOff": "このパネルのフォーカスはオフ：すべてを表示中",
+      "applyFocus": "フォーカスを適用",
+      "applyFocusAria": "このパネルをフォーカスで絞り込む",
+      "show": "表示",
+      "hide": "非表示",
+      "noCountryTag": "国なし",
+      "emptyHint": "その他すべては上記で集計されています。",
+      "emptyNews": "これらの国の現在のニュース速報はありません",
+      "emptyAdvisories": "これらの国の渡航勧告はありません",
+      "emptyConflict": "これらの国のUCDP紛争イベントはありません",
+      "emptyConflictPartial": "これらの国の紛争イベントは最新のイベント中にはありません。全リストは読み込まれていません。",
+      "loadingConflict": "これらの国のすべての紛争イベントを読み込み中…",
+      "emptyAirports": "監視中の空港でこれらの国に該当するものはありません",
+      "emptyFlights": "このボード上でこれらの国との往来便はありません",
+      "emptyAviationNews": "過去24時間でこれらの国の航空ニュースはありません",
+      "tabNotFiltered": "このタブは国でフィルタリングされていません",
+      "hidden_other": "{{count}}件がフォーカスで非表示",
+      "showAllAria_other": "このパネル内のすべてを表示。フォーカス外の{{count}}件を含む",
+      "unattributed_other": "国が不明な{{count}}件",
+      "showUnattributedAria_other": "国が不明な{{count}}件を表示",
+      "hideUnattributedAria_other": "国が不明な{{count}}件を非表示",
+      "partialConflict": "最新150件の紛争イベントのみを表示しています。全リストは読み込まれませんでした。",
+      "partialConflictLoading": "フル リストの読み込み中に、最新150件の紛争イベントを表示しています。",
+      "emptyInstability": "これらの国の不安定性スコアはありません",
+      "emptyOutbreaks": "これらの国の疾病流行はありません",
+      "emptyOutages": "これらの国のインターネット障害はありません",
+      "emptyRadiation": "これらの国の放射線測定値はありません",
+      "emptyFuelShortages": "これらの国の燃料不足はありません",
+      "emptyEnergyDisruptions": "これらの国のエネルギー供給障害はありません",
+      "emptyDisplacement": "これらの国の難民データはありません",
+      "emptyCorrelation": "これらの国のシグナルはありません",
+      "emptyExposure": "これらの国には人口曝露地点がありません",
+      "emptyExposurePartial": "利用可能なデータにこれらの国の曝露地点はありません。UCDPの全データの取得を待っています。",
+      "partialExposureLoading": "曝露を絞り込む前にUCDPの全地点を読み込んでいます。カバレッジの集計には騒乱のみが含まれます。",
+      "partialExposure": "UCDPの全地点を読み込めませんでした。曝露データは不完全です。カバレッジの集計には騒乱のみが含まれます。"
+    },
+    "draftAssessment": "旅行リスク評価",
+    "draftAssessmentAria": "旅行リスク評価を開く（このフォーカスで事前入力）",
+    "draftCopied": "リクエストをコピーしました。AIアシスタントに貼り付けてください。",
+    "draftCopiedPartial": "最初の{{count}}か国についてリクエストをコピーしました。アセスメントは最大{{max}}か国までカバーできます。除外された国：{{omitted}}。",
+    "draftCopyFailed": "リクエストをコピーできませんでした。"
+  },
+  "tripAssessment": {
+    "heading": "旅行リスク評価",
+    "intro": "アナリスト向けの、情報源に基づいた旅行リスク評価の初版です。データの内容を報告し、アドバイスは提供しません。",
+    "privacy": "国、都市、日付のみ。旅行者名、ホテル、住所は入力しないでください。入力内容は一切保存されません。",
+    "taskLabel": "タスクラベル（オプション）",
+    "taskLabelPlaceholder": "地域サイト訪問",
+    "windowStart": "旅行開始",
+    "windowEnd": "旅行終了",
+    "countriesLabel": "国（旅行順）",
+    "count": "{{n}} / {{max}}",
+    "searchPlaceholder": "国を追加",
+    "addCountry": "旅行に国を追加",
+    "limit": "旅行は最大 {{max}} 国までです。",
+    "omitted": "旅行は最大 {{max}} 国までのため除外されました：{{names}}。",
+    "cities": "都市（カンマ区切り、最大 {{max}} 個）",
+    "arrive": "到着",
+    "depart": "出発",
+    "moveEarlier": "{{name}} を旅行の早期に移動",
+    "moveLater": "{{name}} を旅行の後期に移動",
+    "remove": "{{name}} を旅行から削除",
+    "downloadMarkdown": "Markdown をダウンロード",
+    "downloadWord": "Word 用にダウンロード",
+    "print": "印刷または PDF として保存",
+    "copyRequest": "AI アシスタント用リクエストをコピー",
+    "close": "閉じる",
+    "building": "最新データから初版を作成中…",
+    "downloaded": "{{file}} をダウンロードしました。ダウンロードはすべて最新データから生成され、各ファイルに取得時刻がタイムスタンプされています。",
+    "printOpened": "印刷ダイアログが開きました。PDF として保存を選択してコピーを保持します。",
+    "errNoCountries": "最低 1 つの国を追加してください。",
+    "errTooMany": "旅行は最大 {{max}} 国までです。",
+    "errWindow": "旅行終了日は旅行開始日以降である必要があります。",
+    "errCities": "{{name}}：最大 {{max}} 個の都市をリストしてください。",
+    "errCountryDates": "{{name}}：出発日は到着日以降である必要があります。",
+    "errOutsideWindow": "{{name}}：日付は旅行期間内である必要があります。",
+    "errInvalid": "この旅行から初版を作成できませんでした：",
+    "errAuth": "初版を作成するには再度サインインしてください。",
+    "errUpgrade": "旅行リスク評価は Pro Business、API Business、Enterprise プランに含まれています。",
+    "errBusy": "リクエストが多すぎます。1 分後に再度お試しください。",
+    "errUnavailable": "初版のデータは現在利用できません。1 分後に再度お試しください。",
+    "errGeneric": "初版を作成できませんでした。再度お試しください。",
+    "errDownload": "ファイルをここからダウンロードできません。代わりに印刷または PDF として保存を使用してください。",
+    "errLoad": "旅行リスク評価を開くことができませんでした。ページを再度読み込んでもう一度お試しください。"
+  },
+  "orbitalWatch": {
+    "track": {},
+    "replay": {},
+    "counts": {},
+    "tier": {
+      "checking": "アーカイブ確認中",
+      "notInArchive": "アーカイブになし",
+      "confirmed": "確認済み",
+      "likely": "可能性が高い",
+      "unmatchedImage": "計算済みパスのない画像",
+      "weatherFrame": "気象画像",
+      "unavailable": "利用不可",
+      "inReach": "指向可能",
+      "capability": "撮像可能",
+      "inRange": "範囲内",
+      "mosaic": "モザイク",
+      "upcoming": "今後"
+    },
+    "row": {
+      "offNadir": "天底から {{deg}}°",
+      "distance": "地上軌跡まで{{km}} km",
+      "orbitAge": "軌道データ",
+      "imageLoading": "シーン読み込み中…",
+      "satellite": "衛星",
+      "sensor": "センサー",
+      "time": "時刻",
+      "in": "開始まで",
+      "tier": "ステータス",
+      "elevation": "仰角",
+      "point": "地点",
+      "pixel": "ピクセル",
+      "credit": "アーカイブ",
+      "orbitAgeValue": "{{age}}前"
+    },
+    "ui": {
+      "tab": {},
+      "caption": {},
+      "tile": {},
+      "grid": {},
+      "group": {},
+      "order": {},
+      "row": {},
+      "section": {},
+      "status": {},
+      "step": {}
+    },
+    "viewer": {
+      "open": "シーンを開く: {{image}}",
+      "imageAlt": "{{name}}シーン、{{time}}",
+      "close": "シーンビューアを閉じる",
+      "northUp": "北が上",
+      "unreferenced": "アーカイブの向きのまま。北は示されていません",
+      "compareDates": "このコレクション内の日付",
+      "compareNone": "このコレクション内に2番目のシーンはありません。",
+      "divider": "基準の境界線",
+      "searching": "{{days}}日間のアーカイブシーンを検索中",
+      "historyFailed": "{{archive}}がエラーを返しました。古いシーンは表示できません。",
+      "historyTimeout": "{{archive}}がタイムアウトしました。古いシーンは表示できません。",
+      "loading": "フレーム読み込み: {{loaded}} / {{total}}",
+      "closeLabel": "閉じる",
+      "agoNow": "今",
+      "agoHours": "{{count}}時間前",
+      "agoDays": "{{count}}日前",
+      "clear": "晴天",
+      "clouded": "雲 {{pct}}%",
+      "tabImage": "シーン",
+      "tabChange": "比較",
+      "metaAcquired": "撮影",
+      "metaDate": "日付",
+      "metaPixel": "ピクセル",
+      "metaSpot": "地点の雲",
+      "metaScene": "シーンの雲",
+      "metaSun": "太陽仰角",
+      "showCloudy": "曇りの日を含める ({{count}})",
+      "eventMark": "イベント {{date}}"
+    },
+    "timelapse": {},
+    "passDetail": {
+      "dir": {},
+      "heading": {}
+    },
+    "search": {
+      "label": "場所または座標",
+      "placeholder": "場所または 25.11, 55.14",
+      "submit": "検索",
+      "locate": "現在地",
+      "hint": "入力した座標と現在地はWorldMonitorに送信されません。入力した地名はWorldMonitorとOpenStreetMap Nominatimに送信されます。",
+      "results": "場所",
+      "searching": "検索中…",
+      "tooShort": "2文字以上入力するか、25.11, 55.14のような座標を入力してください。",
+      "invalidCoordinates": "緯度は-90〜90、経度は-180〜180である必要があります。",
+      "failed": "場所の検索に失敗しました。座標とマップクリックは引き続き機能します。",
+      "noResults": "一致する場所はありません。",
+      "locating": "位置情報取得中…",
+      "locationDenied": "位置情報アクセスが拒否されました。任意の場所名を入力するか、マップを右クリックしてください。",
+      "locationUnavailable": "位置情報が見つかりません。任意の場所名を入力するか、マップを右クリックしてください。",
+      "idle": "任意の場所名を入力するか、デバイスの位置情報を使用するか、マップを右クリックして衛星画像の証拠を開きます。"
+    },
+    "share": {
+      "copied": "リンクをコピーしました",
+      "copyManually": "このリンクをコピー",
+      "link": "共有リンク",
+      "dismiss": "閉じる",
+      "passOutsideWindow": "リンクされたパスはこの期間外のため、選択されていません。",
+      "passNotFound": "リンクされたパスは再計算した一覧にないため、選択されていません。"
+    },
+    "timeline": {
+      "now": "現在",
+      "nowAt": "現在: {{time}}",
+      "density": "{{label}}、{{start}}〜{{end}}: {{count}}",
+      "daylight": "ここの日照: {{start}}–{{end}}",
+      "unavailable": "利用不可",
+      "notRetained": "フィードは履歴を保持しません",
+      "notRetainedSpan": "{{label}}: フィードは{{start}}〜{{end}}の履歴がありません",
+      "countryWide": "国全体",
+      "source": {
+        "conflict": "紛争",
+        "fires": "火災",
+        "unrest": "騒乱",
+        "outages": "通信障害"
+      },
+      "live": {
+        "vessels": "海運",
+        "militaryFlights": "軍用機",
+        "gpsJamming": "GPS妨害"
+      },
+      "name": "タイムライン",
+      "span": "過去{{days}}日 · 今後{{hours}}時間",
+      "daylightHere": "地点の日照",
+      "row": {
+        "images": "画像",
+        "events": "イベント",
+        "passes": "パス"
+      },
+      "retained": "{{start}}〜{{end}}の履歴",
+      "retainedDay": "{{day}}のみの履歴",
+      "geoLine": "静止衛星の視野: {{names}}",
+      "away": "{{km}} km",
+      "densityTip_other": "{{start}}から{{count}}件のパス · {{names}}"
+    },
+    "satelliteSites": {
+      "heading": "監視対象地点 · 今後{{hours}}時間",
+      "projecting": "通過を計算中…",
+      "notLoaded": "衛星をもう一度クリックしてください。軌道要素が読み込まれていません。",
+      "failed": "衛星をもう一度クリックして再試行してください。通過の計算に失敗しました。",
+      "viewFailed": "衛星をもう一度クリックして再試行してください。地点一覧を読み込めませんでした。",
+      "unavailable": "衛星をもう一度クリックして再試行してください。通過ジオメトリの計算でこの軌道要素を使用できませんでした。",
+      "signals": "信号情報収集（SIGINT）衛星。撮像センサーがないため、地上の観測範囲はモデル化されていません。",
+      "noProfile": "この衛星のセンサープロファイルがないため、地上の観測範囲はモデル化されていません。",
+      "geostationary": "静止衛星：特定の経度上に固定されているため、表示する通過はありません。",
+      "badElements": "軌道要素が読み取れません。",
+      "none": "{{hours}}時間以内に観測範囲に入る監視対象地点はありません。",
+      "utc": "{{time}} UTC",
+      "inMinutes": "{{minutes}}分後",
+      "inHours": "{{hours}}時間{{minutes}}分後",
+      "offTrack": "地上軌跡から {{km}} km",
+      "swathEdge": "観測幅の端",
+      "card": {
+        "norad": "NORAD {{id}}",
+        "type": "種別",
+        "operator": "運用者",
+        "over": "上空",
+        "ocean": "海洋",
+        "altBand": "高度帯",
+        "inclination": "軌道傾斜角",
+        "velocity": "速度",
+        "types": {
+          "sar": "SAR撮像",
+          "optical": "光学撮像",
+          "military": "軍事",
+          "sigint": "SIGINT",
+          "signals": "信号情報"
+        }
+      },
+      "tooOld_other": "軌道要素が{{count}}日前のもので、通過の計算には古すぎます。",
+      "count_other": "{{family}}の観測範囲内に{{count}}地点",
+      "passes_other": "{{count}}回の通過"
+    },
+    "siteSatellites": {
+      "heading": "この地点上空の追跡衛星 · 今後{{hours}}時間",
+      "none": "{{hours}}時間以内にこの地点をカバーする追跡中の撮像衛星はありません。",
+      "notLoaded": "再試行するには地点を開き直してください。衛星の軌道要素を読み込めませんでした。",
+      "failed": "再試行するには地点を開き直してください。通過の計算に失敗しました。"
+    },
+    "sheet": {
+      "heading": "衛星画像の証拠",
+      "window": "過去{{days}}日間、今後{{hours}}時間",
+      "apart": "カウント対象外：",
+      "newest": "最新{{when}}",
+      "newestNoPreview": "最新取得{{when}}にはプレビューがありません。古いシーンを表示しています。",
+      "noneConfirmed": "この期間に確認済み画像はありません",
+      "noneYet": "アーカイブからの回答を待機中",
+      "latest": "最新画像",
+      "latestNone": "この地点と期間について、アーカイブから結果がありません。",
+      "latestChecking": "アーカイブ検索中。計算済みパスを以下に一覧表示します。",
+      "compareWith": "比較対象",
+      "compareDate": "基準日",
+      "moreImages": "その他の確認済み画像",
+      "imageAlt": "{{sensor}}シーン、{{time}}",
+      "dailyMosaic": "日次モザイク",
+      "weatherFrame": "気象フレーム",
+      "change": "場所を変更",
+      "showUtc": "UTC",
+      "showLocal": "現地時間",
+      "alert": "オープンデータ衛星が上空を通過する前と、雲のない新しい画像が出るたびに通知します。",
+      "alertCta": "アラートを設定 · Pro",
+      "height": {
+        "collapsed": "シートが折りたたまれています。半分の高さまで展開",
+        "half": "シートが半分の高さです。全高まで展開",
+        "full": "シートが展開されています。折りたたむ"
+      },
+      "apartMosaics_other": "{{count}}件の日次モザイク",
+      "apartFrames_other": "{{count}}件の気象衛星画像",
+      "apartInRange_other": "{{count}}件の範囲内パス",
+      "confirmedCount_other": "{{count}}件の確認済み画像"
+    },
+    "tierDef": {
+      "confirmed": "アーカイブにこの地点をカバーするシーンがあります。",
+      "likely": "固定スワスの範囲にこの地点が含まれていました。アーカイブのシーンはまだありません。",
+      "inReach": "指向可能なセンサーがここを撮像対象にできます。撮像計画は非公開です。",
+      "capability": "公開アーカイブのないセンサー種別が上空にありました。"
+    },
+    "events": {
+      "heading": "この地点のイベント",
+      "kindLabel": "種類",
+      "detail": "詳細",
+      "now": "現在",
+      "loading": "イベントフィードを読み込み中…",
+      "none": "過去{{days}}日間に{{km}} km以内のイベントはありません。",
+      "unavailable": "利用不可: {{sources}}",
+      "kind": {
+        "conflict": "紛争",
+        "fires": "火災",
+        "unrest": "騒乱",
+        "outages": "通信障害",
+        "vessels": "海運",
+        "military-flights": "軍用機",
+        "gps-jamming": "GPS妨害"
+      }
+    },
+    "capability": {
+      "heading": "この地点を撮像可能なセンサー",
+      "none": "この期間中、センサーパスはありません。",
+      "tooOld": "軌道データが古すぎます: {{names}}",
+      "showAll": "{{count}}件すべて表示",
+      "showFewer": "表示を減らす",
+      "group": {
+        "open": "オープンデータ",
+        "commercial": "商用",
+        "government": "政府",
+        "military": "軍用",
+        "other": "その他"
+      }
+    },
+    "windows": {
+      "heading": "次の観測ウィンドウ",
+      "optical": "オープン光学",
+      "radar": "オープンレーダー",
+      "none": "今後{{hours}}時間以内に利用可能な光学式またはレーダーパスはありません。"
+    },
+    "status": {
+      "catalog": "衛星カタログを読み込み中…",
+      "computing": "パス計算中 · 衛星 {{done}}/{{total}}",
+      "checking": "アーカイブ応答: {{done}}/{{total}}",
+      "partial": "{{sources}}から応答がありません。カウントが少なくなる可能性があります。",
+      "staleCatalog": "カタログは{{age}}前のものです。予測時刻がずれる可能性があります。",
+      "empty": "この期間中、衛星がこの地点の範囲内に入りませんでした。",
+      "unavailable": "パスデータは利用不可です。後でもう一度お試しください。"
+    },
+    "privacy": {
+      "line": "ご指定のポイントはイメージアーカイブのみに送信されます。",
+      "more": "詳細",
+      "body": "パスはこのデバイス上で計算されます。イメージを検索するとき、ブラウザはそのポイントを Earth Search、Planetary Computer、NASA GIBS、EUMETSAT に直接送信します。WorldMonitor は受信しません。監視対象サイトでは、WorldMonitor にはそのサイトの日次記録をサイト ID で問い合わせ、ポイントは送信しません。入力された地名は WorldMonitor と OpenStreetMap Nominatim に送信され、検索されます。共有リンクは小数点以下2桁（0.01°）を保持します。"
+    },
+    "sources": {
+      "heading": "ソース ({{count}})",
+      "docs": "方法とカバレッジ",
+      "conflict": "紛争・騒乱イベント",
+      "fires": "火災検出",
+      "outages": "インターネット障害フィード",
+      "vessels": "船舶位置"
+    },
+    "caption": {
+      "clear": "地点に雲なし",
+      "clearSceneCloud": "地点に雲なし · シーン{{pct}}%雲",
+      "clouded": "地点に雲あり · {{pct}}%",
+      "cloudShadow": "地点に影あり",
+      "spotNotChecked": "地点の雲は不明",
+      "sceneCloud": "シーン{{pct}}%雲 · 地点不明",
+      "radar": "レーダー · 雲の影響なし"
+    },
+    "tile": {
+      "failed": "シーン読み込み失敗 · {{archive}}",
+      "noPreview": "このシーンのプレビューはまだ公開されていません",
+      "processing": "シーンはまだ処理中です。しばらくしてから再試行してください。",
+      "radar": "レーダー"
+    },
+    "target": {
+      "acquired": "撮影 {{time}} · {{resolution}}"
+    },
+    "popup": {
+      "title": "衛星画像",
+      "loading": "衛星アーカイブを確認中…",
+      "latest": "最新の画像",
+      "nextPass": "次の通過",
+      "noImage": "最近の画像は見つかりません",
+      "noPass": "72 時間以内に通過予定はありません",
+      "openEvidence": "証拠を開く",
+      "compareEvent": "前後比較",
+      "compareEventLocked": "前後比較 · Pro",
+      "compareSearching": "{{date}} の前後のシーンを検索中…",
+      "compareNoAfter": "{{date}} 以降の晴天シーンはまだありません。",
+      "compareNoAfterWindow": "{{date}} から {{days}} 日以内の晴天シーンはありません。",
+      "compareNoBefore": "アーカイブ期間内に {{date}} より前の晴天シーンがありません。",
+      "compareFailed": "アーカイブ検索に失敗しました。再試行してください。",
+      "imageAlt": "{{source}} による衛星画像",
+      "unavailable": "衛星画像を読み込めませんでした。",
+      "fire": {
+        "title": "衛星火災検出",
+        "detected": "検出日時",
+        "satellite": "衛星",
+        "confidence": "信頼度",
+        "confidenceHigh": "高",
+        "confidenceNominal": "標準",
+        "confidenceLow": "低",
+        "power": "火災の規模",
+        "powerValue": "{{value}} MW",
+        "region": "地域",
+        "source": "ソース",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "日次モザイク",
+        "mosaicLoading": "NASA GIBSを確認中…",
+        "mosaicCaption": "{{date}}に{{source}}が通過した観測を合成した日次画像です。火災は雲や煙に隠れている可能性があります。",
+        "mosaicNone": "NASA GIBSには{{date}}の{{source}}モザイクがありません。",
+        "mosaicNoLayer": "この衛星の日次モザイクは利用できません。",
+        "mosaicUnavailable": "日次モザイクが読み込まれませんでした。",
+        "mosaicAlt": "NASA GIBS {{source}} {{date}}の日次モザイク"
+      }
+    },
+    "site": {
+      "heading": "監視対象サイト",
+      "loading": "サイトの日次記録を読み込み中…",
+      "failed": "サイトの日次記録を読み込めませんでした。地点を開き直して再試行してください。",
+      "stale": "このサイトには現在の日次チェックの記録がありません。",
+      "checked": "確認日時",
+      "noPass": "予定されている通過の記録はありません",
+      "list": {
+        "hotspot": "ホットスポット",
+        "conflictZone": "紛争地域",
+        "militaryBase": "軍事基地",
+        "nuclearFacility": "核施設",
+        "port": "港湾",
+        "chokepoint": "海峡",
+        "reservoir": "貯水池"
+      }
+    }
+  },
+  "settings": {
+    "back": "設定に戻る",
+    "signIn": {
+      "label": "サインイン",
+      "desc": "設定を同期してプランを管理"
+    },
+    "summary": {
+      "themeAuto": "自動",
+      "count": "{{total}}中{{on}}"
+    },
+    "groups": {
+      "dashboard": "ダッシュボード",
+      "preferences": "プリファレンス",
+      "developer": "デベロッパー",
+      "app": "アプリ"
+    },
+    "sections": {
+      "account": "アカウント",
+      "map": "マップ",
+      "ai": "AI & 分析",
+      "video": "ビデオ & ストリーム",
+      "apiKeys": "APIキー",
+      "embeds": "Embeds",
+      "aiAgents": "AIエージェント(MCP)",
+      "sync": "同期、インポート & エクスポート",
+      "about": "概要"
+    },
+    "descriptions": {
+      "panels": "表示、非表示、並び替え",
+      "sources": "地域とフィード",
+      "notifications": "チャネルとアラートルール",
+      "display": "テーマ、フォント、言語",
+      "map": "プロバイダー、テーマ、グローブ",
+      "ai": "モデル、メモリ、フレームワーク",
+      "video": "品質と自動再生",
+      "apiKeys": "World Monitor APIのキー",
+      "embeds": "自分のサイト用widget",
+      "aiAgents": "接続されたMCPクライアント",
+      "about": "サイトリンク、利用規約、プライバシー"
+    },
+    "signOut": "ログアウト",
+    "signOutFailed": "ログアウトできませんでした。もう一度お試しください。",
+    "search": {
+      "empty": "一致する設定はありません"
+    },
+    "account": {
+      "intro": "現在のプランを確認し、お支払い方法、請求書、またはキャンセルを管理できます。",
+      "planFree": "無料",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Premium アクセス",
+        "desc": "このアクセスは WorldMonitor アカウントを通じて課金されません。お支払い方法および請求書はここでは利用できません。"
+      },
+      "checking": {
+        "heading": "プランを確認中…",
+        "desc": "通常は数秒で完了します。"
+      },
+      "status": {
+        "cancelScheduled": "キャンセル予定 -- {{date}} までアクセス可能",
+        "renews": "更新日: {{date}}",
+        "onHold": "保留中 -- お支払い方法を更新してください",
+        "cancelled": "キャンセル済み -- {{date}} までアクセス可能",
+        "expired": "期限切れ",
+        "unknown": "プランの詳細については「課金管理」をご覧ください。",
+        "ownerManaged": "課金はプランの所有者が管理します。"
+      },
+      "upgradeToBusiness": "Business にアップグレード",
+      "unavailable": {
+        "heading": "プランステータスが利用できません",
+        "desc": "現在のプランを確認できませんでした。もう一度お試しになるか、新しいタブでプランを表示してください。"
+      },
+      "free": {
+        "heading": "WorldMonitor 無料プラン",
+        "desc": "現在のプランは無料プランです。アップグレードすると、すべてのパネル、AI 分析、優先データ更新をご利用いただけます。"
+      },
+      "portal": {
+        "openFailed": "課金ポータルを開くことができませんでした。ポップアップを許可して、もう一度お試しください。",
+        "unavailable": "課金ポータルが利用できません。support@worldmonitor.app にメールでお問い合わせください。"
+      },
+      "deletion": {
+        "heading": "アカウントの削除",
+        "desc": "この World Monitor アカウントを完全に削除します。サブスクリプションは直ちにキャンセルされ、残りの前払い期間の返金はありません。API キー、埋め込みキー、MCP トークンは機能しなくなります。会計、紛争対応、法的な要請に必要な請求記録は、そこに含まれる顧客の連絡先情報とともに保持されます。これらの記録はあなたのログインアカウントと紐付かなくなりますが、削除前に書き込まれた決済プロバイダーの Webhook ログには、配信時の識別子が残ります。このデバイス上のダッシュボード設定と、デスクトップのキーチェーン（OS の認証情報ストア）に保存されたシークレットは、リモートでは消去されません。",
+        "dialogTitle": "このアカウントを削除しますか?",
+        "dialogCopy": "この操作は取り消せません。サブスクリプションはキャンセルされ、キーは直ちに機能しなくなります。請求記録は、そこに含まれる連絡先情報も含め、会計、紛争対応、法的な要請のために保持されます。削除後、他のデバイスでサインアウトし、このデバイスのサイトデータを消去してください。これらはサーバー側からは操作できません。",
+        "phraseLabel": "{{phrase}} と入力して確認",
+        "deleted": "アカウントが削除されました。他のデバイスでサインアウトし、このデバイスのサイトデータをクリアしてください。",
+        "failed": "アカウント削除に失敗しました。もう一度お試しください。"
+      },
+      "seats": {
+        "used": "{{used}} / {{cap}} 使用中",
+        "invite": "招待",
+        "inviting": "招待中...",
+        "remove": "削除",
+        "removing": "削除中...",
+        "inviteSent": "招待を送信しました",
+        "alreadyInvited": "既に招待済み"
+      },
+      "businessSeats": {
+        "heading": "Business シート",
+        "statusAccepted": "承諾済み",
+        "statusExpired": "期限切れ",
+        "statusPending": "承諾待ち",
+        "expires": "{{date}}に期限切れ",
+        "hintCorporate": "任意の企業メールドメインのチームメンバーを招待できます。",
+        "hintPersonal": "チームメンバーを招待するには企業メールアドレスを追加してください。",
+        "personalDomain": "フリーメールまたは使い捨てメールドメインではチームメンバーを招待できません。この機能を使用するには企業メールを追加してください。",
+        "empty": "まだシートが招待されていません。",
+        "confirmRemove": "このシートを削除しますか？招待されたユーザーは直ちに Pro へのアクセスを失います。",
+        "removed": "シートを削除しました",
+        "alreadyInactive": "シートは既に無効です",
+        "loadFailed": "シートの読み込みに失敗しました",
+        "inviteFailed": "招待の送信に失敗しました",
+        "removeFailed": "シートの削除に失敗しました",
+        "errors": {
+          "seatCap": "4つのシートがすべて使用されています。まず1つのシートを削除してください。",
+          "ownerDomain": "チームメンバーを招待するには、アカウントメールが企業ドメインである必要があります。",
+          "self": "自分自身を招待することはできません。",
+          "inviteeDomain": "招待先メールは企業ドメインである必要があります。",
+          "rateLimited": "直近24時間の上限である20件の招待を送信しました。さらにチームメンバーを招待する前にお待ちください。"
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "{{account}} Enterprise シート",
+        "memberHint": "このアカウントのメンバー追加・削除はアカウント管理者が行います。",
+        "hintFull": "すべてのシートが使用中です。誰かを削除するか招待を取り下げてシートを解放してください。",
+        "hintOpen": "企業メールでユーザーを招待できます。招待された人には14日間有効なリンクが届き、このアカウントの利用枠を共有します。",
+        "emailLabel": "招待するメールアドレス",
+        "statusActive": "アクティブ",
+        "statusExpired": "招待期限切れ",
+        "statusInvited": "招待済み",
+        "emailFailed": "招待メールを送信できませんでした。アドレスを確認してから、招待を取り下げて再度招待してください。",
+        "inviteExpires": "招待は{{date}}に期限切れ",
+        "roleAdmin": "管理者",
+        "you": "あなた",
+        "withdraw": "取り下げ",
+        "unknownEmail": "不明なメール",
+        "alreadyMember": "既にメンバー",
+        "confirmRemove": "{{email}}を削除しますか？このユーザーは直ちに Enterprise へのアクセスを失います。",
+        "confirmRemoveUnknown": "このユーザーを削除しますか？直ちに Enterprise へのアクセスを失います。",
+        "confirmWithdraw": "{{email}}への招待を取り下げますか？",
+        "confirmWithdrawUnknown": "このアドレスへの招待を取り下げますか？",
+        "removed": "メンバーを削除しました",
+        "withdrawn": "招待を取り下げました",
+        "loadFailed": "シートを読み込めませんでした。もう一度お試しください。",
+        "inviteFailed": "招待を送信できませんでした。もう一度お試しください。",
+        "removeFailed": "削除できませんでした。もう一度お試しください。",
+        "errors": {
+          "seatCap": "すべてのシートが使用中です。誰かを削除するか、招待を取り下げてください。",
+          "inviteeDomain": "会社のメールアドレスを招待してください。フリーメールおよび使い捨てメールドメインは対応していません。",
+          "self": "既にシートがあります。",
+          "contractEnded": "Enterprise 契約が終了しています。更新するにはサポートにお問い合わせください。",
+          "notAdmin": "アカウント管理者のみがシートを管理できます。",
+          "removeSelf": "自分のシートは削除できません。管理者を変更するにはサポートに連絡してください。",
+          "tooMany": "1度に最大10人まで招待できます。",
+          "rateLimited": "1日の招待数上限に達しました。明日もう一度お試しください。"
+        }
+      },
+      "switchYearly": {
+        "entryLabel": "年間プランに切り替え",
+        "offerLine": "ブラックフライデー: 月額{{perMonth}}（通常{{monthly}}）、年間請求。初年度は月額払いより{{percent}}%お得です。その後は年額{{renewal}}で更新されます。いつでもキャンセルできます。",
+        "title": "Pro 年間プランに切り替える",
+        "confirm": "今すぐ切り替える",
+        "dismiss": "後で",
+        "previewMoves": "ご利用中の Pro 月額プランは、今すぐ Pro 年間プランに切り替わります。",
+        "previewChargeOffer": "本日のお支払いは{{charge}}です。初年度の{{percent}}%割引価格から、今月の未使用分を差し引いた金額です。",
+        "previewCharge": "本日のお支払いは、今月の未使用分を差し引いた{{charge}}です。",
+        "previewRestart": "請求期間は本日から新たに始まります。",
+        "renewsPriceDate": "{{date}}に年額{{price}}（税別）で更新されます。",
+        "renewsPrice": "年額{{price}}（税別）で更新されます。",
+        "renewsListDate": "{{date}}に Pro 年間プランの価格で更新されます。",
+        "renewsList": "Pro 年間プランの価格で更新されます。",
+        "previewTerms": "それまでにキャンセルすれば、追加の請求は発生しません。お支払いが完了しなかった場合は、Pro 月額プランのままとなります。",
+        "offerNotApplied": "今回の切り替えにはこのオファーを適用できません。オファーなしの価格を表示しています。",
+        "quoteChanged": "このオファーは終了しました。プランは変更されていません。オファーなしの価格を表示しています。",
+        "chargeChanged": "お見積もり後に価格が変更されました。プランは変更されていません。新しい価格を表示しています。",
+        "successTitle": "Pro 年間プランに切り替えました",
+        "successBody": "お支払いが確認され次第、プランが変更されます。通常1分以内に完了します。",
+        "done": "完了",
+        "cancelScheduledTitle": "先に Pro 月額プランを再開してください",
+        "cancelScheduledBody": "ご利用中の Pro 月額プランは、今回の請求期間の終了時にキャンセルされる予定です。先に課金ポータルでプランを再開してから、Pro 年間プランに切り替えてください。",
+        "openPortal": "課金ポータルを開く",
+        "failedTitle": "切り替えを確認できませんでした",
+        "failedBody": "切り替えを確認できませんでした。もう一度お試しになる前に課金ポータルでプランをご確認いただくか、support@worldmonitor.app までメールでお問い合わせください。",
+        "accountChangedTitle": "アカウントが変更されました",
+        "accountChangedBody": "お見積もりの取得後にアカウントが切り替えられました。Pro 年間プランに移行したいアカウントで、もう一度切り替えを開始してください。",
+        "unavailable": "現在、切り替え価格を算出できません。数分後にもう一度お試しいただくか、support@worldmonitor.app までメールでお問い合わせください。"
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "レイアウト",
+        "1": "ウィジェット",
+        "2": "テキストサイズ",
+        "3": "レイアウトをリセット"
+      },
+      "sources": {
+        "0": "ニュース",
+        "1": "フィード",
+        "2": "RSS",
+        "3": "地域",
+        "4": "ニュース報道"
+      },
+      "notifications": {
+        "0": "アラート",
+        "1": "Telegram",
+        "2": "Slack",
+        "3": "メール",
+        "4": "Discord",
+        "5": "Webhook",
+        "6": "プッシュ"
+      },
+      "display": {
+        "0": "テーマ",
+        "1": "ダーク",
+        "2": "ライト",
+        "3": "フォント",
+        "4": "言語",
+        "5": "テキストサイズ"
+      },
+      "map": {
+        "0": "グローブ",
+        "1": "プロバイダ",
+        "2": "タイル",
+        "3": "ベースマップ"
+      },
+      "ai": {
+        "0": "LLM",
+        "1": "Ollama",
+        "2": "フレームワーク",
+        "3": "ヘッドラインメモリ",
+        "4": "ブラウザモデル"
+      },
+      "video": {
+        "0": "ストリーム",
+        "1": "自動再生",
+        "2": "品質",
+        "3": "ライブ"
+      },
+      "apiKeys": {
+        "0": "キー",
+        "1": "トークン",
+        "2": "デスクトップキー"
+      },
+      "embeds": {
+        "0": "ウィジェット",
+        "1": "iframe",
+        "2": "埋め込みキー"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "エージェント",
+        "3": "ChatGPT",
+        "4": "クライアント"
+      },
+      "sync": {
+        "0": "インポート",
+        "1": "エクスポート",
+        "2": "バックアップ",
+        "3": "クラウド"
+      },
+      "about": {
+        "0": "利用規約",
+        "1": "プライバシー",
+        "2": "ライセンス",
+        "3": "法務"
+      },
+      "account": {
+        "0": "プラン",
+        "1": "課金",
+        "2": "サブスクリプション",
+        "3": "請求書",
+        "4": "シート",
+        "5": "サインアウト",
+        "6": "アカウント削除"
+      }
+    },
+    "reservoirAlert": {
+      "title": "水位アラート",
+      "description": "戦略的貯水池のlidar水位が低い場合にアラートを送信します。NASAは各衛星パスの測定から約2ヶ月後にデータを公開するため、すべてのアラートには測定日が記載されます。",
+      "scopeHint": "最大{{max}}個の貯水池を選択できます。アラートはここにリストされた貯水池のみが対象です。",
+      "searchPlaceholder": "貯水池を名前で追加",
+      "searchLabel": "貯水池を追加",
+      "removeLabel": "{{name}}を削除",
+      "thresholdLabel": "レベル閾値",
+      "thresholdHint": "最新の測定値がその貯水池の測定範囲のこのパーセンテージを下回る場合にアラートを送信します。0は測定された最低水位、100は最高水位です。閾値を設定しない場合は空白のままにします。",
+      "thresholdInputLabel": "レベル閾値、測定範囲の百分率",
+      "seasonalLabel": "季節基準を下回る低下",
+      "seasonalHint": "最新の測定値がその貯水池が通常この時期に測定する値を大きく下回る場合にアラートを送信します。",
+      "quietNote": "これらのアラートは、リアルタイムアラートが重大のみに設定されていても届きます。サイレント時間中は通知されません。",
+      "quietNoteBatch": "これらのアラートは、リアルタイムアラートが重大のみに設定されていても届きます。サイレント時間中は通知されません。Batch を選択した場合は、サイレント時間が終わるまで保留されます。"
+    },
+    "briefLanguage": {
+      "label": "ブリーフィングの言語",
+      "hint": "毎日のブリーフィングは{{language}}で作成されます。",
+      "sameAsApp": "アプリの言語と同じ",
+      "loadFailed": "読み込みに失敗しました",
+      "saveFailed": "保存できませんでした。もう一度試してください。"
     }
   }
 }

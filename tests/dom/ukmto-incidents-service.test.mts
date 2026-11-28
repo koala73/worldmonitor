@@ -36,3 +36,16 @@ it('keeps a fresh snapshot available when the browser clock runs behind the prod
   expect(await fetchUkmtoIncidents()).toMatchObject({ fetchedAt: now + 10 * 60000, dataAvailable: true, stale: false });
   vi.restoreAllMocks();
 });
+
+it('rejects with AbortError when the caller signal is aborted without clearing lastValid', async () => {
+  const now = Date.now();
+  upstream.value = { incidents: [], fetchedAt: now, dataAvailable: true };
+  expect((await fetchUkmtoIncidents()).dataAvailable).toBe(true);
+
+  const controller = new AbortController();
+  controller.abort(new DOMException('Refresh lane lease expired', 'AbortError'));
+  await expect(fetchUkmtoIncidents(controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
+
+  upstream.value = undefined;
+  expect((await fetchUkmtoIncidents()).fetchedAt).toBe(now);
+});

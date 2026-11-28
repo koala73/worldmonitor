@@ -17,3 +17,20 @@ test('get_aviation_status freshness follows the aggregate it reads', () => {
   ]);
   assert.equal(tool._freshnessChecks[0].key, 'seed-meta:aviation:delays-bootstrap');
 });
+
+// The seeder writes enum severities (scripts/seed-aviation.mjs SEVERITY_MAP),
+// so a bare 'normal' comparison kept every row and disrupted_only filtered nothing.
+test('get_aviation_status disrupted_only drops seeded FLIGHT_DELAY_SEVERITY_NORMAL rows', () => {
+  const tool = CACHE_TOOLS.find((t) => t.name === 'get_aviation_status');
+  const data = {
+    'delays-bootstrap': {
+      alerts: [
+        { iata: 'JFK', severity: 'FLIGHT_DELAY_SEVERITY_NORMAL' },
+        { iata: 'LHR', severity: 'FLIGHT_DELAY_SEVERITY_MAJOR' },
+        { iata: 'CDG', severity: 'normal' },
+      ],
+    },
+  };
+  const out = tool._postFilter(data, { disrupted_only: true });
+  assert.deepEqual(out['delays-bootstrap'].alerts.map((a) => a.iata), ['LHR']);
+});

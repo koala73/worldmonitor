@@ -1,4 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 const annualizedTotalUsd = 2_684_000_000;
 
@@ -208,8 +209,7 @@ async function setupGivingPage(
 
 async function capturePanel(page: Page, testInfo: TestInfo, name: string): Promise<void> {
   const path = testInfo.outputPath(`${name}.png`);
-  await page.locator('.panel[data-panel="giving"]').screenshot({ path });
-  await testInfo.attach(name, { path, contentType: 'image/png' });
+  await evidenceScreenshot(page.locator('.panel[data-panel="giving"]'), { path }, { testInfo, name });
 }
 
 test.describe('Happy variant Giving provenance', () => {
@@ -222,7 +222,7 @@ test.describe('Happy variant Giving provenance', () => {
       'Published benchmarks with partial source coverage.',
     );
     await expect(panel.locator('.giving-stat-headline .giving-stat-value')).toHaveText(
-      'At least $2.7B',
+      'At least $2.6B',
     );
     await expect(panel.locator('.giving-stat-headline')).toContainText(
       'Tracked platform giving — annualized estimate',

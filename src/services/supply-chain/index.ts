@@ -548,28 +548,6 @@ export interface VulnerabilityRankingFilters {
   pageSize?: number;
 }
 
-export async function fetchVulnerabilityRankings(
-  filters: VulnerabilityRankingFilters = {},
-  options?: { signal?: AbortSignal },
-): Promise<ListVulnerabilityRankingsResponse> {
-  const empty: ListVulnerabilityRankingsResponse = {
-    vulnerabilities: [],
-    generatedAt: '',
-    methodologyVersion: '',
-    upstreamUnavailable: true,
-  };
-  try {
-    return await client.listVulnerabilityRankings({
-      commodityId: filters.commodityId || '',
-      band: filters.band || '',
-      state: filters.state || '',
-      pageSize: filters.pageSize || 25,
-    }, { signal: vulnerabilityRequestSignal(options?.signal) });
-  } catch {
-    return empty;
-  }
-}
-
 const emptyMultiSectorShock: GetMultiSectorCostShockResponse = {
   iso2: '',
   chokepointId: '',

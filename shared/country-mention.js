@@ -24,6 +24,8 @@
 // - Bare ISO codes match only for CODE_TOKEN_ALLOWLIST, as uppercase tokens.
 //   Every other two-letter code is either an English word (IN, NO, IT, BE) or
 //   an acronym in someone else's story (AU, CM, GM, TV, ET, EC).
+// - Weak names (AMBIGUOUS_COUNTRY_TERMS) count beside a co-term, or alone
+//   when written as a proper noun that is not part of a person's name.
 // - Exclusion phrases are removed before the name match so "South Sudan"
 //   never grounds Sudan, "Papua New Guinea" never grounds Guinea and
 //   "Northern Ireland" never grounds Ireland.
@@ -90,6 +92,32 @@ const NAME_EXCLUSIONS = {
   SD: ['south sudan'],
   TR: ['turks and caicos'],
   WS: ['american samoa'],
+};
+
+// Exclusions removed only as whole phrases. A prefix removal would let
+// "niger state" swallow "Niger states it will reopen the border".
+const WHOLE_WORD_EXCLUSIONS = {
+  NE: ['niger state', 'niger delta'],
+};
+
+// Names that are also common words, people, US states or neighbours' names
+// (#11189). Forecast subject matching (scripts/build-judged-subject-terms.mjs)
+// counts a weak name only beside a co-term. Headlines name most countries
+// without one ("Turkey arrests fund managers", "Jordan banks won't raise
+// rates"), so here a weak name also counts alone when a mention of it is
+// capitalized ("turkey farm" is not Turkey) and, for a name that is also a
+// first name (`firstName`), does not sit next to another capitalized word
+// ("Jordan Hawkins", "Chad Gable", "Jim Jordan"). The name-shape test is
+// limited to first names because on Georgia and Niger it dropped more real
+// stories than homonyms in the weekly pulse snapshots.
+export const AMBIGUOUS_COUNTRY_TERMS = {
+  GE: { weak: ['georgia', 'georgian'], co: ['tbilisi', 'caucasus', 'abkhazia', 'ossetia', 'georgian dream', 'kobakhidze', 'ivanishvili', 'batumi', 'kremlin', 'moscow', 'ukraine', 'crimea', 'eu', 'nato'] },
+  JO: { firstName: true, weak: ['jordan'], co: ['amman', 'hashemite', 'king abdullah', 'israel', 'israeli', 'gaza', 'west bank', 'syria', 'iraq', 'middle east', 'palestinian'] },
+  TD: { firstName: true, weak: ['chad'], co: ['ndjamena', 'n djamena', 'sahel', 'darfur', 'sudan', 'sudanese', 'deby', 'africa', 'african', 'nigeria', 'cameroon', 'lake chad'] },
+  NE: { weak: ['niger'], co: ['niamey', 'sahel', 'tiani', 'junta', 'mali', 'burkina', 'ecowas', 'africa', 'african'] },
+  TR: { weak: ['turkey'], co: ['ankara', 'erdogan', 'istanbul', 'kurdish', 'pkk', 'syria', 'nato', 'lira', 'turkiye'] },
+  CG: { weak: ['congo'], co: ['brazzaville', 'sassou'] },
+  CD: { weak: ['congo'], co: ['kinshasa', 'goma', 'kivu', 'ituri', 'm23', 'tshisekedi', 'ebola', 'drc', 'rwanda'] },
 };
 
 // Demonyms as they are written: capitalized, matched case-sensitively.
@@ -293,11 +321,16 @@ export function countryMentionTerms(code) {
     if (display) names.add(display);
   }
   for (const alias of NAME_ALIASES[normalizedCode] || []) names.add(alias);
+  const ambiguous = AMBIGUOUS_COUNTRY_TERMS[normalizedCode];
   return {
     code: normalizedCode,
     names: [...names],
+    weakNames: [...names].filter((name) => ambiguous?.weak.includes(name)),
+    weakFirstName: Boolean(ambiguous?.firstName),
+    coTerms: [...(ambiguous?.co || [])],
     demonyms: [...(DEMONYMS[normalizedCode] || [])],
     exclusions: [...(NAME_EXCLUSIONS[normalizedCode] || [])],
+    wordExclusions: [...(WHOLE_WORD_EXCLUSIONS[normalizedCode] || [])],
   };
 }
 
@@ -313,20 +346,30 @@ function matchesCasedToken(rawText, token) {
 // the NORMALIZED text (where "Guinea-Bissau" is already "guinea bissau"), and
 // the demonym path scrubs them from the raw text with hyphens and whitespace
 // treated alike. Both are prefix matches on purpose: "south sudan" also
-// blanks the start of "South Sudanese", which is the point.
-function scrubNormalizedExclusions(normalizedText, exclusions) {
+// blanks the start of "South Sudanese", and "guinea bissau" the start of
+// "Guinea-Bissauan", which is the point. Whole-word exclusions are the
+// exception and must end on a word boundary.
+function scrubNormalizedExclusions(normalizedText, exclusions, wordExclusions = []) {
   let out = normalizedText;
   for (const phrase of exclusions) {
     if (phrase) out = out.split(phrase).join(' ');
   }
+  for (const phrase of wordExclusions) {
+    if (phrase) out = out.replace(new RegExp(`(^|[^a-z0-9])${escapeRegExp(phrase)}(?=$|[^a-z0-9])`, 'g'), '$1 ');
+  }
   return out;
 }
 
-function scrubRawExclusions(rawText, exclusions) {
+function scrubRawExclusions(rawText, exclusions, wordExclusions = []) {
   let out = rawText;
+  const pattern = phrase => String(phrase || '').trim().split(/\s+/).filter(Boolean).map(escapeRegExp).join('[\\s-]+');
   for (const phrase of exclusions) {
-    const pattern = String(phrase || '').trim().split(/\s+/).filter(Boolean).map(escapeRegExp).join('[\\s-]+');
-    if (pattern) out = out.replace(new RegExp(pattern, 'gi'), ' ');
+    const source = pattern(phrase);
+    if (source) out = out.replace(new RegExp(source, 'gi'), ' ');
+  }
+  for (const phrase of wordExclusions) {
+    const source = pattern(phrase);
+    if (source) out = out.replace(new RegExp(`(^|[^A-Za-z0-9])${source}(?=$|[^A-Za-z0-9])`, 'gi'), '$1 ');
   }
   return out;
 }
@@ -335,15 +378,46 @@ function scrubRawExclusions(rawText, exclusions) {
 export function mentionsCountry(rawText, terms) {
   if (!terms) return false;
   const exclusions = terms.exclusions || [];
-  const text = scrubRawExclusions(String(rawText || ''), exclusions);
+  const wordExclusions = terms.wordExclusions || [];
+  const text = scrubRawExclusions(String(rawText || ''), exclusions, wordExclusions);
   if (!text.trim()) return false;
-  const normalized = scrubNormalizedExclusions(normalizeMentionText(String(rawText || '')), exclusions);
+  const normalized = scrubNormalizedExclusions(normalizeMentionText(String(rawText || '')), exclusions, wordExclusions);
+  const weakNames = terms.weakNames || [];
   for (const name of terms.names || []) {
-    if (name && matchesNormalizedWord(normalized, name)) return true;
+    if (!name || weakNames.includes(name)) continue;
+    if (matchesNormalizedWord(normalized, name)) return true;
   }
   for (const demonym of terms.demonyms || []) {
     if (demonym && matchesCasedToken(text, demonym)) return true;
   }
   if (CODE_TOKEN_ALLOWLIST.has(terms.code) && matchesCasedToken(text, terms.code)) return true;
-  return false;
+  return weakNames.some((name) => matchesNormalizedWord(normalized, name)
+    && ((terms.coTerms || []).some((term) => matchesNormalizedWord(normalized, term))
+      || standsAlone(text, name, Boolean(terms.weakFirstName))));
+}
+
+const CAPITALIZED = /^\p{Lu}\p{Ll}/u;
+const ALL_CAPS = /^\p{Lu}+$/u;
+
+// One mention of the weak name, on diacritic-stripped raw text, is written as
+// a proper noun and, for a first name, is not part of a two-word name. One is
+// enough: a Jordan Times story ends "- Jordan Times". A possessive ends the
+// name ("Jordan's Karak province"); punctuation between two words does too
+// ("Qatar, Jordan, Egypt"). All caps counts only for a name that is not a
+// first name: "TURKEY raises rates" is the country, "CHAD" is a token ticker.
+function standsAlone(rawText, name, firstName) {
+  const text = rawText.normalize('NFKD').replace(/\p{Diacritic}/gu, '').replace(/\s+/gu, ' ');
+  const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])(${escapeRegExp(name)})(?=$|[^\\p{L}\\p{N}])`, 'giu');
+  return [...text.matchAll(pattern)].some((match) => {
+    const at = match.index + match[1].length;
+    const word = match[2];
+    if (!firstName) return CAPITALIZED.test(word) || ALL_CAPS.test(word);
+    if (!CAPITALIZED.test(word)) return false;
+    const previous = text[at - 1] === ' ' ? text.slice(text.lastIndexOf(' ', at - 2) + 1, at - 1) : '';
+    if (previous && CAPITALIZED.test(previous) && /\p{L}$/u.test(previous)) return false;
+    const after = text.slice(at + word.length);
+    if (/^['’]s(?![\p{L}\p{N}])/u.test(after)) return true;
+    const next = after.match(/^ (\S+)/)?.[1];
+    return !(next && CAPITALIZED.test(next));
+  });
 }

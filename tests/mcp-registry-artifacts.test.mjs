@@ -275,6 +275,15 @@ describe('mcp registry publication artifacts', () => {
     );
     assert.match(stepNamed('Authenticate to MCP Registry').run, /login http/);
     assert.match(stepNamed('Authenticate to MCP Registry').run, /--domain worldmonitor\.app/);
+    // Run 43073409701 died on one 10s TLS handshake timeout to the registry; a
+    // re-run succeeded. Both registry-facing steps must retry transient failures.
+    for (const name of ['Authenticate to MCP Registry', 'Publish server']) {
+      const run = stepNamed(name).run;
+      assert.match(run, /for attempt in 1 2 3/, `${name} must retry transient registry failures`);
+      assert.match(run, /&& exit 0\n/, `${name} must stop retrying on success, and the && keeps bash -e from aborting on a failed attempt`);
+      assert.match(run, /sleep \$\(\(attempt \* 10\)\)/, `${name} must back off between attempts`);
+      assert.match(run, /\n\s*exit 1\s*$/, `${name} must still fail after the last attempt`);
+    }
     assert.match(source, /secrets\.MCP_REGISTRY_PRIVATE_KEY/);
     assert.match(
       stepNamed('Prepare registry manifest').run,

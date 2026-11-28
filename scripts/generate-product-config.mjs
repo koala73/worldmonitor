@@ -65,8 +65,10 @@ const KEY_MAP = {
   enterprise: 'ENTERPRISE',
 };
 
+// Client bundles carry public plans only: a channel-only plan (offerChannel)
+// is sold by the server and must not ship its product id to the browser.
 const productEntries = Object.entries(PRODUCT_CATALOG)
-  .filter(([, e]) => e.dodoProductId)
+  .filter(([, e]) => e.dodoProductId && e.publicVisible)
   .map(([key, e]) => {
     const exportKey = KEY_MAP[key] || key.toUpperCase();
     return `  ${exportKey}: '${e.dodoProductId}',`;
@@ -102,7 +104,7 @@ const productIdsTs = `// AUTO-GENERATED from convex/config/productCatalog.ts
 /** Product IDs accepted by client-side analytics without loading checkout config. */
 export const DODO_PRODUCT_IDS: ReadonlySet<string> = new Set([
 ${Object.values(PRODUCT_CATALOG)
-  .filter((entry) => entry.dodoProductId)
+  .filter((entry) => entry.dodoProductId && entry.publicVisible)
   .map((entry) => `  '${entry.dodoProductId}',`)
   .join('\n')}
 ]);
@@ -167,6 +169,10 @@ for (const [tierGroup, entries] of tierGroups) {
     tier.highlightFeatures = primary.highlightFeatures;
   }
   tier.planLimits = publicPlanLimits(primary.features.planLimits);
+  // The /pro comparison table reads these so its dashboard and export rows
+  // come from the catalog instead of hand-typed copy (-1 = unlimited).
+  tier.maxDashboards = primary.features.maxDashboards;
+  tier.dataExport = primary.features.dataExport === true;
   if (localeFeaturesByKey[localeKey]) {
     throw new Error(`[product-config] Duplicate pro locale tier key "${localeKey}" generated for public tier group "${tierGroup}".`);
   }
@@ -179,7 +185,7 @@ for (const [tierGroup, entries] of tierGroups) {
     }
   } else if (!primary.selfServe && primary.priceCents === 0) {
     tier.cta = 'Get Started';
-    tier.href = 'https://worldmonitor.app/dashboard';
+    tier.href = 'https://www.worldmonitor.app/dashboard';
   } else if (!primary.selfServe && primary.priceCents === null) {
     tier.cta = 'Contact Sales';
     tier.href = 'mailto:enterprise@worldmonitor.app';

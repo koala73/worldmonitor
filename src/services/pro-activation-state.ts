@@ -51,6 +51,7 @@ export const PRO_PRODUCT_IDS: readonly string[] = [
 /** The entitlement plan keys that classify as Pro (productCatalog.ts). */
 export const PRO_PLAN_KEYS: readonly string[] = [
   'pro_monthly',
+  'pro_monthly_mcp',
   'pro_annual',
   'pro_business_monthly',
   'pro_business_annual',
@@ -704,6 +705,13 @@ export interface CriticalAlertsPayload {
   readonly enabled: true;
   readonly channels: string[];
   readonly sensitivity?: 'critical';
+  /**
+   * Seed path only (#10873): a realtime rule with no countries receives
+   * global critical events only, so the server scopes a rule with no stored
+   * countries to the user's followed countries, in the same transaction as
+   * the write. A stored scope is never overwritten.
+   */
+  readonly seedCountriesFromFollowed?: true;
 }
 
 export function buildCriticalAlertsPayload(
@@ -715,7 +723,7 @@ export function buildCriticalAlertsPayload(
     : [...existingChannels, 'web_push'];
   return hasEnabledRule
     ? { enabled: true, channels }
-    : { enabled: true, channels, sensitivity: 'critical' };
+    : { enabled: true, channels, sensitivity: 'critical', seedCountriesFromFollowed: true };
 }
 
 // ---------------------------------------------------------------------------

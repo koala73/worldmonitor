@@ -39,6 +39,10 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   // pairs with the next opening quote and silently eats a path out of the
   // published security contract.
   '/api/intelligence/v1/get-country-coverage',
+  // Orbital Watch: the in-app point lookup is free and runs in the browser;
+  // the per-point API and the per-country satellite evidence API are Pro.
+  '/api/orbital/v1/get-point-passes',
+  '/api/orbital/v1/get-country-imagery-evidence',
   '/api/intelligence/v1/list-market-implications',
   '/api/intelligence/v1/list-wsb-tickers',
   '/api/intelligence/v1/get-regional-snapshot',
@@ -79,7 +83,18 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   // Outlet-perspective grouping is a Pro MCP tool; the REST route matches it.
   '/api/news/v1/list-media-perspective',
   '/api/news/v1/list-news-pool',
+  // Cmd+K headline search over 7 days. The 24-hour sibling
+  // /api/news/v1/search-headlines stays off this list: free and signed-out
+  // dashboards search that window.
+  '/api/news/v1/search-headline-archive',
+  // Alerts delivered to the signed-in account, read by the dashboard search.
+  // Account-private: the handler reads only the key of the user the gateway
+  // authenticated. Listed here so premiumFetch attaches the Clerk bearer.
+  '/api/news/v1/list-sent-alerts',
   '/api/trade/v1/list-comtrade-flows',
+  // DOSM monthly trade by SITC section: Pro in the app, API key for REST, and
+  // the country-view MCP tool's monthlyTrade section.
+  '/api/trade/v1/get-monthly-sitc-trade',
   '/api/trade/v1/get-tariff-trends',
   '/api/trade/v1/get-bilateral-tariff',
   '/api/trade/v1/get-us-import-duty',

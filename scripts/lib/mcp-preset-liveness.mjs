@@ -1,8 +1,9 @@
 import { createRequire } from 'node:module';
 import ts from 'typescript';
+import { Agent, Dispatcher1Wrapper } from 'undici';
 
 const require = createRequire(import.meta.url);
-const { assertNotificationWebhookDeliveryUrlSafe } = require('./notification-webhook-ssrf.cjs');
+const { assertNotificationWebhookDeliveryUrlSafe, isBlockedResolvedAddress } = require('./notification-webhook-ssrf.cjs');
 
 // Read catalog data without loading mcp-store's browser/storage dependencies.
 // An unsupported entry must fail the monitor, never silently lose coverage.
@@ -58,6 +59,8 @@ const MAX_REDIRECT_HOPS = 1;
 // published into a public issue, the reachability answer leaks. api/mcp-proxy.ts
 // re-runs assertServerUrlSafe on every hop; this is the scripts-side equivalent,
 // reusing the repo's SSRF classifier rather than restating its address ranges.
+// It returns the vetted addresses so the hop connects to exactly what was
+// checked; a second DNS answer (rebinding) never reaches the socket.
 async function redirectTargetFor(response, fromUrl, { resolveHostname } = {}) {
   const location = response.headers?.get?.('location');
   if (!location) return null;
@@ -70,13 +73,32 @@ async function redirectTargetFor(response, fromUrl, { resolveHostname } = {}) {
   try {
     // Covers the scheme rule, metadata hostnames, literal private addresses,
     // and a hostname whose DNS resolves into a reserved range.
-    await (resolveHostname
+    const { resolvedAddresses } = await (resolveHostname
       ? assertNotificationWebhookDeliveryUrlSafe(next.toString(), resolveHostname)
       : assertNotificationWebhookDeliveryUrlSafe(next.toString()));
+    return { url: next, dispatcher: pinnedDispatcher(resolvedAddresses) };
   } catch {
     return null;
   }
-  return next;
+}
+
+// Same pin as api/mcp-proxy.ts: the URL hostname still drives SNI, certificate
+// validation and Host; only the socket address is fixed to the vetted answer.
+function pinnedDispatcher(resolvedAddresses) {
+  const address = resolvedAddresses.find(candidate => !candidate.includes(':')) ?? resolvedAddresses[0];
+  if (!address || isBlockedResolvedAddress(address)) throw new Error('redirect target has no vetted address');
+  const family = address.includes(':') ? 6 : 4;
+  return new Agent({ connect: { lookup: pinnedLookup(address, family) } });
+}
+
+// net.connect uses the `{ all: true }` form when autoSelectFamily is on and the
+// single-address form otherwise; answer both so neither path is unpinned.
+function pinnedLookup(address, family) {
+  return (_hostname, options, callback) => {
+    const done = typeof options === 'function' ? options : callback;
+    if (options && typeof options === 'object' && options.all) done(null, [{ address, family }]);
+    else done(null, address, family);
+  };
 }
 
 export async function probePreset(preset, { fetchImpl = (...args) => globalThis.fetch(...args), timeoutMs = 15_000, resolveHostname } = {}) {
@@ -85,11 +107,13 @@ export async function probePreset(preset, { fetchImpl = (...args) => globalThis.
   // One deadline covers both hops, so a redirecting vendor cannot quietly take
   // twice the budget every other preset gets.
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let dispatcher;
   try {
     let target = preset.serverUrl;
     let trail = '';
     for (let hop = 0; ; hop++) {
       const response = await fetchImpl(target, {
+        ...(dispatcher ? { dispatcher: new Dispatcher1Wrapper(dispatcher) } : {}),
         method: 'POST',
         redirect: 'manual',
         headers: {
@@ -110,7 +134,8 @@ export async function probePreset(preset, { fetchImpl = (...args) => globalThis.
         // Record the hop even when it resolves cleanly — a working redirect is
         // still drift worth seeing.
         trail += `HTTP ${response.status} -> `;
-        target = next.toString();
+        target = next.url.toString();
+        dispatcher = next.dispatcher;
         continue;
       }
       result.observed = trail ? `${trail}HTTP ${response.status} ${target}` : `HTTP ${response.status}`;
@@ -126,6 +151,7 @@ export async function probePreset(preset, { fetchImpl = (...args) => globalThis.
     clearTimeout(timer);
     // Liveness needs only headers; release SSE connections without changing the verdict.
     controller.abort();
+    dispatcher?.destroy().catch(() => {});
   }
   return result;
 }

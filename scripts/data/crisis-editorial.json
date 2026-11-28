@@ -1,7 +1,7 @@
 [
   {
     "slug": "iran-israel-escalation",
-    "question": "What is happening with Iran and Israel?",
+    "question": "What is happening in Iran?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -128,7 +128,7 @@
   },
   {
     "slug": "ukraine-war",
-    "question": "What is happening in the Ukraine war?",
+    "question": "What is happening in Ukraine?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -1842,7 +1842,7 @@
   },
   {
     "slug": "taiwan-strait-tensions",
-    "question": "What is happening in the Taiwan Strait?",
+    "question": "What is happening in Taiwan?",
     "lastReviewed": "2026-11-05",
     "background": [
       {
@@ -2132,7 +2132,7 @@
   },
   {
     "slug": "india-pakistan-conflict",
-    "question": "What is happening with India and Pakistan?",
+    "question": "Are India and Pakistan at war?",
     "lastReviewed": "2026-11-05",
     "background": [
       {

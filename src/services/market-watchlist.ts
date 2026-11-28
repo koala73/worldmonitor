@@ -185,32 +185,6 @@ export function getMarketWatchlistEntries(): MarketWatchlistEntry[] {
   return [];
 }
 
-export function setMarketWatchlistEntries(entries: MarketWatchlistEntry[]): void {
-  setMarketWatchlistPreferences({ catalogSelection: getCatalogSelection(), entries });
-}
-
-export function resetMarketWatchlist(): void {
-  setMarketWatchlistPreferences({ catalogSelection: getCatalogSelection(), entries: [] });
-}
-
-export function subscribeMarketWatchlistChange(cb: (entries: MarketWatchlistEntry[]) => void): () => void {
-  const handler = (e: Event) => {
-    const detail = (e as CustomEvent).detail as { entries?: unknown } | undefined;
-    if (Array.isArray(detail?.entries)) {
-      const coerced: MarketWatchlistEntry[] = [];
-      for (const it of detail!.entries!) {
-        const ce = coerceEntry(it);
-        if (ce) coerced.push(ce);
-      }
-      cb(coerced);
-      return;
-    }
-    cb(getMarketWatchlistEntries());
-  };
-  window.addEventListener(MARKET_WATCHLIST_EVENT, handler);
-  return () => window.removeEventListener(MARKET_WATCHLIST_EVENT, handler);
-}
-
 // ---- Catalog selection (visual picker) ----
 
 export function getCatalogSelection(): string[] | null {

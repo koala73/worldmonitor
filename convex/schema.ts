@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { deliveryAttemptValidator, deliveryFailureValidator } from "./lib/notificationDelivery";
 import {
   agentFeedbackKindValidator,
   agentFeedbackStatusValidator,
@@ -32,6 +33,7 @@ import {
   companyMonitoringXStorageStateValidator,
 } from "./companyMonitoring/validators";
 import { entitlementFeaturesValidator } from "./lib/entitlementFeaturesValidator";
+import { teamDashboardLayoutValidator } from "./lib/teamDashboardLayout";
 
 // Subscription status enum — maps Dodo statuses to our internal set
 const subscriptionStatus = v.union(
@@ -145,6 +147,8 @@ export default defineSchema({
         channelType: v.literal("telegram"),
         chatId: v.string(),
         verified: v.boolean(),
+        deliveryFailure: deliveryFailureValidator,
+        deliveryAttempt: deliveryAttemptValidator,
         telegramOwnership: v.optional(v.literal("verified_callback")),
         linkedAt: v.number(),
       }),
@@ -153,6 +157,8 @@ export default defineSchema({
         channelType: v.literal("slack"),
         webhookEnvelope: v.string(),
         verified: v.boolean(),
+        deliveryFailure: deliveryFailureValidator,
+        deliveryAttempt: deliveryAttemptValidator,
         linkedAt: v.number(),
         slackChannelName: v.optional(v.string()),
         slackTeamName: v.optional(v.string()),
@@ -164,6 +170,8 @@ export default defineSchema({
         email: v.string(),
         emailOwnership: v.optional(v.literal("verified_account")),
         verified: v.boolean(),
+        deliveryFailure: deliveryFailureValidator,
+        deliveryAttempt: deliveryAttemptValidator,
         linkedAt: v.number(),
       }),
       v.object({
@@ -171,6 +179,8 @@ export default defineSchema({
         channelType: v.literal("discord"),
         webhookEnvelope: v.string(),
         verified: v.boolean(),
+        deliveryFailure: deliveryFailureValidator,
+        deliveryAttempt: deliveryAttemptValidator,
         linkedAt: v.number(),
         discordGuildId: v.optional(v.string()),
         discordChannelId: v.optional(v.string()),
@@ -183,6 +193,8 @@ export default defineSchema({
         channelType: v.literal("teams"),
         webhookEnvelope: v.string(),
         verified: v.boolean(),
+        deliveryFailure: deliveryFailureValidator,
+        deliveryAttempt: deliveryAttemptValidator,
         linkedAt: v.number(),
       }),
       v.object({
@@ -190,6 +202,8 @@ export default defineSchema({
         channelType: v.literal("webhook"),
         webhookEnvelope: v.string(),
         verified: v.boolean(),
+        deliveryFailure: deliveryFailureValidator,
+        deliveryAttempt: deliveryAttemptValidator,
         linkedAt: v.number(),
         webhookLabel: v.optional(v.string()),
         webhookSecret: v.optional(v.string()),
@@ -208,6 +222,8 @@ export default defineSchema({
         p256dh: v.string(),
         auth: v.string(),
         verified: v.boolean(),
+        deliveryFailure: deliveryFailureValidator,
+        deliveryAttempt: deliveryAttemptValidator,
         linkedAt: v.number(),
         userAgent: v.optional(v.string()),
       }),
@@ -245,6 +261,18 @@ export default defineSchema({
     // shared/chokepoint-alert-ids.js. The event itself is opt-in through
     // eventTypes; empty/absent here → every chokepoint.
     chokepoints: v.optional(v.array(v.string())),
+    // Watched-site ids (shared/watched-sites.ts) for the opt-in watched-site
+    // alerts. Empty/absent → none: the list is the user's own watch list.
+    orbitalSites: v.optional(v.array(v.string())),
+    // Opt-in `reservoir_level_alert` (Strategic Water Levels): the reservoirs the user
+    // follows and when to alert on them, a level below a share of the reservoir's
+    // measured range or a drop beyond its seasonal baseline. Empty/absent
+    // reservoirs → none. Bounds in shared/alert-rule-shape.ts.
+    reservoirAlert: v.optional(v.object({
+      reservoirs: v.array(v.string()),
+      belowPercent: v.optional(v.number()),
+      seasonalDrop: v.optional(v.boolean()),
+    })),
   })
     .index("by_user", ["userId"])
     .index("by_user_variant", ["userId", "variant"])
@@ -260,6 +288,28 @@ export default defineSchema({
   // `country` is a canonical ISO 3166-1 alpha-2 code (uppercase, e.g. "US",
   // "GB", "JP"). Validation against the canonical alpha-2 registry happens
   // at the mutation boundary (U13: `convex/lib/iso2.ts::isValidIso2`).
+  // One row per alert rule the realtime scope migration (#10873) visited: the
+  // rule's presence here is the one-time marker, so a re-run never re-scopes a
+  // rule its owner has since set back to no countries. Also the outbox for the
+  // one-time notice email (one email per user, however many variant rows).
+  alertScopeNotices: defineTable({
+    userId: v.string(),
+    ruleId: v.id("alertRules"),
+    variant: v.string(),
+    // scoped: the user's followed countries were copied into the rule.
+    // global_only: the user follows no country, so the rule was left empty
+    // and receives global critical events only.
+    outcome: v.union(v.literal("scoped"), v.literal("global_only")),
+    countries: v.array(v.string()),
+    createdAt: v.number(),
+    emailStatus: apiPlanLimitEmailStatus,
+    emailAttempts: v.optional(v.number()),
+    emailedAt: v.optional(v.number()),
+  })
+    .index("by_rule", ["ruleId"])
+    .index("by_user", ["userId"])
+    .index("by_emailStatus", ["emailStatus"]),
+
   followedCountries: defineTable({
     userId: v.string(),
     country: v.string(),
@@ -375,6 +425,13 @@ export default defineSchema({
     // at export time.
     proLaunchWave: v.optional(v.string()),
     proLaunchWaveAssignedAt: v.optional(v.number()),
+    // Black Friday 2026 broadcast stamps (convex/broadcast/blackFriday.ts):
+    // the wave label that put this contact in a Resend segment, one pair per
+    // send. Separate from proLaunchWave so the campaigns never block each other.
+    blackFridayLaunchWave: v.optional(v.string()),
+    blackFridayLaunchWaveAssignedAt: v.optional(v.number()),
+    blackFridayLastDayWave: v.optional(v.string()),
+    blackFridayLastDayWaveAssignedAt: v.optional(v.number()),
   })
     .index("by_normalized_email", ["normalizedEmail"])
     .index("by_referral_code", ["referralCode"])
@@ -397,7 +454,7 @@ export default defineSchema({
   // next cron run resumes. Better one extra dashboard click than a
   // silent resumption after a real deliverability incident.
   broadcastRampConfig: defineTable({
-    key: v.string(), // always "current"
+    key: v.string(), // "current" for the PRO-launch ramp; a campaign id for campaign rows
     active: v.boolean(),
     // Wave sizes in order. e.g. [500, 1500, 5000, 15000, 25000].
     // Each cron tick advances `currentTier` by 1 and uses
@@ -557,11 +614,34 @@ export default defineSchema({
     eligiblePoolCount: v.optional(v.number()),
     excludedCount: v.optional(v.number()),
     excludedLocaleCounts: v.optional(v.record(v.string(), v.number())),
+    // Campaign runs (convex/broadcast/blackFriday.ts). Absent on PRO-launch
+    // runs, which use the "current" ramp config and the proLaunchWave stamp.
+    // `configKey` names the broadcastRampConfig row that holds this run's
+    // lease, thresholds and kill gate.
+    configKey: v.optional(v.string()),
+    campaign: v.optional(
+      v.object({
+        id: v.string(),
+        send: v.union(v.literal("launch"), v.literal("last-day")),
+        version: v.string(),
+        locale: v.string(),
+        recipient: v.union(v.literal("account"), v.literal("waitlist")),
+        // Stop after the Resend broadcast is created; an operator releases it.
+        holdBeforeSend: v.boolean(),
+      }),
+    ),
+    // Set when the operator releases a held campaign broadcast. Without it a
+    // held run is never sent, whatever re-enters the finalize step.
+    releaseRequestedAt: v.optional(v.number()),
+    // When the Resend broadcast (draft) was created. Unlike updatedAt, no
+    // recovery command moves it: the held-too-long check reads it.
+    broadcastCreatedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_runId", ["runId"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_configKey", ["configKey"]),
 
   // Per-contact state row written by `_persistPickedBatch` during pick
   // and patched atomically by `_markContactPushed`, `_markContactFailed`,
@@ -726,8 +806,19 @@ export default defineSchema({
     // rows that entered on_hold before this field existed fall back
     // to `updatedAt` in the dunning scan.
     onHoldAt: v.optional(v.number()),
+    // End of paid access for a failed renewal (`accessEndAt` in
+    // payments/subscriptionHelpers.ts). Stamped only on the transition INTO
+    // on_hold, and only when no succeeded charge covers the current period;
+    // cleared on every return to active; kept through cancelled. Unset means
+    // access runs to currentPeriodEnd, which is also how holds that began
+    // before this field existed keep the access they were promised.
+    accessEndsAt: v.optional(v.number()),
     rawPayload: v.any(),
     updatedAt: v.number(),
+    // OCC serialization timestamp patched by Business seat mutations so even
+    // a brand-new subscription's first concurrent invite burst collides on an
+    // always-existing document rather than lazily inserted lock rows.
+    seatLockTouchedAt: v.optional(v.number()),
     // Renewal-reconciliation bookkeeping (see
     // `payments/billing:reconcileMissedDodoRenewals`). Orthogonal to
     // `updatedAt` — these are NEVER bumped on a webhook state change, only
@@ -832,6 +923,10 @@ export default defineSchema({
     // total ownership order. Optional so rows written before the ordered
     // takeover contract deploy without a backfill.
     sessionStartedAt: v.optional(v.number()),
+    // Day-0 only: nonces whose start arrived past the future-skew allowance.
+    // They stay unordered for the life of the row, so a later replay whose
+    // start has entered the window cannot attach an order or take the row.
+    unorderedClaimNonces: v.optional(v.array(v.string())),
     presentedAt: v.optional(v.number()),
     // Set when a presentation is confirmed by an outcome-aware client. This
     // excludes rows created before #5582 without losing post-deploy sessions
@@ -879,6 +974,9 @@ export default defineSchema({
       v.literal("dunning_day0"),
       v.literal("dunning_day3"),
       v.literal("dunning_day7"),
+      v.literal("dunning_day10"),
+      v.literal("dunning_day18"),
+      v.literal("dunning_day25"),
       v.literal("winback_day30"),
       // Paid-through cancellation confirmation (#7314). Shares this ledger
       // with winback because both are keyed on the same cancellation episode
@@ -1090,6 +1188,10 @@ export default defineSchema({
     normalizedEmail: v.optional(v.string()), // Lowercased mirror of email; joined against registrations
     localeTag: v.optional(v.string()), // Full BCP 47 tag (e.g. "zh-CN", "en-US"); kept for future analytics
     localePrimary: v.optional(v.string()), // Lowercased primary subtag (e.g. "zh", "en"); broadcast filter target
+    // Explicit Settings → Language choice (wm-locale-explicit). Absent = never chosen.
+    uiLanguage: v.optional(v.string()),
+    // Notification-settings override for the brief. Absent = follow uiLanguage.
+    briefLanguage: v.optional(v.string()),
     timezone: v.optional(v.string()), // IANA zone (e.g. "Asia/Shanghai")
     country: v.optional(v.string()), // ISO 3166-1 alpha-2; CLIENT-REPORTED — see warning above
     firstSeenAt: v.number(),
@@ -1120,6 +1222,13 @@ export default defineSchema({
     // OPTIONAL and not backfilled.
     signupRef: v.optional(v.string()),
     signupSource: v.optional(v.string()),
+    // Black Friday 2026 broadcast stamps (convex/broadcast/blackFriday.ts):
+    // the wave label that put this contact in a Resend segment, one pair per
+    // send. Separate from proLaunchWave so the campaigns never block each other.
+    blackFridayLaunchWave: v.optional(v.string()),
+    blackFridayLaunchWaveAssignedAt: v.optional(v.number()),
+    blackFridayLastDayWave: v.optional(v.string()),
+    blackFridayLastDayWaveAssignedAt: v.optional(v.number()),
     // About-you answers (what the account uses WorldMonitor for, personal or
     // work, who pays, role, and an optional free-text alternative). Option ids
     // come from shared/audience-profile.ts; `convex/audienceProfile.ts` is the
@@ -1357,6 +1466,15 @@ export default defineSchema({
 
   // One reusable admission counter per account, independent of provider alarms.
   checkoutAdmissions: defineTable({
+    userId: v.string(),
+    windowStart: v.number(),
+    count: v.number(),
+  }).index("by_user", ["userId"]),
+
+  // Per-account fixed window for the Pro → Pro Business upgrade action. The
+  // /pro edge route has its own Redis limit; the dashboard calls the Convex
+  // action directly, so this row is the limit both paths share.
+  proBusinessUpgradeAdmissions: defineTable({
     userId: v.string(),
     windowStart: v.number(),
     count: v.number(),
@@ -1994,6 +2112,20 @@ export default defineSchema({
     lastTouchedAt: v.number(),
   }).index("by_businessSubscriptionId", ["businessSubscriptionId"]),
 
+  // Dashboard layouts a team shares with its members (convex/teamDashboards.ts).
+  // `teamKey` is `business:<dodoSubscriptionId>` or `enterprise:<accountId>`,
+  // always derived from the caller on the server. No user identifier: the
+  // dashboard belongs to the team.
+  teamDashboards: defineTable({
+    teamKey: v.string(),
+    variant: v.string(),
+    name: v.string(),
+    layout: teamDashboardLayoutValidator,
+    version: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_team_variant", ["teamKey", "variant"]),
+
   emailSuppressions: defineTable({
     normalizedEmail: v.string(),
     // unsubscribe withdraws broadcast and marketing consent. The other
@@ -2068,6 +2200,16 @@ export default defineSchema({
   // so one global serialization point is intentional and keeps the invariant
   // simple. It is seeded by the deploy workflow; append fails loudly if it is
   // absent rather than silently weakening idempotency.
+  // One short-lived claim per Dodo subscription while a Pro → Pro Business
+  // change-plan call is in flight. Two concurrent confirms (two tabs, or the
+  // dashboard and /pro at once) both pass the provider re-read before either
+  // change lands; the serializable claim lets only one call changePlan.
+  // Holds no userId; a claim older than the TTL in billing.ts is reclaimable.
+  proBusinessUpgradeClaims: defineTable({
+    dodoSubscriptionId: v.string(),
+    claimedAt: v.number(),
+  }).index("by_dodoSubscriptionId", ["dodoSubscriptionId"]),
+
   intelHistoryAppendLocks: defineTable({
     lockKey: v.string(),
     lastTouchedAt: v.number(),

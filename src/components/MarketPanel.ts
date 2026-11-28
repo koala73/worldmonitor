@@ -1,10 +1,11 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
+import { sparklineSpanHtml } from './_sparkline-span';
 import type { MarketData, CryptoData, TokenData } from '@/types';
-import { formatPrice, formatChange, getChangeClass, getHeatmapClass } from '@/utils';
+import { formatCommodityPrice, formatPrice, formatQuotePrice, formatChange, getChangeClass, getHeatmapClass } from '@/utils';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { miniSparkline } from '@/utils/sparkline';
-import { SITE_VARIANT } from '@/config';
+import { COMMODITIES, SITE_VARIANT } from '@/config';
 import { createWatchlistButton } from './watchlist-modal';
 import {
   renderChinaCorporateDisclosureSignals,
@@ -109,7 +110,7 @@ export class MarketPanel extends Panel {
         </div>
         <div class="market-data">
           ${miniSparkline(stock.sparkline, stock.change)}
-          <span class="market-price">${escapeHtml(formatPrice(stock.price!))}</span>
+          <span class="market-price">${escapeHtml(formatQuotePrice(stock.symbol, stock.price))}</span>
           <span class="market-change ${getChangeClass(stock.change!)}">${formatChange(stock.change!)}</span>
         </div>
       </div>
@@ -405,8 +406,6 @@ export interface CommoditiesTabSelectionResult {
 import type {
   GetPhysicalDivergenceIndexResponse,
   GetPhysicalPremiumsResponse,
-  GetHyperliquidFlowResponse,
-  HyperliquidAssetFlow,
   PhysicalDivergenceReading,
   PhysicalDivergenceState,
   PhysicalPremiumRegime,
@@ -497,109 +496,6 @@ function physicalTrendArrow(trend: PhysicalPremiumTrend): string {
   }
 }
 
-function parseFiniteNumber(s: string): number | null {
-  if (typeof s !== 'string' || s === '') return null;
-  const n = Number(s);
-  return Number.isFinite(n) ? n : null;
-}
-
-/**
- * OI Δ1h derived from sparkOi tail: (last - lookback) / lookback.
- * 12 samples back = 1h at 5min cadence. Returns null if too few samples.
- */
-function oiDelta1h(sparkOi: number[]): number | null {
-  if (!Array.isArray(sparkOi) || sparkOi.length < 13) return null;
-  const last = sparkOi[sparkOi.length - 1];
-  const lookback = sparkOi[sparkOi.length - 13];
-  if (last == null || lookback == null) return null;
-  if (!(lookback > 0) || !Number.isFinite(last)) return null;
-  return (last - lookback) / lookback;
-}
-
-/**
- * Map the raw bootstrap-hydrated seed snapshot (seeder JSON shape) into the
- * same view model the RPC mapper produces. Bootstrap returns the raw Redis
- * blob (numeric fields), not the proto response (string-encoded numbers).
- */
-export function mapHyperliquidFlowSeed(raw: Record<string, unknown>): HyperliquidFlowView | null {
-  const assets = Array.isArray(raw.assets) ? (raw.assets as Array<Record<string, unknown>>) : null;
-  if (!assets || assets.length === 0) return null;
-  const fxAssets: HyperliquidAssetView[] = [];
-  const commodityAssets: HyperliquidAssetView[] = [];
-  for (const a of assets) {
-    const funding = typeof a.funding === 'number' && Number.isFinite(a.funding) ? a.funding : null;
-    const sparkOi = Array.isArray(a.sparkOi) ? (a.sparkOi as number[]).filter((v) => Number.isFinite(v)) : [];
-    const sparkScore = Array.isArray(a.sparkScore) ? (a.sparkScore as number[]).filter((v) => Number.isFinite(v)) : [];
-    const view: HyperliquidAssetView = {
-      symbol: String(a.symbol ?? ''),
-      display: String(a.display ?? ''),
-      group: String(a.group ?? ''),
-      funding,
-      oiDelta1h: oiDelta1h(sparkOi),
-      composite: typeof a.composite === 'number' ? a.composite : 0,
-      warmup: Boolean(a.warmup),
-      stale: Boolean(a.stale),
-      sparkScore,
-    };
-    if (view.group === 'fx') fxAssets.push(view);
-    else commodityAssets.push(view);
-  }
-  return {
-    ts: typeof raw.ts === 'number' ? raw.ts : 0,
-    warmup: Boolean(raw.warmup),
-    fxAssets,
-    commodityAssets,
-    unavailable: false,
-  };
-}
-
-export function mapHyperliquidFlowResponse(resp: GetHyperliquidFlowResponse): HyperliquidFlowView {
-  const fxAssets: HyperliquidAssetView[] = [];
-  const commodityAssets: HyperliquidAssetView[] = [];
-  for (const a of resp.assets as HyperliquidAssetFlow[]) {
-    const view: HyperliquidAssetView = {
-      symbol: a.symbol,
-      display: a.display,
-      group: a.group,
-      funding: parseFiniteNumber(a.funding),
-      oiDelta1h: oiDelta1h(a.sparkOi),
-      composite: Number(a.composite || 0),
-      warmup: Boolean(a.warmup),
-      stale: Boolean(a.stale),
-      sparkScore: Array.isArray(a.sparkScore) ? a.sparkScore : [],
-    };
-    if (a.group === 'fx') fxAssets.push(view);
-    else commodityAssets.push(view);
-  }
-  return {
-    ts: Number(resp.ts || 0),
-    warmup: Boolean(resp.warmup),
-    fxAssets,
-    commodityAssets,
-    unavailable: false,
-  };
-}
-
-interface HyperliquidAssetView {
-  symbol: string;
-  display: string;
-  group: string;
-  funding: number | null;
-  oiDelta1h: number | null;
-  composite: number;
-  warmup: boolean;
-  stale: boolean;
-  sparkScore: number[];
-}
-
-interface HyperliquidFlowView {
-  ts: number;
-  warmup: boolean;
-  fxAssets: HyperliquidAssetView[];
-  commodityAssets: HyperliquidAssetView[];
-  unavailable: boolean;
-}
-
 // CCYUSD=X (e.g. EURUSD): USD is quote, rate = USD/FC → XAU_FC = XAU_USD / rate
 // USDCCY=X (e.g. USDJPY, USDCHF): USD is base, rate = FC/USD → XAU_FC = XAU_USD * rate
 const XAU_CURRENCY_CONFIG: Array<{ symbol: string; label: string; flag: string; multiply: boolean }> = [
@@ -614,9 +510,13 @@ const XAU_CURRENCY_CONFIG: Array<{ symbol: string; label: string; flag: string; 
   { symbol: 'USDTRY=X',  label: 'TRY', flag: '🇹🇷', multiply: true  },
 ];
 
+const COMMODITY_QUOTE_CURRENCY = new Map(COMMODITIES.map((c) => [c.symbol, c.currency]));
+
+type CommodityCard = Pick<MarketData, 'display' | 'price' | 'change' | 'sparkline' | 'sparklineIntervalSeconds' | 'sparklineStartAt'> & { symbol?: string };
+
 export class CommoditiesPanel extends Panel {
   private _tab: CommoditiesTab = 'commodities';
-  private _commodityData: Array<{ display: string; price: number | null; change: number | null; sparkline?: number[]; symbol?: string }> = [];
+  private _commodityData: CommodityCard[] = [];
   private _fxRates: EcbFxRateItem[] = [];
   private _physicalPremiums: PhysicalPremium[] = [];
   private _physicalPremiumFxAsOf = '';
@@ -667,7 +567,7 @@ export class CommoditiesPanel extends Panel {
     return { ok: true, status: 'applied', effectiveTab: this._tab };
   }
 
-  public renderCommodities(data: Array<{ symbol?: string; display: string; price: number | null; change: number | null; sparkline?: number[] }>): void {
+  public renderCommodities(data: CommodityCard[]): void {
     this._commodityData = data;
     this._render();
   }
@@ -897,7 +797,7 @@ export class CommoditiesPanel extends Panel {
 
     // Metals/Commodities tab — exclude FX and spot gold symbols from the display grid.
     // Require a finite numeric price: the feed sometimes omits `price` (undefined),
-    // and `d.price !== null` lets undefined through to `formatPrice(c.price!)`
+    // and `d.price !== null` lets undefined through to the price formatter
     // (WORLDMONITOR-SH). A finite-price guard also keeps the adjacent `c.change!`
     // row meaningful (a record with no price carries no usable change either).
     const validData = this._commodityData.filter(
@@ -913,14 +813,17 @@ export class CommoditiesPanel extends Panel {
     }
 
     const grid = '<div class="commodities-grid">' +
-      validData.map(c => `
+      validData.map(c => {
+        const chart = miniSparkline(c.sparkline, c.change, 60, 18);
+        return `
         <div class="commodity-item">
           <div class="commodity-name">${escapeHtml(c.display)}</div>
-          ${miniSparkline(c.sparkline, c.change, 60, 18)}
-          <div class="commodity-price">${escapeHtml(formatPrice(c.price!))}</div>
+          ${chart ? chart + sparklineSpanHtml(c) : '<div class="commodity-spark-empty" aria-hidden="true"></div>'}
+          <div class="commodity-price">${escapeHtml(formatCommodityPrice(c.price, c.symbol ? COMMODITY_QUOTE_CURRENCY.get(c.symbol) : undefined))}</div>
           <div class="commodity-change ${getChangeClass(c.change!)}">${formatChange(c.change!)}</div>
         </div>
-      `).join('') + '</div>';
+      `;
+      }).join('') + '</div>';
 
     this.setSafeContent(unsafeRawHtml(tabBar + grid, 'legacy Panel.setContent() migration'), this.revealActiveTab);
   }
@@ -971,6 +874,7 @@ export class CryptoHeatmapPanel extends Panel {
     }
 
     const html =
+      `<div class="heatmap-period">${escapeHtml(t('components.stablecoins.chg24h'))}</div>` +
       '<div class="heatmap">' +
       data
         .map((sector) => {

@@ -17,6 +17,7 @@ on:
     paths:
       - 'docs/snapshots/crawlable-live-pulse-*.json'
       - 'scripts/build-crawlable-corpus.mjs'
+      - 'scripts/check-crawlable-live-pulse.mjs'
       - 'scripts/build-llms-full.mjs'
       - 'scripts/build-sitemap.mjs'
       - 'scripts/build-welcome-teasers.mjs'

@@ -123,6 +123,38 @@ describe("api plan-limit retention prune", () => {
     expect(await t.run((ctx) => ctx.db.query("apiUsageRollups").collect())).toHaveLength(0);
   });
 
+  // `limit` is operator-callable (its arg comment says it exists so tests can
+  // drive the drain), and 0 is a natural thing to type when probing it. Without
+  // a floor, `take(0)` returns nothing, `0 >= 0` reads as a full batch, and the
+  // mutation reschedules itself at runAfter(0) forever while deleting nothing.
+  // The two prunes modelled on this one already pin this; the original did not.
+  test.each([
+    ["zero", 0],
+    ["negative", -5],
+    ["fractional", 0.5],
+    ["NaN", Number.NaN],
+    ["Infinity", Number.POSITIVE_INFINITY],
+  ])("a %s limit makes progress instead of rescheduling forever", async (_label, limit) => {
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      for (let i = 0; i < 2; i++) {
+        await ctx.db.insert("apiPlanLimitNotices", notice({ windowKey: `old-${i}`, lastSeenAt: NOW - 200 * DAY }));
+      }
+    });
+
+    const first = await t.mutation(pruneFns.pruneApiPlanLimitData, { now: NOW, limit });
+    expect(first.noticesDeleted).toBeGreaterThan(0);
+
+    // Drive the chain the way the backlog test above does: it has to terminate.
+    let res = first;
+    let guard = 0;
+    while (res.rescheduled) {
+      if (++guard > 10) throw new Error("prune did not terminate");
+      res = await t.mutation(pruneFns.pruneApiPlanLimitData, { now: NOW, limit });
+    }
+    expect(await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).toHaveLength(0);
+  });
+
   test("does not reschedule when the backlog fits in one batch", async () => {
     const t = convexTest(schema, modules);
     await t.run(async (ctx) => {

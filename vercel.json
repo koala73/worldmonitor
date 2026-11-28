@@ -1,8 +1,10 @@
 {
-  "buildCommand": "npm run build:full",
+  "buildCommand": "node scripts/check-crawlable-live-pulse.mjs && node scripts/github-stars-snapshot.mjs && npm run build:full",
   "ignoreCommand": "bash scripts/vercel-ignore.sh",
   "crons": [],
   "redirects": [
+    { "source": "/data/v1/chokepoints", "destination": "/data/v1/chokepoints/README.md", "permanent": false },
+    { "source": "/data/v1/chokepoints/", "destination": "/data/v1/chokepoints/README.md", "permanent": false },
     { "source": "/", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy)\\.worldmonitor\\.app$" }], "missing": [{ "type": "query", "key": "mode", "value": "agent" }], "destination": "/dashboard", "permanent": true },
     { "source": "/", "has": [{ "type": "host", "value": "^[a-z0-9-]+\\.vercel\\.app$" }], "missing": [{ "type": "query", "key": "mode", "value": "agent" }], "destination": "/dashboard", "permanent": false },
     { "source": "/", "has": [{ "type": "host", "value": "^api\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/", "permanent": true },
@@ -30,6 +32,8 @@
     { "source": "/fr/:match(.*)", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy|api)\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/fr/:match", "permanent": true },
     { "source": "/de/:match(.*)", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy|api)\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/de/:match", "permanent": true },
     { "source": "/ar/:match(.*)", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy|api)\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/ar/:match", "permanent": true },
+    { "source": "/id/:match(.*)", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy|api)\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/id/:match", "permanent": true },
+    { "source": "/ja/:match(.*)", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy|api)\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/ja/:match", "permanent": true },
     { "source": "/zh/:match*", "destination": "https://www.worldmonitor.app/docs/zh/:match*", "permanent": true },
     { "source": "/api-reference/:match*", "destination": "https://www.worldmonitor.app/docs/api-reference/:match*", "permanent": true },
     { "source": "/api", "destination": "/docs/api-reference", "permanent": false },
@@ -47,8 +51,17 @@
     { "source": "/fr", "destination": "/fr/", "permanent": true },
     { "source": "/de", "destination": "/de/", "permanent": true },
     { "source": "/ar", "destination": "/ar/", "permanent": true },
+    { "source": "/id", "destination": "/id/", "permanent": true },
+    { "source": "/ja", "destination": "/ja/", "permanent": true },
     { "source": "/pricing", "destination": "/pro#pricing", "permanent": true },
-    { "source": "/blog/posts", "destination": "/blog", "permanent": true },
+    { "source": "/chatgpt", "destination": "https://chatgpt.com/plugins/plugin_asdk_app_6ae6004c179c81918401363068a661ba", "permanent": false },
+    { "source": "/chatgpt/", "destination": "https://chatgpt.com/plugins/plugin_asdk_app_6ae6004c179c81918401363068a661ba", "permanent": false },
+    { "source": "/blog", "destination": "/blog/", "permanent": true },
+    { "source": "/blog/posts", "destination": "/blog/", "permanent": true },
+    { "source": "/blog/posts/:slug([a-z0-9-]+)", "destination": "/blog/posts/:slug/", "permanent": true },
+    { "source": "/blog/glossary/:slug([a-z0-9-]+)", "destination": "/blog/glossary/:slug/", "permanent": true },
+    { "source": "/blog/:category(vs|alternatives|best)/:slug([a-z0-9-]+)", "destination": "/blog/:category/:slug/", "permanent": true },
+    { "source": "/pro/", "destination": "/pro", "permanent": true },
     { "source": "/changelog", "destination": "/reference/changelog/", "permanent": true },
     { "source": "/reference", "destination": "/reference/changelog/", "permanent": false },
     { "source": "/country-instability-index", "destination": "/country-instability-index/", "permanent": true },
@@ -104,6 +117,7 @@
     { "source": "/use-cases/:slug([a-z0-9-]+)", "destination": "/use-cases/:slug/", "permanent": true },
     { "source": "/accuracy", "destination": "/accuracy/", "permanent": true },
     { "source": "/monitor-the-situation", "destination": "/monitor-the-situation/", "permanent": true },
+    { "source": "/security", "destination": "/security/", "permanent": true },
     { "source": "/trust", "destination": "/trust/", "permanent": true },
     { "source": "/agent", "destination": "/agent/", "permanent": true },
     { "source": "/trust/review", "destination": "/trust/review/", "permanent": false },
@@ -139,9 +153,11 @@
     { "source": "/robots.txt", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy)\\.worldmonitor\\.app$" }], "destination": "/robots.variant.txt" },
     { "source": "/robots.txt", "has": [{ "type": "host", "value": "^api\\.worldmonitor\\.app$" }], "destination": "/robots.api.txt" },
     { "source": "/robots.txt", "destination": "/robots.www.txt" },
+    { "source": "/install.sh", "destination": "https://raw.githubusercontent.com/koala73/worldmonitor/main/scripts/install.sh" },
+    { "source": "/data/v1/chokepoints/:file([0-9a-z-]+\\.(?:json|csv))", "destination": "/api/open-data-chokepoints?file=:file" },
     { "source": "/docs/mcp", "destination": "/api/docs-mcp" },
     { "source": "/docs/mcp/server-card", "destination": "/.well-known/mcp/docs-server-card.json" },
-    { "source": "/docs/:match*", "destination": "https://worldmonitor.mintlify.dev/docs/:match*" },
+    { "source": "/mcp/server-card", "destination": "/.well-known/mcp/server-card.json" },
     { "source": "/", "has": [{ "type": "query", "key": "mode", "value": "agent" }], "destination": "/agent-view.json" },
     { "source": "/", "has": [{ "type": "host", "value": "^(?:www\\.)?worldmonitor\\.app$" }], "destination": "/pro/welcome.html" },
     { "source": "/index.md", "destination": "/pro/home.md" },
@@ -274,6 +290,14 @@
     {
       "source": "/.well-known/(.*)",
       "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Cache-Control", "value": "public, max-age=3600" }
+      ]
+    },
+    {
+      "source": "/mcp/server-card",
+      "headers": [
+        { "key": "Content-Type", "value": "application/json; charset=utf-8" },
         { "key": "Access-Control-Allow-Origin", "value": "*" },
         { "key": "Cache-Control", "value": "public, max-age=3600" }
       ]
@@ -519,7 +543,7 @@
       "headers": [{ "key": "Origin-Trial", "value": "AkRPnYRaVj6aZeA6j4uewmGcRG4oYdE4BGh65uU4z99YSHi9/Vplg/MM+G3H8K5EqaXs2WDmFclXBYwwG/2vTAEAAABUeyJvcmlnaW4iOiJodHRwczovL3d3dy53b3JsZG1vbml0b3IuYXBwOjQ0MyIsImZlYXR1cmUiOiJXZWJNQ1AiLCJleHBpcnkiOjE4MDYzNjQ4MDB9" }]
     },
     {
-      "source": "/(es|pt|ru|fr|de|ar)/",
+      "source": "/(es|pt|ru|fr|de|ar|id|ja)/",
       "has": [{ "type": "host", "value": "^www\\.worldmonitor\\.app$" }],
       "missing": [{ "type": "query", "key": "mode", "value": "agent" }],
       "headers": [{ "key": "Origin-Trial", "value": "AkRPnYRaVj6aZeA6j4uewmGcRG4oYdE4BGh65uU4z99YSHi9/Vplg/MM+G3H8K5EqaXs2WDmFclXBYwwG/2vTAEAAABUeyJvcmlnaW4iOiJodHRwczovL3d3dy53b3JsZG1vbml0b3IuYXBwOjQ0MyIsImZlYXR1cmUiOiJXZWJNQ1AiLCJleHBpcnkiOjE4MDYzNjQ4MDB9" }]
@@ -596,7 +620,14 @@
         { "key": "Cross-Origin-Opener-Policy-Report-Only", "value": "same-origin; report-to=\"wm-coop-coep\"" },
         { "key": "Cross-Origin-Embedder-Policy-Report-Only", "value": "require-corp; report-to=\"wm-coop-coep\"" },
         { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(self), accelerometer=(), autoplay=(self \"https://www.youtube.com\" \"https://www.youtube-nocookie.com\"), bluetooth=(), display-capture=(), encrypted-media=(self \"https://www.youtube.com\" \"https://www.youtube-nocookie.com\"), gyroscope=(), hid=(), idle-detection=(), magnetometer=(), midi=(), payment=(self \"https://checkout.dodopayments.com\" \"https://test.checkout.dodopayments.com\" \"https://pay.google.com\" \"https://hooks.stripe.com\" \"https://js.stripe.com\"), picture-in-picture=(self \"https://www.youtube.com\" \"https://www.youtube-nocookie.com\" \"https://challenges.cloudflare.com\"), unload=(*), screen-wake-lock=(), serial=(), usb=(), xr-spatial-tracking=(\"https://challenges.cloudflare.com\"), tools=(self)" },
-        { "key": "Content-Security-Policy", "value": "default-src 'self'; connect-src 'self' https: wss: blob: data: https://*.ingest.sentry.io https://*.ingest.us.sentry.io; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'strict-dynamic' 'nonce-wm-static-bootstrap' 'sha256-J+5HZeIW1l9dlQjy55JAgo7LVEiMV1c0660HOUNPlO8=' 'sha256-Z5TaQuwFMHlxoFSQYuTWfxuPE5RUOpVsZOttUGCcRNE=' 'sha256-g7UaPn/NTH3Zl2XzEEmG9/6mie7lvoMLEesxvWiAw/Y=' 'sha256-XhnmW1qnNWYSP2ymR86tjEGo47ItZZDpWZcFAXdJ3DU=' 'sha256-roOemWhEmW8UlmpgHCUfsnJ1s6HiVAPc70DMJuIPtDk=' 'sha256-sMkhxXs3qUW2IR01a4d3tL1e2XQV0XUwxXAeL31nDjM=' 'wasm-unsafe-eval'; worker-src 'self' blob:; font-src 'self' data:; media-src 'self' data: blob: https:; frame-src 'self' https://www.worldmonitor.app https://worldmonitor.app https://tech.worldmonitor.app https://finance.worldmonitor.app https://commodity.worldmonitor.app https://happy.worldmonitor.app https://energy.worldmonitor.app https://www.youtube.com https://www.youtube-nocookie.com https://www.google.com https://webcams.windy.com https://challenges.cloudflare.com https://*.clerk.accounts.dev https://clerk.worldmonitor.app https://vercel.live https://*.dodopayments.com https://checkout.dodopayments.com https://test.checkout.dodopayments.com https://*.hs.dodopayments.com https://*.custom.hs.dodopayments.com https://pay.google.com https://hooks.stripe.com https://js.stripe.com; frame-ancestors 'self' https://www.worldmonitor.app https://tech.worldmonitor.app https://finance.worldmonitor.app https://commodity.worldmonitor.app https://happy.worldmonitor.app https://energy.worldmonitor.app https://worldmonitor.app https://vercel.live; base-uri 'self'; object-src 'none'; form-action 'self' https://api.worldmonitor.app" }
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; connect-src 'self' https: wss: blob: data: https://*.ingest.sentry.io https://*.ingest.us.sentry.io; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'strict-dynamic' 'nonce-wm-static-bootstrap' 'sha256-yE0t3VWMfftx3+d3d/Ey61vXxfbezf/jK8NwrZkcgMg=' 'sha256-Z5TaQuwFMHlxoFSQYuTWfxuPE5RUOpVsZOttUGCcRNE=' 'sha256-g7UaPn/NTH3Zl2XzEEmG9/6mie7lvoMLEesxvWiAw/Y=' 'sha256-XhnmW1qnNWYSP2ymR86tjEGo47ItZZDpWZcFAXdJ3DU=' 'sha256-roOemWhEmW8UlmpgHCUfsnJ1s6HiVAPc70DMJuIPtDk=' 'sha256-sMkhxXs3qUW2IR01a4d3tL1e2XQV0XUwxXAeL31nDjM=' 'wasm-unsafe-eval'; worker-src 'self' blob:; font-src 'self' data:; media-src 'self' data: blob: https:; frame-src 'self' https://www.worldmonitor.app https://worldmonitor.app https://tech.worldmonitor.app https://finance.worldmonitor.app https://commodity.worldmonitor.app https://happy.worldmonitor.app https://energy.worldmonitor.app https://www.youtube.com https://www.youtube-nocookie.com https://www.google.com https://webcams.windy.com https://challenges.cloudflare.com https://*.clerk.accounts.dev https://clerk.worldmonitor.app https://vercel.live https://*.dodopayments.com https://checkout.dodopayments.com https://test.checkout.dodopayments.com https://*.hs.dodopayments.com https://*.custom.hs.dodopayments.com https://pay.google.com https://hooks.stripe.com https://js.stripe.com; frame-ancestors 'self' https://www.worldmonitor.app https://tech.worldmonitor.app https://finance.worldmonitor.app https://commodity.worldmonitor.app https://happy.worldmonitor.app https://energy.worldmonitor.app https://worldmonitor.app https://vercel.live; base-uri 'self'; object-src 'none'; form-action 'self' https://api.worldmonitor.app" }
+      ]
+    },
+    {
+      "source": "/docs/(.*)",
+      "headers": [
+        { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
+        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=()" }
       ]
     },
     {
@@ -636,13 +667,13 @@
     {
       "source": "/api/slack/oauth/callback",
       "headers": [
-        { "key": "Content-Security-Policy", "value": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline';" }
+        { "key": "Content-Security-Policy", "value": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; object-src 'none';" }
       ]
     },
     {
       "source": "/api/discord/oauth/callback",
       "headers": [
-        { "key": "Content-Security-Policy", "value": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline';" }
+        { "key": "Content-Security-Policy", "value": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; object-src 'none';" }
       ]
     },
     {
@@ -870,7 +901,7 @@
       ]
     },
     {
-      "source": "/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|country-instability-index|countries|chokepoints|compare|crises|tools|research|reference|changelog|sources|use-cases|accuracy|monitor-the-situation|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|sitemap-main\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|plugin\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|world-monitor\\.md|api-versioning\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|desktop-sign-in\\.html|desktop-sign-in|.*\\.md$).*)",
+      "source": "/((?!api|mcp|a2a|ask|oauth|assets|plugin/assets|blog|docs|country-instability-index|countries|chokepoints|compare|crises|tools|research|reference|changelog|sources|use-cases|accuracy|monitor-the-situation|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|sitemap-main\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|plugin\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|world-monitor\\.md|api-versioning\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|desktop-sign-in\\.html|desktop-sign-in|.*\\.md$).*)",
       "headers": [
         { "key": "Cache-Control", "value": "private, no-cache, must-revalidate" }
       ]
@@ -885,7 +916,7 @@
       ]
     },
     {
-      "source": "/(es|pt|ru|fr|de|ar)",
+      "source": "/(es|pt|ru|fr|de|ar|id|ja)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
         { "key": "CDN-Cache-Control", "value": "public, s-maxage=600, stale-while-revalidate=60" },
@@ -894,7 +925,7 @@
       ]
     },
     {
-      "source": "/(es|pt|ru|fr|de|ar)/",
+      "source": "/(es|pt|ru|fr|de|ar|id|ja)/",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
         { "key": "CDN-Cache-Control", "value": "public, s-maxage=600, stale-while-revalidate=60" },
@@ -916,6 +947,12 @@
       "headers": [
         { "key": "Access-Control-Allow-Origin", "value": "*" },
         { "key": "X-Robots-Tag", "value": "noindex" }
+      ]
+    },
+    {
+      "source": "/plugin/assets/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
       ]
     },
     {
@@ -1047,7 +1084,10 @@
     {
       "source": "/wm-widget-sandbox.html",
       "headers": [
-        { "key": "Content-Security-Policy", "value": "default-src 'none'; sandbox allow-scripts; script-src 'unsafe-inline' https://cdn.jsdelivr.net https://static.cloudflareinsights.com; style-src 'unsafe-inline'; img-src data:; connect-src https://cdn.jsdelivr.net;" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" },
+        { "key": "Referrer-Policy", "value": "no-referrer" },
+        { "key": "Content-Security-Policy", "value": "default-src 'none'; sandbox allow-scripts; script-src 'unsafe-inline' https://cdn.jsdelivr.net https://static.cloudflareinsights.com; style-src 'unsafe-inline'; img-src data:; connect-src https://cdn.jsdelivr.net; frame-ancestors 'self' https://*.worldmonitor.app https://worldmonitor.app;" },
         { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
       ]
     }

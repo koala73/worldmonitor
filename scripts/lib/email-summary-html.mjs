@@ -15,6 +15,8 @@
 // lead is too thin for an email body.
 
 import { markdownToEmailHtml } from '../_digest-markdown.mjs';
+import { briefT } from '../../shared/brief-strings.js';
+import { isRtlLanguage } from '../../shared/ui-languages.js';
 
 /**
  * Inject the canonical synthesis (lead + threads + signals) into
@@ -36,7 +38,7 @@ import { markdownToEmailHtml } from '../_digest-markdown.mjs';
  * @param {string | { lead?: string; threads?: Array<{tag?: string; teaser?: string}>; signals?: string[] } | null | undefined} summary
  * @returns {string}
  */
-export function injectEmailSummary(html, summary) {
+export function injectEmailSummary(html, summary, lang = 'en') {
   if (!html) return html;
   if (!summary || (typeof summary === 'object' && !summary.lead)) {
     return html.replace('<div data-ai-summary-slot></div>', '');
@@ -61,7 +63,8 @@ export function injectEmailSummary(html, summary) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
-  const leadHtml = markdownToEmailHtml(payload.lead);
+  const chrome = (key) => (lang === 'en' ? briefT('en', key) : htmlEscape(briefT(lang, key)));
+  const leadHtml = markdownToEmailHtml(payload.lead, { rtl: isRtlLanguage(lang) });
 
   // Threads: each rendered as "<b>Tag</b> — teaser" on its own line.
   // Mirrors the old "3-5 bullet points" section visually without
@@ -89,12 +92,12 @@ export function injectEmailSummary(html, summary) {
     })
     .filter(Boolean);
   const signalsHtml = signalBullets.length > 0
-    ? `<div style="font-size:13px;line-height:1.7;color:#ccc;margin:14px 0 0 0;"><b style="color:#f2ede4;">Signals to watch:</b></div>` +
+    ? `<div style="font-size:13px;line-height:1.7;color:#ccc;margin:14px 0 0 0;"><b style="color:#f2ede4;">${chrome('email.signalsToWatch')}</b></div>` +
       signalBullets.join('')
     : '';
 
-  const summaryHtml = `<div style="background:#161616;border:1px solid #222;border-left:3px solid #4ade80;padding:18px 22px;margin:0 0 24px 0;">
-<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#4ade80;margin-bottom:10px;">Executive Summary</div>
+  const summaryHtml = `<div style="background:#161616;border:1px solid #222;border-${isRtlLanguage(lang) ? 'right' : 'left'}:3px solid #4ade80;padding:18px 22px;margin:0 0 24px 0;">
+<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#4ade80;margin-bottom:10px;">${chrome('email.execSummary')}</div>
 <div style="font-size:13px;line-height:1.7;color:#ccc;margin-bottom:${threadsHtml || signalsHtml ? '14px' : '0'};">${leadHtml}</div>
 ${threadsHtml}
 ${signalsHtml}

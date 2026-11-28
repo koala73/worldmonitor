@@ -35,6 +35,41 @@ test('a missing or invalid baseline is unavailable, including zero prices and da
   }
 });
 
+test('PriceCatcher survey items show their own date and latest baseline a week or more back; daily staples stay exact', () => {
+  const my = sources.find(source => source.id === 'pricecatcher')!;
+  const daily = { item: 'Tomatoes', market: 'Median', marketType: 'retail', unit: 'kg', currency: 'MYR', origin: '', date: '2026-10-29', price: 7 };
+  const oil = { ...daily, item: 'Cooking oil, pure palm (Seri Murni)', unit: '5 kg', date: '2026-10-26', price: 31 };
+  const chicken = { ...daily, item: 'Chicken (standard, cleaned)' };
+  const data = buildFoodPriceSource(my, snapshot([daily, { ...daily, date: '2026-10-22', price: 5 }, { ...daily, date: '2026-10-21', price: 1 },
+    chicken, { ...chicken, date: '2026-10-21', price: 1 }, { ...chicken, date: '2026-10-15', price: 1 },
+    oil, { ...oil, date: '2026-10-23', price: 1 }, { ...oil, date: '2026-10-15', price: 30 }, { ...oil, date: '2026-10-12', price: 1 }]), now);
+  const byItem = new Map(data.prices.map(price => [price.item, price]));
+  assert.equal(data.latestReportDate, '2026-10-29');
+  assert.deepEqual([byItem.get('Tomatoes')!.date, byItem.get('Tomatoes')!.previousDate, byItem.get('Tomatoes')!.wowPct], ['2026-10-29', '2026-10-22', 40]);
+  // A daily staple whose exact week-earlier day is missing has no baseline, even though older rows exist.
+  assert.deepEqual([byItem.get('Chicken (standard, cleaned)')!.wowAvailable, byItem.get('Chicken (standard, cleaned)')!.previousDate], [false, '']);
+  // The oil survey on 26 October is shown on its own date and compared with the latest survey on or before 19 October.
+  const oilPrice = byItem.get('Cooking oil, pure palm (Seri Murni)')!;
+  assert.deepEqual([oilPrice.date, oilPrice.previousDate, oilPrice.previousPrice], ['2026-10-26', '2026-10-15', 30]);
+  assert.equal(data.prices.length, 3);
+  // A survey baseline more than 28 days back is not comparable.
+  const gap = buildFoodPriceSource(my, snapshot([daily, { ...oil, date: '2026-10-26' }, { ...oil, date: '2026-09-27', price: 30 }]), now);
+  assert.equal(gap.prices.find(price => price.item === oil.item)!.wowAvailable, false);
+  const edge = buildFoodPriceSource(my, snapshot([daily, { ...oil, date: '2026-10-26' }, { ...oil, date: '2026-09-28', price: 30 }]), now);
+  assert.equal(edge.prices.find(price => price.item === oil.item)!.previousDate, '2026-09-28');
+  // A survey dated after the newest daily day does not hide the daily rows.
+  const later = buildFoodPriceSource(my, snapshot([daily, { ...daily, date: '2026-10-22', price: 5 }, { ...oil, date: '2026-10-29' }, { ...oil, date: '2026-10-20', price: 30 }]),
+    Date.parse('2026-10-30T12:00:00Z'));
+  const laterOil = buildFoodPriceSource(my, snapshot([{ ...daily, date: '2026-10-27' }, { ...daily, date: '2026-10-20', price: 5 }, { ...oil, date: '2026-10-29' }]),
+    Date.parse('2026-10-30T12:00:00Z'));
+  assert.equal(later.prices.length, 2);
+  assert.deepEqual(laterOil.prices.map(price => [price.item, price.date]).sort(), [['Cooking oil, pure palm (Seri Murni)', '2026-10-29'], ['Tomatoes', '2026-10-27']]);
+  assert.equal(laterOil.latestReportDate, '2026-10-29');
+  // Other sources keep one shared latest date and an exact seven-day baseline.
+  const shared = buildFoodPriceSource(source, snapshot([row, { ...row, item: 'Oil', date: '2026-10-26' }, { ...row, date: '2026-10-21', price: 50 }]), now);
+  assert.deepEqual(shared.prices.map(price => [price.item, price.wowAvailable]), [['Rice', false]]);
+});
+
 test('fresh fetch cannot make an old report current, and missing source data is explicit', () => {
   const data = buildFoodPriceSource(source, snapshot([{ ...row, date: '2026-09-01' }]), now);
   assert.equal(data.status, 'stale');

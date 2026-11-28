@@ -35,13 +35,13 @@ description: "World Monitor 通知系统 API 完整参考：涵盖通知渠道�
 | `set-channel` | 注册或更新渠道。对于 `webhook` 渠道,`webhookEnvelope` URL 仅接受 HTTPS,不得解析到私有/回环地址,并在存储前使用 AES-256-GCM 加密。可选字段:`email`、`webhookLabel`(截断至 100 字符)。 |
 | `set-web-push` | 为已登录用户注册浏览器 Web Push 订阅。 |
 | `delete-channel` | 按类型移除渠道(`email`、`webhook`、`telegram`、`web-push` 等)。 |
-| `set-alert-rules` | 一次性替换调用方的告警规则集合。 |
+| `set-alert-rules` | 一次性替换调用方的告警规则集合。可选 `enabledIntent`：`keep` 保留规则当前存储的 `enabled`，忽略请求中的值；`connect`（正在连接一个渠道）还会在规则尚无已存储渠道时开启告警。免费方案若会拒绝这次开启，规则保持关闭。响应包含存储后的 `enabled`；当 `connect` 保存做出该判断时，还包含 `firstChannel`（`on` 或 `held`），`held` 时附带含能力 `code` 和 `message` 的 `reason`。 |
 | `set-quiet-hours` | 设置"勿扰"时间窗口。 |
 | `set-digest-settings` | 配置摘要发送节奏和渠道路由。 |
 
 所有 action 均要求 Clerk bearer + PRO,且此处的 PRO 特指**已计费的权益记录**(`tier >= 1`)。与网关的 tier-1 REST 权限检查不同,仅有 `pro` 角色但没有权益记录的 Clerk 会话**不满足**要求:通知投递在 Convex 内部还会被再次校验(`assertProEntitlement`),因此边缘层直接返回清晰的 `403 pro_required`,而不是让请求在更深层以更无用的错误失败。无效的 action 返回 `400 Unknown action`。请求通过 `RELAY_SHARED_SECRET` 转发至 Convex。
 
-仅当权益被确认为非 Pro 时,没有已计费权益记录的调用方才会收到 `403 pro_required`。当权益校验本身处于不确定状态时,本端点的权限检查改为遵循共享的计费校验契约:对 `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed` 返回带 `Retry-After` 和 `X-Billing-Verification` 的 `503`;对已确认失效的订阅返回 `403 subscription_lapsed`。参见[错误处理](/zh/usage-errors)。
+仅当权益被确认为非 Pro 时,没有已计费权益记录的调用方才会收到 `403 pro_required`。当权益校验本身处于不确定状态时,本端点的权限检查改为遵循共享的计费校验契约:对 `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed` 返回带 `Retry-After` 和 `X-Billing-Verification` 的 `503`。服务方已确认的订阅失效(`subscription_lapsed`)或扣款失败导致的暂停(`payment_failed`)在此不会被拒绝:该账户与其他 tier-0 调用方一样走免费阶梯,因此仍可停用或删除其规则。参见[错误处理](/zh/usage-errors)。
 
 客户端在向用户暴露失败之前,应至少按 `Retry-After` 重试一次该 `503` —— 仪表盘自身的服务层(`src/services/notification-channels.ts`)会执行且仅执行一次有界重试。对 `entitlement_verification_unavailable` 而言,早于 `Retry-After` 的重试是无意义的:该结果在服务端会被短时负缓存,提前重试只会拿到同一个结果。另外两个 `renewal_verification_*` 代码不会被负缓存,但其延迟对应真实的计费提供方复核或冷却期,因此提前重试同样只会得到相同状态。
 
@@ -58,6 +58,46 @@ description: "World Monitor 通知系统 API 完整参考：涵盖通知渠道�
 - **载荷**:`title`、`source`(`Chokepoint Monitor`)、`chokepointId`、`chokepointName`、`disruptionScore`、`status`(`red`)、`activeWarnings`、`congestionLevel`、`triggeredAt`,以及标识一次告警、在中继重发时保持不变的 `coalesceKey`。Webhook 投递还会附带仪表盘 URL `link`。
 
 `POST /api/notify` 会拒绝该事件类型:只有中继会发布它。
+
+## 关注站点卫星告警
+
+两种事件类型会就用户列出的关注站点发出告警:`orbital_imaging_window` 和 `orbital_site_change`。只有当规则的 `eventTypes` 列出该类型时,规则才会收到它,并且只针对其 `orbitalSites` 列表中的站点。`orbitalSites` 为空或缺省表示不接收关注站点告警。列出任一类型都不会缩小规则的其他告警范围。
+
+- **成像窗口**:每天关注站点刷新后,若开放光学或雷达卫星(Sentinel-2、Landsat、Sentinel-1 等开放存档)将在未来 24 小时内对某站点成像,该站点会发出告警。商业、气象和军用卫星不会触发告警。每次过境只告警一次。同一站点在一次刷新中的所有新过境合并为一条告警,且每个站点每 12 小时最多发送一条成像窗口告警。
+- **已确认变化**:当站点的雷达变化标记变为已确认(即后续过境再次出现影像统计变化)时发出告警。仅处于 raised 状态的标记不会告警,保持已确认状态的标记也不会重复告警。每个站点每 24 小时最多发送一条变化告警,超过七天的确认不会告警。变化检测处于审核期间时,不发送任何变化告警。
+- **严重级别**:始终为 `critical`。与其他队列事件一样,只投递给实时规则,不进入摘要。
+- **范围**:`orbitalSites` 接受关注站点 id,例如 `chokepoint:hormuz_strait` 或 `conflict-zone:sudan`,每条规则最多 25 个。更长的列表或格式错误的 id 返回 `400 ORBITAL_SITES_INVALID`。请求任一事件类型或列出站点需要 Pro 权益,否则返回 `402 PRO_REQUIRED`。`countries` 范围不会过滤这些事件。
+- **载荷**:`title`、`source`(`Orbital Watch`)、`siteId`、`siteName`、`triggeredAt`,以及标识一次告警、在中继重发时保持不变的 `coalesceKey`。成像窗口告警另含 `windows`,最多五次过境,每项含 `noradId`、`name`、`profileId`、`category` 和 `time`。变化告警另含确认变化的存档场景 `itemId` 以及 `platform`。
+
+`POST /api/notify` 拒绝这两种事件类型:只有关注站点采集器会发布它们。
+
+## 水库水位告警
+
+只有当 Pro 规则的 `eventTypes` 列出 `reservoir_level_alert` 时,规则才会收到它。`eventTypes` 为空的规则不会收到它,列出它也不会缩小规则的其他告警范围。规则的 `reservoirAlert` 对象指明关注哪些水库以及何时告警。
+
+- **设置**:`reservoirAlert` 为 `{ reservoirs, belowPercent?, seasonalDrop? }`。`reservoirs` 为水库 id,例如 `nasser` 或 `gerd`,最多 50 个,为空或缺省表示不接收水库告警。`belowPercent` 为 1 到 50 的整数:当最新测得水位低于该水库自身已测范围的这一百分比(0 为已测最低水位,100 为最高)时告警。`seasonalDrop: true` 表示当最新测得水位低于该水库的季节基线时告警。规则可设置其一或两者;两者都未设置则永不触发。历史不足、没有已测范围或季节基线的水库无法触发对应条件。
+- **测量日期**:水位来自 NASA ICESat-2 激光雷达,过境约两个月后才到达仪表盘。水库获得新的测量日期时发送一次告警,从不按时钟发送,标题和 `measuredAt` 给出该日期。没有有效测量日期的事件不匹配任何规则。上线后的首次采集只记录当前测量值,因此不会就历史数据告警。
+- **基线**:季节基线是战略水位采集器已计算的那一个(`scripts/_reservoir-levels.mjs` 中的 `seasonalBaseline`);告警只携带其判断,不新增第二套基线。
+- **严重级别**:`medium`。数天前测得的水位从不紧急,因此该告警不会突破静默时段:默认的仅 critical 覆盖和 `silence_all` 都会将其静默,`batch_on_wake` 会将其保留并在静默时段结束时随批次发送。在静默时段之外,即使灵敏度为仅 critical,它也会送达实时规则,因为过滤条件是按水库的选择加入和规则自己的阈值。只投递给实时规则,不进入摘要。
+- **范围**:`countries` 范围不会过滤该事件。无效设置返回 `400 RESERVOIR_ALERT_INVALID`。请求该事件类型或列出水库需要 Pro 权益。已确认的非 Pro 调用方会从公开端点得到 `403 pro_required`;`402 PRO_REQUIRED` 是其背后 Convex 层的响应。
+- **载荷**:`title`、`source`(`NASA ICESat-2 lidar`)、`reservoirId`、`reservoirName`、`reservoirCountry`、`measuredAt`(`YYYY-MM-DD`)、`levelM`(高于 EGM2008 大地水准面的米数)、`percentOfRange`、`seasonalAnomalyM`、`seasonalZ`、`beyondSeasonalBaseline`,以及标识一次测量、在中继重发时保持不变的 `coalesceKey`。
+
+`POST /api/notify` 拒绝该事件类型:只有水库采集器会发布它。
+
+## 全国航空交通骤降告警
+
+`aviation_traffic_collapse` 在一个国家的航空公司出港航班全面骤降时(例如全国地面停飞或空管系统故障)通知用户,恢复时再通知一次。覆盖美国、英国、法国、德国、西班牙和意大利。它是广播类型:`eventTypes` 为空的规则会收到它,列出了事件类型的规则只有在列表包含它时才会收到。
+
+- **美国的触发条件**:每 5 分钟对照 OpenSky 航空交通序列检查一次。信号是美国本土上空低空爬升的航空公司飞机数量,即出港架次。每个 5 分钟时段与前四周同一纽约当地时间时段的中位数比较(若最近一周的数值更低,则与最近一周比较),且其中至少两周必须有记录,因此序列开始记录两周后才会告警。连续两个时段低于该中位数的 40% 时触发骤降告警。中位数不到当天最繁忙时段四分之一的时段会被跳过,因为夜间数量太少,比值没有意义。
+- **数据源检查**:骤降告警触发前,OpenSky 必须仍在工作(欧洲空中飞机数至少为其同时段中位数的 30%),并且必须仍能看到美国(其美国飞机数至少为同一时段 Wingbits 数量的 80%,没有 Wingbits 数据点时至少为其自身中位数的 60%)。数据源故障会阻止告警,而不是触发告警。
+- **欧洲**:每个欧洲国家统计其主要机场 48 公里内低空爬升的航空公司飞机(英国为希思罗、盖特威克、曼彻斯特、斯坦斯特德、爱丁堡、伯明翰、格拉斯哥和布里斯托)。一个国家每 5 分钟只有几架到约 17 架出港,因此按其当地时间以 20 分钟窗口比较,阈值为 30% 而非 40%。窗口内出港少于 30 架时视为静默时段跳过,因此意大利只在每天的高峰时段检查。数据源检查使用美国空中飞机数,覆盖检查要求该国机场附近通常飞机数的 40%。荷兰出港架次太少,无法检查。最近一周上限在欧洲尤其重要:2026-10-25 冬季时刻表生效后,德国晚间出港结束得更早、早晨开始得更晚,而中位数仍由夏季各周组成,两个普通日子曾被误判为骤降。
+- **恢复**:连续两个时段高于中位数的 70% 后,发送恢复事件,并带上它所结束的那次骤降的起始时间。
+- **严重级别**:骤降为 `critical`,因此会送达实时规则,并在默认的仅 critical 覆盖下突破静默时段。恢复为 `high`。即使灵敏度为仅 critical,它也会送达实时规则,但静默时段把它当作非 critical 处理:默认覆盖和 `silence_all` 会将其静默,`batch_on_wake` 会将其保留并在静默时段结束时随批次发送。两种事件都不进入摘要。
+- **范围**:每个事件在 `countryCode` 中携带所涉及的国家(`US`、`GB`、`FR`、`DE`、`ES` 或 `IT`)。设置了 `countries` 范围的规则只有在列表包含该国家时才会收到。
+- **验证**:回放 adsb.lol 存档的 111 天美国数据(包括节假日和 2026-11-01 夏令时切换),只触发一次骤降告警,即 2026-11-13 全国地面停飞,比官方停飞时间晚 16 分钟。回放 97 天欧洲数据(2026-08-10 至 2026-11-14)只触发一次骤降告警,即 2026-09-08 英国 NATS 飞行计划系统故障;法国、德国、西班牙和意大利均未触发,包括意大利 2026-09-30 的部分空管罢工以及冬季时刻表切换后的数周。
+- **载荷**:`title`、`source`(`WorldMonitor air traffic (OpenSky)`)、`countryCode`、`kind`(`collapse` 或 `recovery`)、`ratio`(出港架次占中位数的比例,保留三位小数)、`onset`(第一个低值时段的 ISO 时间),以及标识一次事件、在中继重发时保持不变的 `coalesceKey`。
+
+`POST /api/notify` 拒绝该事件类型:只有中继会发布它。
 
 ## Webhook 投递契约
 
@@ -86,11 +126,13 @@ description: "World Monitor 通知系统 API 完整参考：涵盖通知渠道�
   {
     "version": "1",
     "eventType": "digest",
+    "lang": "en",
     "stories": [{ "title": "...", "severity": "high", "phase": "...", "sources": ["..."] }],
     "summary": "...",
     "storyCount": 12
   }
   ```
+  `lang` 表示此负载的语言,始终为 `"en"`:即使读者的邮件、聊天和杂志简报使用其他语言,webhook 也始终携带规范的英文报道和摘要。
 
 ### 签名密钥
 
@@ -128,7 +170,7 @@ function verify(rawBody, headers, signingSecret) {
 
 面向 PRO 调用方的认证事件发布端点。要求 Clerk bearer 认证和有效的 PRO 权益,随后将接受的事件入队到通知队列。中继内部控制事件(如 `flush_quiet_held` 和 `channel_welcome`)为保留事件,会被拒绝。
 
-错误码:401(缺少/无效 JWT)、403 `pro_required`;与本文档中所有 Pro 门控端点一样,当权益校验本身处于不确定状态时遵循共享的计费校验契约:对 `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed` 返回带 `Retry-After` 和 `X-Billing-Verification` 的 `503`;对已确认失效的订阅返回 `403 subscription_lapsed`。参见[错误处理](/zh/usage-errors)。
+错误码:401(缺少/无效 JWT)、403 `pro_required`;与本文档中所有 Pro 门控端点一样,当权益校验本身处于不确定状态时遵循共享的计费校验契约:对 `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed` 返回带 `Retry-After` 和 `X-Billing-Verification` 的 `503`;对已确认失效的订阅返回 `403 subscription_lapsed`,对续费扣款失败而暂停的订阅返回 `403 payment_failed`。参见[错误处理](/zh/usage-errors)。
 
 - **幂等性**: 支持可选的 `Idempotency-Key`。使用相同 key 和相同请求体重试时,会重放原始入队响应,而不是再次发布通知。
 
@@ -162,7 +204,7 @@ function verify(rawBody, headers, signingSecret) {
 { "oauthUrl": "https://slack.com/oauth/v2/authorize?client_id=...&scope=incoming-webhook&..." }
 ```
 
-错误码:401(缺少/无效 JWT)、403 `pro_required`、503(OAuth 未配置或 Upstash 不可用)。此处的 503 **也可能**是可重试的计费校验拒绝 —— `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed`,并携带 `Retry-After` 和 `X-Billing-Verification`;已确认失效的订阅为 `403 subscription_lapsed`。由于配置错误导致的 503 不可重试,请依据 `code` 字段而非仅凭状态码分支。参见[错误处理](/zh/usage-errors)。
+错误码:401(缺少/无效 JWT)、403 `pro_required`、503(OAuth 未配置或 Upstash 不可用)。此处的 503 **也可能**是可重试的计费校验拒绝 —— `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed`,并携带 `Retry-After` 和 `X-Billing-Verification`;已确认失效的订阅为 `403 subscription_lapsed`,续费扣款失败而暂停的订阅为 `403 payment_failed`。由于配置错误导致的 503 不可重试,请依据 `code` 字段而非仅凭状态码分支。参见[错误处理](/zh/usage-errors)。
 
 ### `GET /api/slack/oauth/callback`
 

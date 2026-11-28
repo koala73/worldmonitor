@@ -14,8 +14,6 @@ export const R2_BASE = isTauri && R2_PUBLIC ? R2_PUBLIC : R2_PROXY;
 const hasTilesUrl = !!R2_BASE;
 
 export type PMTilesTheme = 'black' | 'dark' | 'grayscale' | 'light' | 'white';
-export type OpenFreeMapTheme = 'dark' | 'positron';
-export type CartoTheme = 'dark-matter' | 'voyager' | 'positron';
 
 export const FALLBACK_DARK_STYLE = 'https://tiles.openfreemap.org/styles/dark';
 export const FALLBACK_LIGHT_STYLE = 'https://tiles.openfreemap.org/styles/positron';

@@ -3,18 +3,24 @@
 // (not the builders) and compare them in order, so an edit to either wrapper
 // or a stale generated browser slice fails here.
 import assert from 'node:assert/strict';
-import { rmSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { after, before, describe, it } from 'node:test';
 
 import {
+  NEWS_CATALOG,
   buildBrowserCategoryFeeds,
   buildBrowserIntelSources,
   buildServerIntelSources,
   buildServerVariantFeeds,
 } from '../shared/news-catalog.ts';
-import { INTEL_SOURCES as SERVER_INTEL, VARIANT_FEEDS } from '../server/worldmonitor/news/v1/_feeds.ts';
+import {
+  INTEL_SOURCES as SERVER_INTEL,
+  SERVER_EDITIONS,
+  VARIANT_FEEDS,
+  digestGateProfile,
+} from '../server/worldmonitor/news/v1/_feeds.ts';
 import { bundleFeedsModule } from './_lib/bundle-feeds-module.mts';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -45,6 +51,20 @@ describe('shipped news catalog views match the catalog in order', () => {
 
   it('server INTEL_SOURCES equals the catalog server intel view', () => {
     assert.deepEqual(plain(SERVER_INTEL), plain(buildServerIntelSources()));
+  });
+
+  it('server editions and gate exemptions equal the catalog', () => {
+    assert.deepEqual([...SERVER_EDITIONS], Object.keys(NEWS_CATALOG.layout.server));
+    for (const edition of SERVER_EDITIONS) {
+      assert.deepEqual(digestGateProfile(edition).exemptCategories, NEWS_CATALOG.gateExempt[edition] ?? []);
+    }
+  });
+
+  it('server feed registry reads the generated slice, not the catalog JSON', () => {
+    // A value import of shared/news-catalog bundles the whole catalog into the
+    // digest and MCP functions (api/mcp.ts budget, tests/edge-function-size).
+    const source = readFileSync(join(repoRoot, 'server/worldmonitor/news/v1/_feeds.ts'), 'utf8');
+    assert.doesNotMatch(source, /^import\s+(?!type\b)[^;]*from\s+['"][./]*shared\/news-catalog['"]/m);
   });
 
   it('browser FULL_FEEDS equals the catalog browser view, category by category', () => {

@@ -31,6 +31,7 @@ export const BRIEF_SECTIONS = {
   signals: ['security'],
   timeline: ['security'],
   history: ['overview', 'security', 'resilience'],
+  intelMemory: ['overview', 'security'],
   news: ['overview', 'security', 'sources'],
   military: ['security'],
   infrastructure: ['resources', 'security'],

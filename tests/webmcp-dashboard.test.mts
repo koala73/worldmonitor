@@ -44,7 +44,7 @@ const EXPECTED_VARIANT_PANEL_SNAPSHOTS: Record<DashboardVariant, {
   finance: { enabledCount: 60, enabledSha256: 'e9cbe30455e107add242019de29d44335abf9da2a8a44c9c204076ed279bcfe8' },
   commodity: { enabledCount: 33, enabledSha256: 'b534510a2e814392e3966beb211e300e75a2b33f05c283613dd4f6cee50ddfe0' },
   happy: { enabledCount: 10, enabledSha256: 'f62bbf19c2f7ca75fefeb12a7ba32da991a72f494f91e6d310910d5b7a0468ad' },
-  energy: { enabledCount: 26, enabledSha256: '4566c4b42ec77521cddce83cccabe91069ffb211ade9441ef0cf115f11a3cd67' },
+  energy: { enabledCount: 27, enabledSha256: '9883327d2f1e0547b4111b469e21960954664f886aace434760d519e8bee3ed6' },
 };
 
 const EXPECTED_VARIANT_DEFAULT_SNAPSHOTS: Record<DashboardVariant, {
@@ -52,12 +52,12 @@ const EXPECTED_VARIANT_DEFAULT_SNAPSHOTS: Record<DashboardVariant, {
   enabled: number;
   sha256: string;
 }> = {
-  full: { total: 112, enabled: 87, sha256: '20fc1772047c653d78a2aa4ca8bb85372b117ab972e8af1d07686a29bd3d8bc0' },
+  full: { total: 114, enabled: 87, sha256: 'c19e877ac9fe17e74d3d604760c6a8a073d2f4c01e4885141fcc6652165a780a' },
   tech: { total: 41, enabled: 38, sha256: '43d7c788ff599baae171f7f46532653370e03ca4d322a8e6614f9f0a1cee5045' },
   finance: { total: 69, enabled: 60, sha256: 'bb4ad5038f29080ee1631ebce59596da8ef9ae6f88932f0a4e06b1087be141b7' },
   commodity: { total: 36, enabled: 33, sha256: 'cc9e0b178dec33dff354a1eea95b5b215302fc7ce685b3d92b82a356df6d6bee' },
   happy: { total: 10, enabled: 10, sha256: '197a73a578d8734d49e844e0a83b89204d5a6fc6b973b1ed698272d846a2c308' },
-  energy: { total: 28, enabled: 26, sha256: 'c29563083968049da7c1c7c0b6a856143c3797c010b9c21d2424bbbbb3febbc1' },
+  energy: { total: 30, enabled: 27, sha256: '1a5271643c2a74fe662e011b23a170fe5458355da566bc061c25560216b45569' },
 };
 
 function makeContext(
@@ -221,7 +221,7 @@ describe('WebMCP live dashboard bindings', () => {
     const entitled = listWebMcpDashboardPanels(ctx, 'full', { variant: 'full', limit: 8 }, {
       isPanelAllowed: () => true,
     });
-    assert.equal(entitled.total, 112);
+    assert.equal(entitled.total, EXPECTED_VARIANT_DEFAULT_SNAPSHOTS.full.total);
     assert.equal(entitled.variant, 'full');
     assert.equal(entitled.hasMore, true);
 
@@ -251,7 +251,7 @@ describe('WebMCP live dashboard bindings', () => {
       cursor = page.nextCursor;
     }
     const ids = pages.flatMap((page) => page.panels.map((panel) => panel.id));
-    assert.equal(new Set(ids).size, 112);
+    assert.equal(new Set(ids).size, entitled.total);
     assert.ok(ids.includes('windy-webcams'));
 
     const gatedPages = [];
@@ -1032,14 +1032,14 @@ describe('WebMCP live dashboard bindings', () => {
     assert.equal(settings.destination, 'settings');
     assert.equal(settings.overlay, 'open');
     assert.equal(settings.tab, 'settings');
-    assert.deepEqual(calls, ['settings']);
+    assert.deepEqual(calls, ['default']);
 
     const alerts = await applyWebMcpOpenAlerts(ctx, 'full');
     assert.equal(alerts.ok, true);
     assert.equal(alerts.destination, 'alerts');
     assert.equal(alerts.overlay, 'open');
     assert.equal(alerts.tab, 'notifications');
-    assert.deepEqual(calls, ['settings', 'notifications']);
+    assert.deepEqual(calls, ['default', 'notifications']);
   });
 
   it('denies settings when the overlay fails to open', async () => {
@@ -1080,7 +1080,7 @@ describe('WebMCP live dashboard bindings', () => {
     assert.equal(settings.ok, true);
     assert.equal(settings.context.variant, 'full');
     assert.deepEqual(settings.context.map.enabledLayers, []);
-    assert.deepEqual(settingsCalls, ['settings']);
+    assert.deepEqual(settingsCalls, ['default']);
 
     let navigated = false;
     const destroyed = await applyWebMcpSwitchMonitor(

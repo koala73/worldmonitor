@@ -1,10 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 
 import { __testing__, buildPublicTool } from '../api/mcp.ts';
+import { readToolsReference } from './helpers/mcp-tools-reference-docs.mjs';
 
-const DOC = readFileSync(new URL('../docs/mcp-tools-reference.mdx', import.meta.url), 'utf8');
+const DOC = readToolsReference('en');
 const UNIVERSAL_ARGS = new Set(['summary', 'jmespath', 'response_mode', 'spoken_language']);
 
 function typeText(schema) {
@@ -46,7 +46,7 @@ function unwrapInlineCode(value) {
 function sectionForTool(toolName) {
   const heading = `### \`${toolName}\``;
   const start = DOC.indexOf(heading);
-  assert.notEqual(start, -1, `docs/mcp-tools-reference.mdx missing heading for ${toolName}`);
+  assert.notEqual(start, -1, `docs/mcp-tools reference pages missing heading for ${toolName}`);
   const next = DOC.indexOf('\n### `', start + heading.length);
   return DOC.slice(start, next === -1 ? DOC.length : next);
 }
@@ -139,7 +139,7 @@ describe('MCP tools reference docs — cache tool parameter parity', () => {
     assert.deepEqual(
       undocumented,
       [],
-      'every TOOL_REGISTRY tool needs a section in docs/mcp-tools-reference.mdx',
+      'every TOOL_REGISTRY tool needs a section in a docs/mcp-tools/*.mdx page',
     );
   });
 
@@ -148,7 +148,7 @@ describe('MCP tools reference docs — cache tool parameter parity', () => {
     assert.deepEqual(
       documentedCacheToolNames().sort(),
       cacheTools.map((tool) => tool.name).sort(),
-      'docs/mcp-tools-reference.mdx cache-tool sections must be bidirectional with TOOL_REGISTRY',
+      'docs/mcp-tools/*.mdx cache-tool sections must be bidirectional with TOOL_REGISTRY',
     );
 
     const failures = [];
@@ -191,9 +191,9 @@ describe('MCP tools reference docs — cache tool parameter parity', () => {
     return JSON.parse(doc.slice(start, end));
   }
 
-  for (const [label, path] of [['en', '../docs/mcp-tools-reference.mdx'], ['zh', '../docs/zh/mcp-tools-reference.mdx']]) {
+  for (const label of ['en', 'zh']) {
     it(`${label} worked-example outputSchema matches the live ${WORKED_EXAMPLE_TOOL} schema`, () => {
-      const doc = readFileSync(new URL(path, import.meta.url), 'utf8');
+      const doc = readToolsReference(label);
       const tool = __testing__.TOOL_REGISTRY.find((t) => t.name === WORKED_EXAMPLE_TOOL);
       assert.ok(tool, `${WORKED_EXAMPLE_TOOL} not found in TOOL_REGISTRY`);
 

@@ -37,6 +37,13 @@ test('countries without these feeds perform no optional reads', async () => {
   assert.deepEqual(await readRegionalEnergyFeeds('DE', async () => { throw new Error('unexpected read'); }, now), []);
 });
 
+test('a parked feed is not listed or read (searg, #11154)', async () => {
+  const reads: string[] = [];
+  const feeds = await readRegionalEnergyFeeds('AR', async key => { reads.push(key); return null; }, now);
+  assert.deepEqual(reads, ['energy:regional:cammesa:v1']);
+  assert.deepEqual(feeds.map(feed => feed.name), ['CAMMESA SADI']);
+});
+
 test('old source data stays stale after a fresh fetch', async () => {
   const feeds = await readRegionalEnergyFeeds('NG', async () => snapshot('niso', {
     observedAt: '2026-09-01T00:00:00.000Z',
@@ -60,6 +67,19 @@ test('a series budget from the feed registry overrides the feed budget for that 
   assert.equal(anp.observations.find(p => p.metric === 'fuel.retail_price')!.stale, true);
   assert.equal(anp.observations.find(p => p.metric === 'fuel.imports')!.stale, false);
   assert.equal(anp.status, 'partial');
+});
+
+test('a metric|unit series budget gives the monthly LPG survey its own limit beside the weekly prices', async () => {
+  const lpg = (period: string) => ({ metric: 'fuel.retail_price', period, value: 768, unit: 'TWD/20kg', area: 'LPG 20 kg cylinder' });
+  const weekly = (period: string) => ({ metric: 'fuel.retail_price', period, value: 31.1, unit: 'TWD/l', area: 'Unleaded 92' });
+  const read = (observations: object[]) => readRegionalEnergyFeeds('TW', async () => snapshot('oil111', {
+    dataUrls: ['https://www2.moeaea.gov.tw/oil111/Gasoline/CountyCityAvg/load'], observations,
+  }), now);
+  // 28 days after the first of its month, the current LPG survey is fresh; a weekly price that old is not.
+  const [current] = await read([weekly('2026-10-25'), lpg('2026-10-01')]);
+  assert.equal(current.status, 'available');
+  const [old] = await read([weekly('2026-10-01'), lpg('2026-08-01')]);
+  assert.deepEqual(old.observations.map(p => p.stale), [true, true]);
 });
 
 test('a local-calendar feed serves a date that has started in its own time zone', async () => {

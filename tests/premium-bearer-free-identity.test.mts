@@ -185,7 +185,7 @@ describe('the bearer arm of resolvePremiumCallerIdentity (#5619 follow-up)', () 
   it('reads only the verified bearer policy namespace on the public summary cache route', async () => {
     const { getSummarizeArticleCache } = await import('../server/worldmonitor/news/v1/get-summarize-article-cache.ts');
     const { buildSummaryCacheKey } = await import('../src/utils/summary-cache-key.ts');
-    const cacheKey = await buildSummaryCacheKey(['Policy cache story'], 'translate', '', 'fr', 'en');
+    const cacheKey = await buildSummaryCacheKey(['Policy cache story'], 'brief', '', 'fr', 'en');
     const request = bearerRequest(await signToken({ sub: 'user_cache_policy', plan: 'free' }));
     await getSummarizeArticleCache({ request } as never, { cacheKey });
     assert.ok(cacheReads.some(key => key.endsWith(`${cacheKey}:ai=anthropic`)), cacheReads.join('\n'));

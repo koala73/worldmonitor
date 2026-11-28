@@ -17,7 +17,7 @@ import { publisherFamilyFor } from '../../../../shared/publisher-families.js';
 import { isVerifiableArticleUrl } from '../../../../shared/article-url.js';
 import { UN_M49_REGION_IDS, unM49RegionCountries } from '../../../_shared/un-m49-regions';
 import { INTEL_SOURCES, VARIANT_FEEDS } from './_feeds';
-import { FUTURE_DATE_TOLERANCE_MS, resolveMaxAgeMs, rssFeedCacheKey } from './_rss-cache';
+import { FUTURE_DATE_TOLERANCE_MS, feedRowsWithCountryItems, resolveMaxAgeMs, rssFeedCacheKey, rssFeedCountryCacheKey } from './_rss-cache';
 
 export const MEDIA_PERSPECTIVE_CACHE_PREFIX = 'news:media-perspective:v2';
 const CACHE_TTL_SECONDS = 300;
@@ -154,6 +154,7 @@ function buildGroup(homeCountry: string, audience: string, items: MediaPerspecti
 
 interface CatalogFeed {
   name: string;
+  url: string;
   keys: string[];
 }
 
@@ -163,7 +164,7 @@ function catalogFeeds(): CatalogFeed[] {
   const add = (variant: string, feed: { name: string; url: string }) => {
     const key = rssFeedCacheKey(variant, feed.url);
     const known = byUrl.get(feed.url);
-    if (!known) byUrl.set(feed.url, { name: feed.name, keys: [key] });
+    if (!known) byUrl.set(feed.url, { name: feed.name, url: feed.url, keys: [key] });
     else if (!known.keys.includes(key)) known.keys.push(key);
   };
   const variants = ['full', ...Object.keys(VARIANT_FEEDS).filter(variant => variant !== 'full')];
@@ -174,12 +175,17 @@ function catalogFeeds(): CatalogFeed[] {
   return [...byUrl.values()];
 }
 
+/** Only the full variant retains a country pool. */
+function countryKeys(feed: CatalogFeed): string[] {
+  return feed.keys.includes(rssFeedCacheKey('full', feed.url)) ? [rssFeedCountryCacheKey('full', feed.url)] : [];
+}
+
 /** A cached parse; a fetch that failed is cached as `items: []` with `attempt.failure` set. */
-function healthyEntry(value: unknown): { items: unknown[]; countryItems?: unknown[] } | null {
+function healthyEntry(value: unknown): { items: unknown[] } | null {
   if (!value || typeof value !== 'object' || !('items' in value) || !Array.isArray(value.items)) return null;
   const attempt = 'attempt' in value ? value.attempt : null;
   if (attempt && typeof attempt === 'object' && 'failure' in attempt && attempt.failure) return null;
-  return value as { items: unknown[]; countryItems?: unknown[] };
+  return value as { items: unknown[] };
 }
 
 function cachedLinks(response: ListMediaPerspectiveResponse): string[] {
@@ -200,7 +206,7 @@ async function buildAll(query: Query, now: number): Promise<{ response: ListMedi
     feedCached: 0,
     readAt: new Date(now).toISOString(),
   };
-  const [cached, revoked] = await Promise.all([getCachedJsonBatch(feeds.flatMap(feed => feed.keys)), readRevokedUrlSet()]);
+  const [cached, revoked] = await Promise.all([getCachedJsonBatch(feeds.flatMap(feed => [...feed.keys, ...countryKeys(feed)])), readRevokedUrlSet()]);
   if (!revoked.readable) return { response, revocationsReadable: false };
 
   const cutoff = now - Math.min(query.windowHours * 3600_000, resolveMaxAgeMs());
@@ -219,10 +225,14 @@ async function buildAll(query: Query, now: number): Promise<{ response: ListMedi
   const grouped = new Map<string, { homeCountry: string; audience: string; items: MediaPerspectiveHeadline[]; links: Set<string> }>();
   const unattributed = new Set<string>();
   for (const feed of feeds) {
-    const entry = feed.keys.map(key => healthyEntry(cached.get(key))).find(value => value !== null);
-    if (!entry) continue;
+    const key = feed.keys.find(candidate => healthyEntry(cached.get(candidate)) !== null);
+    const entry = key ? healthyEntry(cached.get(key)) : null;
+    if (!key || !entry) continue;
     response.feedCached++;
-    const values = Array.isArray(entry.countryItems) ? [...entry.items, ...entry.countryItems] : entry.items;
+    const values = feedRowsWithCountryItems(
+      entry,
+      key === rssFeedCacheKey('full', feed.url) ? cached.get(rssFeedCountryCacheKey('full', feed.url)) : null,
+    );
     for (const value of values) {
       const row = rowFromCache(value, feed.name, now, cutoff, revoked.urls);
       if (!row) continue;

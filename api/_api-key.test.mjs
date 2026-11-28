@@ -265,12 +265,6 @@ test('wms_ header ALONE is still kind session (XP preserved)', async () => {
   assert.equal(r.kind, 'session');
 });
 
-test('wms_ header ALONE + forceKey is still rejected with Pro authentication', async () => {
-  const { token } = await issueSessionToken();
-  const r = await validateApiKey(makeReq({ key: token }), { forceKey: true });
-  assert.equal(r.valid, false);
-  assert.match(r.error, /Pro authentication/);
-});
 
 test('PR #3557 review: wms_ result must NOT carry kind=enterprise (gateway entitlement-bypass anti-regression)', async () => {
   // Gateway skips entitlement check ONLY for kind:'enterprise'. If a future

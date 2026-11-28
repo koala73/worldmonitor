@@ -8,6 +8,47 @@ import wbTechProjection from '../scripts/_wb-tech-readiness-projection.cjs';
 const { buildWorldBankTechObservations } = wbTechProjection;
 
 describe('World Bank technology readiness provenance', () => {
+  it('ranks entries with at least three observations and keeps sparse source data', () => {
+    const observation = (value) => ({ value, year: 2024 });
+    const rankings = computeRankings({
+      internet: { KOR: observation(97.9), MCO: observation(99), NER: observation(0), TCD: observation(100) },
+      mobile: { SXM: observation(205.37), KOR: observation(172.52), MCO: observation(107.4), NER: observation(0), TCD: observation(150) },
+      broadband: { KOR: observation(47.8), MCO: observation(55.68), NER: observation(0) },
+      rdSpend: { KOR: observation(4.94352) },
+    });
+
+    assert.deepEqual(rankings.slice(0, 3).map(({ country, score, rank, componentCount }) =>
+      [country, score, rank, componentCount]), [
+      ['KOR', 98.1, 1, 4],
+      ['MCO', 93, 2, 3],
+      ['NER', 0, 3, 3],
+    ]);
+    const sxm = rankings.find(({ country }) => country === 'SXM');
+    assert.equal(sxm.score, null);
+    assert.equal(sxm.rank, null);
+    assert.equal(sxm.componentCount, 1);
+    assert.equal(sxm.observations.mobile.value, 205.37);
+    const two = rankings.find(({ country }) => country === 'TCD');
+    assert.equal(two.componentCount, 2);
+    assert.equal(two.score, null);
+    assert.equal(two.rank, null);
+  });
+
+  it('ranks only countries, not World Bank regional or income aggregates', () => {
+    const observation = (value, name) => ({ value, year: 2024, name });
+    const indicator = (value) => ({
+      ISL: observation(value, 'Iceland'),
+      NAC: observation(value, 'North America'),
+      EUU: observation(value, 'European Union'),
+      WLD: observation(value, 'World'),
+      HIC: observation(value, 'High income'),
+    });
+    const rankings = computeRankings({
+      internet: indicator(90), mobile: indicator(120), broadband: indicator(40), rdSpend: indicator(2),
+    });
+    assert.deepEqual(rankings.map(({ country, rank }) => [country, rank]), [['ISL', 1]]);
+  });
+
   it('adds source observations without changing score, rank, or normalized components', () => {
     const rankings = computeRankings({
       internet: {
@@ -63,7 +104,7 @@ describe('World Bank technology readiness provenance', () => {
     assert.equal(buildWorldBankTechObservations({ mobile: { value: null, year: 2023 } }).mobile, null);
   });
 
-  it('uses one observation projection for both World Bank writers', () => {
+  it('uses one ranking and observation projection for both World Bank writers', () => {
     const input = {
       internet: { value: 91, year: 2023 },
       mobile: { value: 120, year: 2022 },
@@ -78,8 +119,8 @@ describe('World Bank technology readiness provenance', () => {
     });
     assert.deepEqual(entry.observations, buildWorldBankTechObservations(input));
     const relaySource = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
-    assert.match(relaySource, /require\('\.\/_wb-tech-readiness-projection\.cjs'\)/);
-    assert.match(relaySource, /const observations = buildWorldBankTechObservations\(/);
-    assert.match(relaySource, /scores\.push\(\{[^}]*components, observations \}\)/);
+    assert.equal(computeRankings, wbTechProjection.computeWorldBankTechRankings);
+    assert.match(relaySource, /\{ computeWorldBankTechRankings: wbComputeRankings \} = require\('\.\/_wb-tech-readiness-projection\.cjs'\)/);
+    assert.match(relaySource, /const rankings = wbComputeRankings\(indicatorData\)/);
   });
 });

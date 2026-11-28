@@ -347,8 +347,6 @@ export interface PanelTabSelectionResult {
   message: string;
 }
 
-export const WEBMCP_MONITOR_KEYS = SITE_VARIANTS;
-
 export type WebMcpMonitorKey = SiteVariant;
 export type WebMcpNavDestination = WebMcpMonitorKey | 'settings' | 'alerts' | 'mission_picker';
 export type WebMcpMonitorNavigation = 'none' | 'reload' | 'assign';

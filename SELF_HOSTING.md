@@ -10,6 +10,14 @@ Run the full World Monitor stack locally with Docker/Podman.
 
 ## 🚀 Quick Start
 
+Prefer a single command? This does steps 1–4 below (clone, `npm ci`, secrets, start, seed) and is safe to re-run. The `npm ci` and seed steps need Node.js 22.19 or newer on the host; without it the installer starts the stack and skips seeding:
+
+```bash
+curl -fsSL https://www.worldmonitor.app/install.sh | bash
+```
+
+Options: `--dir`, `--port`, `--no-seed`, `--build`, `--no-build`. The installer pulls the published images and builds from source only if the pull fails (or with `--build`). Pass them after `bash -s --`, for example `curl -fsSL https://www.worldmonitor.app/install.sh | bash -s -- --port 8080`. Run `scripts/install.sh --help` in a checkout for details. Or follow the manual steps:
+
 ```bash
 # 1. Clone and enter the repo
 git clone https://github.com/koala73/worldmonitor.git
@@ -23,8 +31,8 @@ echo "REDIS_PASSWORD=$(openssl rand -hex 32)"      >> .env
 echo "REDIS_TOKEN=$(openssl rand -hex 32)"         >> .env
 echo "WM_SESSION_SECRET=$(openssl rand -hex 32)"   >> .env
 
-# 3. Start the stack
-docker compose up -d        # or: uvx podman-compose up -d
+# 3. Pull the published images and start the stack
+docker compose pull && docker compose up -d        # or: uvx podman-compose pull && uvx podman-compose up -d
 
 # 4. Seed data into Redis
 ./scripts/run-seeders.sh
@@ -212,6 +220,21 @@ services:
 
 Without the X or Telegram credentials those panels load but stay empty. `.env.example` lists every variable the code reads.
 
+### OREF history volumes
+
+If you set `OREF_DATA_DIR` on a relay container, mount a directory that the
+container's `node` user (UID 1000, GID 1000) can write to. Before upgrading an
+existing root-owned volume, stop its relay and change the owner of the mounted
+OREF directory and its existing `oref-history.json` and `oref-history.json.tmp`
+files to `1000:1000`. Give the owner read, write, and search access to the
+directory, and read and write access to the two files if they exist. Apply the
+change on the host for a bind mount, or from a one-off root container with the
+same volume mounted. Restart the relay after the change.
+
+The relay checks these permissions at startup when `OREF_DATA_DIR` is set.
+Check that it logs `OREF local persistence` and that the history file updates
+after the next history save.
+
 ### Docker secrets
 
 To keep keys out of `docker inspect`, mount them as Docker secrets instead. The app's entrypoint reads each file in `/run/secrets/` and exports it under the file's name, taking priority over the same variable from `environment`. Create one file per key and uncomment the `secrets:` blocks at the bottom of `docker-compose.yml` and under the `worldmonitor` service:
@@ -346,15 +369,20 @@ curl -s -X POST "$UPSTASH_REDIS_REST_URL/pipeline" \
 ```
 
 That single `SADD` is enough for everything served out of Redis — no key
-deletion is required, because suppression happens on read.
+deletion is required, because suppression happens on read. Each server
+instance reuses its last read of the set for up to 10 seconds, so allow that
+long before the item is gone everywhere.
 
 **Two things it does not do**, both of which matter during an incident:
 
 1. **It does not evict shared caches.** `/api/news/v1/list-feed-digest` is
    served with `max-age=60, s-maxage=300` and `CDN-Cache-Control: s-maxage=600`. Once a
    revocation is live the endpoint stops feeding shared caches, but copies
-   already stored survive. **Purge the CDN for that path** if you have one in
-   front of the stack. A purely local Docker stack has no CDN and can skip this.
+   already stored survive. **Wait one minute after the `SADD`, then purge the
+   CDN for that path** if you have one in front of the stack. An instance can
+   keep its old read of the set for 10 seconds, and a digest request can take
+   up to 25 seconds, so a request that started before the revocation can
+   still finish and refill the CDN within that minute. A purely local Docker stack has no CDN and can skip this.
 2. **It does not force a rebuild.** The existing digest keeps being rebuilt on
    its normal ~900s cycle. To rebuild immediately:
 
@@ -367,8 +395,21 @@ deletion is required, because suppression happens on read.
 
    Note the key version is **v1**. Repeat per `<variant>:<lang>` scope you serve.
 
-To lift a revocation, `SREM` the same URL — stored bodies are kept unfiltered on
-purpose, so the item reappears on the next read without waiting for a rebuild.
+To lift a revocation, `SREM` the same URL. Paths that store items unfiltered
+show it again within 10 seconds. A digest built while the URL was revoked left
+the item out, so it returns to the digest only on the next rebuild. To rebuild
+now, wait one minute after the `SREM`, then delete the digest keys as in step 2
+above. The 10-second memo is only part of that wait: a digest build that read
+the set before the `SREM` can take up to 25 seconds and still publish its
+copy without the item, so delete the keys only after any such build is done.
+If a CDN sits in front of the stack, it can still hold a digest without the
+item. Once `/api/news/v1/list-feed-digest` at the origin returns a rebuilt
+digest (its `generatedAt` is later than the key deletion), and at least one
+minute after deleting the keys, purge that CDN path. The rebuilt digest may
+still lack the item if it aged out of its feed or fell below its category cap
+in the meantime. The minute matters because a request that read the old
+digest before the deletion can still finish and refill the CDN. A purely local Docker stack can stop at the
+origin check.
 
 ```bash
 curl -s -X POST "$UPSTASH_REDIS_REST_URL/pipeline" \
@@ -378,8 +419,9 @@ curl -s -X POST "$UPSTASH_REDIS_REST_URL/pipeline" \
 ```
 
 > If the revocation set cannot be read at all (Redis erroring, not merely
-> absent), every serving path fails **closed** — it serves nothing rather than
-> serving content it could not check. A stack with no Redis configured is a
+> absent) and the instance has no successful read from the last 10 seconds,
+> every serving path fails **closed** — it serves nothing rather than serving
+> content it could not check. A stack with no Redis configured is a
 > different case: there is no suppression store to consult, so serving proceeds
 > normally.
 
@@ -399,6 +441,8 @@ curl -s -X POST "$UPSTASH_REDIS_REST_URL/pipeline" \
 
 ## 🔨 Building from Source
 
+`docker compose pull` (above) fetches the three published images: `ghcr.io/koala73/worldmonitor-selfhosted`, `worldmonitor-ais-relay` and `worldmonitor-redis-rest`. The `main` tag, the default, is rebuilt from `main` on every Docker-related merge and daily, so it matches the `docker-compose.yml` in a fresh clone. Release builds are tagged with their version (no leading `v`) and `latest`; pin one by putting `WM_IMAGE_TAG=<version>` in `.env`, and use the `docker-compose.yml` from the same release. Build from source only if you are modifying the app or need a platform the images do not cover (they are linux/amd64 and linux/arm64).
+
 ```bash
 # Frontend only (for development)
 # Build /pro first: it is generated by pro-test, not committed (#6898), and the
@@ -406,14 +450,17 @@ curl -s -X POST "$UPSTASH_REDIS_REST_URL/pipeline" \
 # leaves dist/ with no /pro.
 npm run build:pro && npx vite build
 
-# App image only
-docker build -t worldmonitor:latest -f Dockerfile .
-
-# Update: pull, rebuild every image, and restart
-git pull
+# Full stack, built locally instead of pulled (docker-compose.yml keeps its
+# build: sections for this)
 docker compose up -d --build     # or: uvx podman-compose up -d --build
+
+# Update: pull the new compose file and the matching images, and restart
+git pull
+docker compose pull && docker compose up -d
 ./scripts/run-seeders.sh
 ```
+
+If you pinned `WM_IMAGE_TAG`, `git pull` alone moves the compose file but not the images. Check out the tag of the release you are moving to (`git checkout v<version>`) and set `WM_IMAGE_TAG=<version>` in `.env` before `docker compose pull`, so the file and the images stay on the same release.
 
 ### ⚠️ Build Notes
 
@@ -443,15 +490,16 @@ Docker:
 ```bash
 # 1. Stop the stack and remove its containers, network and the redis-data volume
 docker compose down -v
-# 2. Remove the images the stack built or pulled
-docker image rm worldmonitor:latest worldmonitor-ais-relay:latest worldmonitor-redis-rest:latest docker.io/redis:7-alpine
+# 2. Remove the images the stack pulled or built (a local build carries the same
+#    names; replace main with your WM_IMAGE_TAG if you pinned one)
+docker image rm ghcr.io/koala73/worldmonitor-selfhosted:main ghcr.io/koala73/worldmonitor-ais-relay:main ghcr.io/koala73/worldmonitor-redis-rest:main docker.io/redis:7-alpine
 ```
 
 Podman:
 
 ```bash
 uvx podman-compose down -v
-podman image rm worldmonitor:latest worldmonitor-ais-relay:latest worldmonitor-redis-rest:latest docker.io/redis:7-alpine
+podman image rm ghcr.io/koala73/worldmonitor-selfhosted:main ghcr.io/koala73/worldmonitor-ais-relay:main ghcr.io/koala73/worldmonitor-redis-rest:main docker.io/redis:7-alpine
 ```
 
 Then remove the clone, which also removes `.env` and `docker-compose.override.yml`:
@@ -466,7 +514,7 @@ What each step deletes:
 | Step | Removes | Keeps |
 | --- | --- | --- |
 | `docker compose down -v` | Containers `worldmonitor`, `worldmonitor-ais-relay`, `worldmonitor-redis`, `worldmonitor-redis-rest`; the Compose network; the `redis-data` volume | Images, the clone |
-| `docker image rm ...` | The three locally built images and the pulled Redis image | The clone |
+| `docker image rm ...` | The three stack images and the pulled Redis image | The clone |
 | `rm -rf worldmonitor` | The source, `.env` (secrets), `docker-compose.override.yml` (API keys), `node_modules`, any local `dist/` | Nothing |
 
 To keep the seeded data for a later reinstall, stop the stack without `-v`

@@ -42,6 +42,7 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
 | [`/openapi.json`](https://www.worldmonitor.app/openapi.json) | OpenAPI 3.1 | 压缩 JSON 打包，面向只解析 JSON 的工具与扫描器。操作、参数、请求体与响应与 `/openapi.yaml` 完全一致；为控制在扫描器的响应体大小上限内，共享结构以 `$ref` 合并，并省略任何操作都无法引用到的组件 schema |
 | [`/.well-known/mcp/server-card.json`](https://worldmonitor.app/.well-known/mcp/server-card.json) | MCP | 传输方式（`streamableHttp`）、端点、OAuth 资源、作用域、流式、能力标志 |
 | [`/.well-known/mcp/server.json`](https://worldmonitor.app/.well-known/mcp/server.json) | MCP | 与 `server-card.json` 相同的载荷，使用较新的 well-known 文件名。这**不是**仓库根目录的 MCP 注册表 `server.json` |
+| `/mcp/server-card` | MCP server-card 扩展 | 与 `server-card.json` 相同的载荷，位于每个服务器的位置（`<server URL>/server-card`）。在 `www` 上同样可用，并指向规范的 apex 传输地址 |
 | [`/.well-known/oauth-authorization-server`](https://api.worldmonitor.app/.well-known/oauth-authorization-server) | [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) | OAuth 2.1 授权服务器元数据（PKCE、DCR、令牌端点） |
 | [`/.well-known/oauth-protected-resource`](https://worldmonitor.app/.well-known/oauth-protected-resource) | [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) | 其 `resource` 为站点源站本身（而非 MCP 端点）的资源元数据 |
 | [`/.well-known/oauth-protected-resource/mcp`](https://worldmonitor.app/.well-known/oauth-protected-resource/mcp) | [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) | MCP 端点的资源元数据，其 `resource` 为 `https://worldmonitor.app/mcp`（已部署的 `/api/mcp` 路由在对应路径下有各自的文档） |

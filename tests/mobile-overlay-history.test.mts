@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { reconcileOverlayForTab } from '../src/app/mobile-overlay-reconcile';
 import { OverlayHistoryManager, type OverlayHistoryEnvironment } from '../src/utils/overlay-history';
 
 function createEnvironment({ asyncBack = false, initialState = null } = {}) {
@@ -261,6 +262,84 @@ describe('OverlayHistoryManager', () => {
     assert.equal(manager.top(), 'search-pending');
     assert.equal(firstCancels, 0);
     assert.equal(secondCancels, 0);
+    manager.destroy();
+  });
+});
+
+describe('a Settings page entry above Settings', () => {
+  function openSettingsPage(manager: OverlayHistoryManager, closed: string[]) {
+    manager.open('settings', (origin) => closed.push(`settings:${origin}`));
+    manager.open('settings-section', (origin) => closed.push(`settings-section:${origin}`));
+  }
+
+  function tabBar(manager: OverlayHistoryManager, closed: string[]) {
+    return {
+      top: () => manager.top(),
+      dismiss: (id: Parameters<OverlayHistoryManager['dismiss']>[0]) => manager.dismiss(id),
+      settingsHasPendingChanges: () => false,
+      closeSettings: () => closed.push('closeSettings'),
+      setActive: () => {},
+    };
+  }
+
+  it('pops the page before Settings on Back', () => {
+    const { environment, getIndex } = createEnvironment();
+    const manager = new OverlayHistoryManager(environment);
+    const closed: string[] = [];
+    openSettingsPage(manager, closed);
+    assert.equal(getIndex(), 2);
+
+    environment.back();
+    assert.deepEqual(closed, ['settings-section:history']);
+    assert.equal(manager.top(), 'settings');
+
+    environment.back();
+    assert.deepEqual(closed, ['settings-section:history', 'settings:history']);
+    assert.equal(manager.top(), null);
+    manager.destroy();
+  });
+
+  it('strips a page marker left by a reload', () => {
+    const { environment } = createEnvironment({
+      initialState: { __wmOverlay: { id: 'settings-section', token: 'previous-page' } },
+    });
+    const manager = new OverlayHistoryManager(environment);
+    assert.equal((environment.state as Record<string, unknown>).__wmOverlay, undefined);
+    manager.destroy();
+  });
+
+  for (const tab of ['today', 'more']) {
+    it(`leaves no entry behind when the ${tab} tab dismisses Settings from a page`, () => {
+      const { environment, getIndex, flushBack } = createEnvironment({ asyncBack: true });
+      const manager = new OverlayHistoryManager(environment);
+      const closed: string[] = [];
+      openSettingsPage(manager, closed);
+
+      reconcileOverlayForTab(tab, tabBar(manager, closed));
+      flushBack();
+      flushBack();
+
+      assert.equal(getIndex(), 0, 'both entries are gone, so the next Back leaves the dashboard');
+      assert.equal(manager.top(), null);
+      assert.deepEqual(closed, ['settings-section:replacement', 'settings:replacement']);
+      manager.destroy();
+    });
+  }
+
+  it('lets the Search tab replace Settings in place from a page', () => {
+    const { environment, getIndex, flushBack } = createEnvironment({ asyncBack: true });
+    const manager = new OverlayHistoryManager(environment);
+    const closed: string[] = [];
+    openSettingsPage(manager, closed);
+
+    const replaceId = reconcileOverlayForTab('search', tabBar(manager, closed));
+    assert.equal(replaceId, 'settings');
+    manager.beginPending('search-pending', replaceId ?? undefined, () => {});
+    flushBack();
+
+    assert.equal(getIndex(), 1, 'Search takes the Settings entry; Back from Search leaves the dashboard');
+    assert.equal(manager.top(), 'search-pending');
+    assert.deepEqual(closed, ['settings-section:replacement', 'settings:replacement']);
     manager.destroy();
   });
 });

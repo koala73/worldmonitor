@@ -34,5 +34,8 @@ it('recovers a provider bookmark moved by pagination without fetching for a curr
   window.eval(sourcesBookmarkScript);
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(fetches, 1, 'an existing static card needs no search download');
-  window.close();
+  // location.replace() starts a happy-dom navigation that fetches the live
+  // page behind a 30s timer; window.close() leaves it running, so the file
+  // took 30s for 7ms of tests. happyDOM.close() aborts the navigation.
+  await window.happyDOM.close();
 });

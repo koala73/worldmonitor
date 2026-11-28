@@ -204,32 +204,43 @@ function digestStoryBlock(story) {
  * dropped from the end, with a count, until the card fits Teams' 28 KB limit.
  *
  * @param {{ title: string; summary?: string | null; stories: Array<{ title: string;
- *   severity?: string; sources?: string[]; link?: string }>; briefUrl?: string | null }} digest
+ *   severity?: string; sources?: string[]; link?: string }>; briefUrl?: string | null;
+ *   labels?: { openBrief?: string; openDashboard?: string; execSummary?: string;
+ *     stories?: (n: number) => string; more?: (n: number) => string } }} digest
  */
+const ENGLISH_DIGEST_LABELS = {
+  openBrief: 'Open your WorldMonitor Brief',
+  openDashboard: 'Open dashboard',
+  execSummary: 'Executive summary',
+  stories: (n) => `${n} ${n === 1 ? 'story' : 'stories'}`,
+  more: (n) => `… and ${n} more in the full brief`,
+};
+
 function buildTeamsDigestPayload(digest) {
   const stories = Array.isArray(digest.stories) ? digest.stories.filter(s => s && s.title) : [];
+  const labels = { ...ENGLISH_DIGEST_LABELS, ...(digest.labels ?? {}) };
   const actions = [];
   if (digest.briefUrl) {
-    const action = linkAction(digest.briefUrl, 'Open your WorldMonitor Brief');
+    const action = linkAction(digest.briefUrl, labels.openBrief);
     if (action) actions.push(action);
   }
-  actions.push({ type: 'Action.OpenUrl', title: 'Open dashboard', url: NOTIFY_DASHBOARD_URL });
+  actions.push({ type: 'Action.OpenUrl', title: labels.openDashboard, url: NOTIFY_DASHBOARD_URL });
 
   const build = (shown) => {
     const body = [richText([{ text: digest.title, size: 'Large', weight: 'Bolder' }])];
     if (digest.summary) {
-      body.push({ type: 'TextBlock', text: 'Executive summary', weight: 'Bolder', spacing: 'Medium' });
+      body.push({ type: 'TextBlock', text: labels.execSummary, weight: 'Bolder', spacing: 'Medium' });
       body.push(richText([digest.summary]));
     }
     body.push({
       type: 'TextBlock',
-      text: `${stories.length} ${stories.length === 1 ? 'story' : 'stories'}`,
+      text: labels.stories(stories.length),
       weight: 'Bolder',
       spacing: 'Medium',
     });
     for (const story of stories.slice(0, shown)) body.push(digestStoryBlock(story));
     if (shown < stories.length) {
-      body.push({ type: 'TextBlock', text: `… and ${stories.length - shown} more in the full brief`, wrap: true, isSubtle: true });
+      body.push({ type: 'TextBlock', text: labels.more(stories.length - shown), wrap: true, isSubtle: true });
     }
     return wrapCard(body, actions);
   };

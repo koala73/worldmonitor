@@ -51,7 +51,7 @@ Track deforestation, mining expansion, flooding, and fire damage. The [NASA FIRM
 
 ### Maritime Intelligence
 
-Combine AIS vessel tracking with satellite imagery to:
+Combine [AIS vessel](/blog/posts/ais-vessel-tracking-accuracy/) tracking with satellite imagery to:
 
 - Verify ship positions in areas where vessels go "dark" (turn off transponders)
 - Monitor port congestion and new construction at strategic harbors

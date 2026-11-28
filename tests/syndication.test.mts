@@ -246,6 +246,21 @@ describe('every surface that counts publishers applies it', () => {
     assert.deepEqual(assessCorroboration(story([[euro, africa]])), { state: 'single-publisher', publishers: 1 });
   });
 
+  it('server story identity: a copy under the wire headline counts with the wire', async () => {
+    const headline = "UAE's ADNOC L&S says one crew member missing after attack on its vessel in Hormuz";
+    const viaGoogleNews = (publisher: string) => ({
+      source: 'Tanker & Shipping', originPublisher: publisher, originPublisherTrusted: true,
+      title: `${headline} - ${publisher}`, publishedAt: at.getTime(),
+    });
+    const count = async (items: ReturnType<typeof viaGoogleNews>[]) => {
+      const identities = await assignStoryIdentity(items, (t) => t.toLowerCase(), async (t) => `h:${t}`);
+      return items.map((item) => identities.get(item)?.corroborationCount);
+    };
+    assert.deepEqual(await count([viaGoogleNews('Reuters'), viaGoogleNews('Rock Hill Herald')]), [1, 1]);
+    assert.deepEqual(await count([viaGoogleNews('Reuters'), viaGoogleNews('Lexington Herald-Leader')]), [1, 1]);
+    assert.deepEqual(await count([viaGoogleNews('Rock Hill Herald'), viaGoogleNews('Kansas City Star')]), [2, 2]);
+  });
+
   it('independent reports still corroborate, with no same-copy marker', () => {
     const evidence = evidenceFromCluster({ allItems: asNewsItems([cbcPanama, guardianPanama]) });
     assert.deepEqual(assessCorroboration(evidence), { state: 'corroborated', publishers: 2 });

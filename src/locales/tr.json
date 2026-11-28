@@ -16,7 +16,7 @@
     "predictionMarkets": "Tahmin Piyasalari",
     "loadingMarkets": "Tahmin piyasalari yukleniyor...",
     "infrastructure": "Altyapi Maruziyeti",
-    "briefUnavailable": "Yapay zeka brifingi kullanilamaz — Ayarlar'dan OPENROUTER_API_KEY yapilandiriniz.",
+    "briefUnavailable": "AI özeti şu anda kullanılamıyor.",
     "cached": "Onbellekten",
     "fresh": "Guncel",
     "noMarkets": "Tahmin piyasasi bulunamadi",
@@ -126,13 +126,13 @@
     },
     "fallback": {
       "instabilityIndex": "**Istikrarsizlik Endeksi: {{score}}/100** ({{level}}, {{trend}})",
-      "protestsDetected": "{{count}} aktif protesto tespit edildi",
-      "aircraftTracked": "{{count}} askeri ucak takip ediliyor",
-      "vesselsTracked": "{{count}} askeri gemi takip ediliyor",
-      "internetOutages": "{{count}} internet kesintisi",
-      "recentEarthquakes": "{{count}} son deprem",
+      "protestsDetected": "Etkin protestolar: {{count}}",
+      "aircraftTracked": "İzlenen askeri uçak: {{count}}",
+      "vesselsTracked": "İzlenen askeri gemi: {{count}}",
+      "internetOutages": "İnternet kesintileri: {{count}}",
+      "recentEarthquakes": "Son depremler: {{count}}",
       "stockIndex": "Borsa endeksi: {{value}}",
-      "activeStrikes": "{{count}} aktif grev tespit edildi"
+      "activeStrikes": "Saldırılar ve önlemeler: {{count}}"
     },
     "countryFacts": "Ülke bilgileri",
     "loadingFacts": "Ülke bilgileri yükleniyor...",
@@ -301,6 +301,40 @@
     },
     "defenseIndustrialBase": {
       "proLocked": "Silah tedarikçisi bağımlılığı ve askeri kapasite için PRO'ya yükseltin"
+    },
+    "intelMemory": {
+      "title": "Tarihsel İstihbarat Hafızası",
+      "help": "Önemli çatışma, askeri, enerji, toplumsal huzursuzluk, siber, denizcilik, doğal afet ve havacılık olaylarının 180 günlük arşivi; isteğe bağlı anlamsal emsal eşleştirmesiyle.",
+      "loading": "Tarihsel istihbarat hafızası yükleniyor…",
+      "proLocked": "180 günlük tarihsel istihbarat hafızası ve öncül araması için PRO sürümüne yükseltin",
+      "unavailable": "Tarihsel istihbarat hafızası geçici olarak kullanılamıyor.",
+      "retry": "Yeniden Dene",
+      "empty": "Bu ülke ve alan için 180 günlük pencerede arşivlenmiş istihbarat olayı yok.",
+      "partial": "Bu sorgu için arşiv kapsamı kısmi; mevcut kayıtlar görünür.",
+      "domainFilterLabel": "Tarihsel istihbaratı alan türüne göre filtrele",
+      "domains": {
+        "all": "Tümü",
+        "conflict": "Çatışma",
+        "military": "Askeri",
+        "energy": "Enerji",
+        "unrest": "Huzursuzluk",
+        "cyber": "Siber",
+        "maritime": "Denizcilik",
+        "natural": "Doğal afetler",
+        "aviation": "Havacılık"
+      },
+      "loadMore": "Daha fazla yükle",
+      "loadingMore": "Daha fazla yükleniyor…",
+      "loadMoreError": "Ek olaylar yüklenemedi. Lütfen tekrar deneyin.",
+      "sourceLink": "Kaynak ↗",
+      "similarTitle": "Benzer geçmiş olayları bul",
+      "useLatestHeadline": "En son başlığı kullan",
+      "similarPlaceholder": "Gelişen bir durumu açıklayın (en az 10 karakter)…",
+      "findSimilar": "Benzer olayları bul",
+      "similarMinLength": "Geçmiş öncülleri aramak için en az 10 karakter girin.",
+      "similarLoading": "Tarihsel öncüller aranıyor…",
+      "similarEmpty": "Benzer geçmiş olaylar benzerlik eşiğini geçmedi.",
+      "similarUnavailable": "Öncül araması geçici olarak kullanılamıyor. Lütfen tekrar deneyin."
     }
   },
   "header": {
@@ -492,7 +526,9 @@
     "marketBreadth": "Pazar Genişliği",
     "climateNews": "İklim Haberleri",
     "fx": "Döviz kurları",
-    "ukmtoIncidents": "UKMTO olayları"
+    "ukmtoIncidents": "UKMTO olayları",
+    "reservoirLevels": "Stratejik Su Seviyeleri",
+    "gridDisruptionClock": "ABD eyaletlerinde elektrik kesintisi saati"
   },
   "commands": {
     "prefixes": {
@@ -630,7 +666,8 @@
         "techevent": "Teknoloji Etkinligi",
         "techhq": "Teknoloji Merkezi",
         "accelerator": "Hizlandirici",
-        "flight": "Uçuş"
+        "flight": "Uçuş",
+        "alert": "Uyarı"
       },
       "flightOnGround": "Yerdeki",
       "flightAirborne": "FL{{fl}} · {{kts}} knot",
@@ -638,7 +675,9 @@
       "flightMilitaryOnGround": "Askeri · {{type}} · yerdeki",
       "flightSearchHint": "Canlı konumu sorgulamak için Enter tuşuna basın veya tıklayın",
       "flightNotFound": "{{callsign}} için canlı konum bulunamadı",
-      "addPanel": "Ekle"
+      "addPanel": "Ekle",
+      "sentAlerts": "Size gönderilen uyarılar",
+      "sentAlertTime": "{{time}} tarihinde gönderildi"
     },
     "signal": {
       "title": "ISTIHBARAT BULGULARI",
@@ -806,7 +845,7 @@
       "fresh": "Guncel",
       "noMarkets": "Tahmin piyasasi bulunamadi",
       "predictionMarkets": "Tahmin Piyasalari",
-      "unavailable": "Yapay zeka brifingi kullanilamaz — Ayarlar'dan OPENROUTER_API_KEY yapilandiriniz."
+      "unavailable": "AI özeti şu anda kullanılamıyor."
     },
     "countryBrief": {
       "identifying": "Ulke belirleniyor...",
@@ -822,7 +861,7 @@
       "predictionMarkets": "Tahmin Piyasalari",
       "loadingMarkets": "Tahmin piyasalari yukleniyor...",
       "infrastructure": "Altyapi Maruziyeti",
-      "briefUnavailable": "Yapay zeka brifingi kullanilamaz — Ayarlar'dan OPENROUTER_API_KEY yapilandiriniz.",
+      "briefUnavailable": "AI özeti şu anda kullanılamıyor.",
       "cached": "Onbellekten",
       "fresh": "Guncel",
       "noMarkets": "Tahmin piyasasi bulunamadi",
@@ -975,7 +1014,8 @@
       "upstreamUnavailable": "Tedarik zinciri verileri geçici olarak kullanılamıyor — önbellek verileri gösteriliyor",
       "spikeAlert": "Ani artış tespit edildi — ücret 52 haftalık ortalamanın önemli ölçüde üzerinde (haftalık)",
       "warnings": "uyarı(lar)",
-      "aisDisruptions": "Gemi izleme kesintileri",
+      "aisDisruptions_one": "{{count}} gemi izleme kesintisi",
+      "aisDisruptions_other": "{{count}} gemi izleme kesintisi",
       "disruption": "Aksama",
       "vessels": "gemi",
       "incidents7d": "olay (7g)",
@@ -986,6 +1026,7 @@
       "topProducers": "En Büyük Üreticiler",
       "risk": "Risk",
       "wowChange": "Haftadan haftaya değişim",
+      "asOf": "{{date}} itibarıyla",
       "riskLevel": "Risk seviyesi",
       "flowUnavailable": "Akış verileri kullanılamıyor",
       "containerRates": "Konteyner Tarifeleri",
@@ -1094,7 +1135,8 @@
       "skipToStart": "Başa atla",
       "previous": "Önceki",
       "next": "Sonraki",
-      "skipToEnd": "Sona atla"
+      "skipToEnd": "Sona atla",
+      "storageUnavailable": "Tarayıcı site depolamasını engellediği için oynatma kullanılamıyor. Anlık görüntüleri kaydetmeye başlamak için bu site için site verilerine izin verin."
     },
     "pizzint": {
       "indexSource": "Endeks: World Monitor",
@@ -1160,7 +1202,7 @@
         "auxiliary": "Yardimci",
         "navalVessels": "Deniz Gemileri"
       },
-      "infoTooltip": "<strong>Metodoloji</strong><p>Askeri uçaklar ve deniz gemilerini operasyon bölgesine göre toplar.</p><ul><li><strong>Normal:</strong> Temel aktivite</li><li><strong>Yükseltilmiş:</strong> Eşiğin üstü (50+ uçak)</li><li><strong>Kritik:</strong> Yüksek yoğunlaşma (100+ uçak)</li></ul><p><strong>Vuruş Yeteneği:</strong> Tankerler + Hava erken uyarı + Sürdürülebilir operasyonlar için yeterli sayıda savaş uçağı mevcuttur.</p>",
+      "infoTooltip": "<strong>Metodoloji</strong><p>Her tiyatroda yer alan askeri uçak ve izlenen deniz gemilerini sayar.</p><ul><li><strong>Normal:</strong> Tiyatronun eşik değerinin altında</li><li><strong>Yükseltilmiş:</strong> Sayı tiyatroya göre 3 ile 8 arasına ulaşır</li><li><strong>Kritik:</strong> Sayı tiyatroya göre 8 ile 20 arasına ulaşır</li></ul><p>Gemiler sayıya yükseltilmiş eşik değerinin yarısına kadar eklenir, bu nedenle gemiler tek başına bir seviyeyi yükseltmez.</p><p><strong>Vuruş Yeteneğine Sahip:</strong> Yakıt uçağı + Erken uyarı sistemi + Sürdürülen harekatlar için yeterli sayıda avcı uçak bulunmaktadır.</p>",
       "scanningTheaters": "Harekat Alanlari Taraniyor",
       "positions": "Ucak konumlari",
       "navalVesselsLoading": "Deniz gemileri",
@@ -1202,13 +1244,21 @@
       },
       "emojiKeyLabel": "Emoji Anahtarı",
       "emojiKeyAir": "Hava Varlıkları",
-      "emojiKeyNaval": "Deniz Varlıkları"
+      "emojiKeyNaval": "Deniz Varlıkları",
+      "instabilityChip": "İstikrarsızlık {{score}}",
+      "instabilityNote": "{{nation}} istikrarsızlık puanı: {{score}}/100. Bağlam için gösterilmektedir. Tiyatrodaki uçak ve gemileri sayan seviyeyi değiştirmez."
     },
     "countryBrief": {
+      "moreActions": "Diğer işlemler",
       "shareLink": "Bağlantıyı paylaş",
       "shareStory": "Hikayeyi paylas",
       "printPdf": "Yazdir / PDF",
-      "exportData": "Verileri disari aktar"
+      "exportData": "Verileri disari aktar",
+      "sources": {
+        "summary": "Kaynaklar ve aralıklar · {{count}} grup",
+        "note": "Kaynak aralıkları farklıdır; bu 24 saatlik toplam değildir.",
+        "footer": "CII/CRI girdisi değildir."
+      }
     },
     "relatedAssets": {
       "pipeline": "Boru Hatti",
@@ -1308,7 +1358,8 @@
         "canadaRoads": "Kanada Yolları",
         "canadaAlerts": "Kanada Uyarıları",
         "notamAirspace": "NOTAM Hava Sahasına İlişkin Kısıtlamalar",
-        "no2Activity": "Sanayi faaliyeti"
+        "no2Activity": "Sanayi faaliyeti",
+        "reservoirLevels": "Su Seviyeleri"
       },
       "tooltip": {
         "earthquake": "Deprem",
@@ -1425,7 +1476,8 @@
           "canadaRoads": "Desteklenen Kanada yetki bölgelerinde resmi yol olayları, uyarılar, yol durumu, kapanışlar, yapım çalışmaları ve tehlikeler",
           "canadaAlerts": "Alberta Emergency Alert, B.C. Evacuation Orders and Alerts ve SaskAlert kaynaklı il düzeyinde kamu güvenliği uyarıları",
           "notamAirspace": "FAA NOTAM'larından geçici uçuş kısıtlamaları ve sınırlı, tehlikeli ve yasaklı hava sahaları; şu anda yürürlükte olan veya 24 saat içinde başlayacak olanlar",
-          "no2Activity": "167 ülke ve 32 sanayi kümesi için Sentinel-5P NO2 faaliyet yönü: son 56 günlük pencerenin önceki yılların aynı tarihleriyle karşılaştırması, %10 ölü bant sonrası. Değiştirilmiş Copernicus Sentinel verileri içerir."
+          "no2Activity": "167 ülke ve 32 sanayi kümesi için Sentinel-5P NO2 faaliyet yönü: son 56 günlük pencerenin önceki yılların aynı tarihleriyle karşılaştırması, %10 ölü bant sonrası. Değiştirilmiş Copernicus Sentinel verileri içerir.",
+          "reservoirLevels": "Stratejik baraj gölleri ve göllerin su yüzeyi seviyesi, NASA ICESat-2 uydu lidarından, ayın olağan seviyesiyle karşılaştırmalı. NASA her geçişi ölçümden yaklaşık iki ay sonra yayımlar."
         },
         "notes": {
           "timeAffects": "Etkiler: Depremler, Hava Durumu, Protestolar, Kesintiler"
@@ -1537,7 +1589,7 @@
       "briefFreshness": "{{minutes}}m önce oluşturuldu · en yeni kaynak {{hours}}s eski",
       "briefStoryDetails": "Haber ayrıntıları ({{count}})",
       "streamIdleStopLabel": "Hareketsizlik sırasında canlı videoyu durdur",
-      "streamIdleStopDesc": "Canlı Haber ve Canlı Web Kameralarını bu kadar süre etkinlik olmadan durdurur ve panelde bir bildirim gösterir.",
+      "streamIdleStopDesc": "Canlı Haber ve Canlı Web Kameralarını bu kadar süre etkinlik olmadan durdurur ve panelde bir bildirim gösterir. Sesi açıkken Canlı Haber oynamaya devam eder.",
       "streamIdleStopNever": "Asla",
       "liveNewsAutoplayLabel": "Canlı haberleri otomatik oynat",
       "liveNewsAutoplayDesc": "Canlı haber videosunu, sessiz olarak, ekranda görüntülenir görüntülenmez başlatır. Videoyu yalnızca siz başlattığınızda yüklemek için bunu kapatın."
@@ -1608,7 +1660,7 @@
       "noData": "veri yok",
       "enable": "Etkinleştir",
       "convergenceMetric": "Yakınsama",
-      "ciiDeviation": "Ülke İstikrarsızlık Endeksi Sapması",
+      "topCiiScore": "En yüksek ülke istikrarsızlık puanı",
       "infraEvents": "Altyapı Olayları",
       "highAlerts": "Yüksek Uyarılar",
       "topRisks": "Başlıca Riskler",
@@ -1645,6 +1697,10 @@
       "infoTooltip": "<strong>Teknoloji Etkinlikleri</strong> Yaklaşan ve son teknoloji etkinlikleri: konferanslar, ürün lansmanları, düzenleyici oturumlar ve kazanç görüşmeleri. Resmi etkinlik takvimleri ve sektör kaynaklarından derlenmektedir."
     },
     "techReadiness": {
+      "ranked": "Sıralanan",
+      "unranked": "Sıralama dışı",
+      "coverageRequirement": "Sıralama için gereken asgari kapsam",
+      "coverageLabel": "Mevcut göstergeler",
       "internetUsers": "Internet Kullanicilari",
       "mobileSubscriptions": "Mobil Abonelikler",
       "rdSpending": "Araştırma ve geliştirme harcaması",
@@ -1660,10 +1716,17 @@
       "dataPreparing": "Teknoloji hazırlık verileri yenileniyor — kısa süre içinde görüntülenecek."
     },
     "populationExposure": {
-      "totalAffected": "Toplam Etkilenen",
-      "affectedCount": "{{count}} etkilenen",
-      "radiusKm": "{{km}}km yaricap",
-      "infoTooltip": "<strong>Nufus Maruziyet Tahminleri</strong> Olay etki yaricapi icindeki tahmini nufus. WorldPop ulke yogunluk verilerine dayanmaktadir.<ul><li>Catisma: 50km yaricap</li><li>Deprem: 100km yaricap</li><li>Sel: 100km yaricap</li><li>Orman yangini: 30km yaricap</li></ul>"
+      "estimateWithin": "{{km}} km yarıçap içinde yaklaşık {{count}} kişi",
+      "method": "Tahminler ülkenin ortalama nüfus yoğunluğuna dayanır.",
+      "empty": "Ölçütleri karşılayan olay konumu yok",
+      "infoTooltip": "Ülkenin nüfus yoğunluğu verileri bulunan olaylar gösterilir. Doğruluk bilgisi olmayan UCDP olaylarının konumları, güncelleme bekliyor olarak işaretlenir. Tahmini alanlar örtüşebilir. Huzursuzluk olayları kesin konum gerektirir; kesin olmayan UCDP olayları hariç tutulur. İki kaynaktan (huzursuzluk ve UCDP) bildirilen aynı yer iki satırda gösterilir.",
+      "eventCount_one": "{{count}} olay",
+      "eventCount_other": "{{count}} olay",
+      "locationPending": "Konum doğruluğu güncelleme bekliyor",
+      "unrestCoverage": "Huzursuzluk verilerinin kapsamı",
+      "ucdpPending": "UCDP kapsamı güncelleme bekliyor",
+      "coverageShown": "Gösterilen olaylar: {{total}} olaydan {{shown}}",
+      "coverageLeftOut": "Gösterilmeyen: kesin konumu olmayan {{imprecise}}, yoğunluk verisi olmayan ülkelerde {{noEstimate}}, kaynak başına ilk 10 yerden sonra {{otherPlaces}}"
     },
     "securityAdvisories": {
       "loading": "Seyahat uyarıları yükleniyor...",
@@ -1710,7 +1773,10 @@
       },
       "infoTooltip": "NASA FIRMS VIIRS uydu termal tespit verileri - izlenen catisma bolgeleri. Yuksek yogunluk = parlaklik >360K ve guvenilirlik >%80.",
       "possibleExplosions": "{{count}} olası patlama tespit edildi",
-      "explosionTooltip": "Termal imza patlamaya uygun (ateş radyatif gücü >80 MW, parlaklık >380 K)"
+      "explosionTooltip": "Termal imza patlamaya uygun (ateş radyatif gücü >80 MW, parlaklık >380 K)",
+      "agencyReports": "Kurumlarca bildirilen yangınlar",
+      "agencyDates": "Kurum tarihleri",
+      "shownOfTotal": "{{total}} yangın kaydından {{shown}} tanesi gösteriliyor"
     },
     "ucdpEvents": {
       "stateBased": "Devlet Tabanli",
@@ -1775,6 +1841,7 @@
       "refugees": "Multeciler",
       "asylumSeekers": "Siginmacilar",
       "idps": "Ulke Ici Yerinden Edilmisler",
+      "stateless": "Vatansızlar",
       "total": "Toplam",
       "origins": "Cikis Ulkeleri",
       "hosts": "Ev Sahibi Ulkeler",
@@ -1879,7 +1946,8 @@
         "minutesAgo": "{{count}}dk once",
         "hoursAgo": "{{count}}sa once",
         "daysAgo": "{{count}}g once"
-      }
+      },
+      "breakingAlertsNotSaved": "Kaydedilemedi. Bu site için site verilerine izin verin veya tarayıcı depolamayı boşaltın, ardından tekrar deneyin."
     },
     "countryTimeline": {
       "now": "simdi",
@@ -2099,12 +2167,20 @@
       "channelOrVideoUrl": "YouTube kanal veya video URL'si",
       "channelUrlHint": "Kanal URL'si (youtube.com/channel/UC…) veya canlı video URL'si yapıştırın",
       "youtubeChannel": "YouTube kanalı",
-      "httpsStreamHint": "Tarayıcılar güvensiz (http) yayınları engeller. Güvenli (https) bir yayın URL'si yapıştırın"
+      "httpsStreamHint": "Tarayıcılar güvensiz (http) yayınları engeller. Güvenli (https) bir yayın URL'si yapıştırın",
+      "tapToPlay": "Oynatmak için dokunun"
     },
     "map": {
       "showMap": "Haritayı Göster",
       "hideMap": "Haritayı Gizle",
-      "clearTrails": "İzleri Temizle"
+      "clearTrails": "İzleri Temizle",
+      "locate": "Konumumu göster"
+    },
+    "mapLocate": {
+      "locating": "Konum bulunuyor…",
+      "denied": "Konum erişimi reddedildi. Bir yer bulmak için Ara'yı kullanın.",
+      "unavailable": "Konum bulunamadı. Bir yer bulmak için Ara'yı kullanın.",
+      "noCountry": "Konumunuzda ülke yok. Bir yer bulmak için Ara'yı kullanın."
     },
     "internetDisruptions": {
       "infoTooltip": "<strong>İnternet Kesintileri</strong> Küresel ağ izlemeden gerçek zamanlı internet kesintileri, DDoS saldırıları ve trafik anormallikleri:<ul><li><strong>Kesintiler</strong>: Ülkeye göre BGP ile tespit edilen bağlantı arızaları</li><li><strong>DDoS</strong>: Protokol ve vektöre göre hacimsel saldırı raporları</li><li><strong>Anormallikler</strong>: Cloudflare Radar'dan olağandışı trafik örüntüleri</li></ul>",
@@ -2261,6 +2337,7 @@
       "infoTooltip": "<strong>Mali Stres Göstergesi</strong> WorldMonitor yüksek getirili kredi ile uzun dönem hazine bonolarının oranı, hisse senedi oynaklığı ve yüksek getirili spread'e göre ayarlanmış: (HYG / TLT) / (VIX × Yüksek getirili spread / 100). Bu Kansas City Fed Mali Stres Endeksi değildir. 1,5 ve üzeri bir ölçüm düşük strestir; 0,3'ün altı yüksek streştir.",
       "title": "Finansal Stres Göstergesi",
       "usFsiValue": "ABD Mali Stres Göstergesi değeri",
+      "asOf": "{{date}} itibarıyla",
       "cissTitle": "EU CISS (Euro Bölgesi Sistematik Stres)",
       "notAvailable": "Kullanılabilir Değil",
       "interpretation": {
@@ -2320,7 +2397,7 @@
       "proLocked": "Emtia kırılganlık puanlandırması için PRO'ya yükseltin"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Ticaret İzleyicisi</strong> WTO DataLab'ın Hormuz Boğazı günlük sevkiyat endeksleri: Körfez'den çıkan ham petrol, LNG ve gübre, gelen tarım ürünleri. Hacim bazında, Ocak–Mart 2025 ortalaması = 100, yalnızca AIS-görünür gemiler. Durum ve tarih WTO'nun en son analizinden gelmektedir.",
+      "infoTooltip": "<strong>Hormuz Ticaret İzleyicisi</strong> WTO DataLab'ın Hormuz Boğazı günlük sevkiyat endeksleri: Körfez'den çıkan ham petrol, LNG ve gübre, gelen tarım ürünleri. Hacim bazında, Ocak–Mart 2025 ortalaması = 100, yalnızca AIS-görünür gemiler. Grafikler günlük; durum WTO yorumundan alınmıştır.",
       "title": "Hormuz Ticaret İzleyicisi",
       "noData": "Veri yok",
       "notAvailable": "Kullanılamıyor",
@@ -2333,8 +2410,10 @@
         "unavailable": "Hormuz verileri kullanılamıyor",
         "failedToLoad": "Yükleme başarısız"
       },
-      "analysisDate": "WTO analizi {{date}}",
-      "indexNote": "Hacim bazında gemi yükü endeksi, Ocak–Mart 2025 ortalaması = 100"
+      "analysisDate": "WTO açıklaması {{date}}",
+      "indexNote": "Hacim bazında gemi yükü endeksi, Ocak–Mart 2025 ortalaması = 100",
+      "dataThrough": "Günlük veriler {{date}} tarihine kadar",
+      "noShipments": "{{from}} ile {{to}} arasında kaydedilen kargo yok"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Canlı Web Kameraları</strong> Dünya genelinde jeopolitik açıdan önemli konumlardan canlı yayınlar: çatışma bölgeleri, başkentler, sınır geçişleri ve stratejik darboğazlar. YouTube ve kamusal ağlardan akışlar."
@@ -2373,7 +2452,15 @@
       "noData": "Enerji verileri geçici olarak kullanılamıyor - yeniden denecek",
       "liveTape": "Canlı Bant",
       "liveTapeSource": "Pazar teklifleri",
-      "infoTooltip": "<strong>Enerji Kompleksi</strong> Fiziksel ve işlem gören enerji sinyalleri tek yerde:<ul><li><strong>ABD Enerji Bilgi İdaresi metrikleri</strong>: WTI, Brent, ABD üretimi ve stokları</li><li><strong>Canlı veriler</strong>: Ham petrol ve doğal gaz gibi işlem gören enerji fiyatları</li><li><strong>Amaç</strong>: Fiziksel enerji stresini daha geniş makro ve emtia panellerinden ayırmak</li></ul>"
+      "infoTooltip": "<strong>Enerji Kompleksi</strong> Fiziksel ve işlem gören enerji sinyalleri tek yerde:<ul><li><strong>ABD Enerji Bilgi İdaresi metrikleri</strong>: WTI, Brent, ABD üretimi ve stokları</li><li><strong>Canlı veriler</strong>: Ham petrol ve doğal gaz gibi işlem gören enerji fiyatları</li><li><strong>Amaç</strong>: Fiziksel enerji stresini daha geniş makro ve emtia panellerinden ayırmak</li></ul>",
+      "marketTape": "Piyasa fiyatları",
+      "futures": "Vadeli işlemler",
+      "dailySpot": "Günlük spot fiyat",
+      "eiaWeeklySpot": "EIA spot fiyatı · haftalık ortalama",
+      "weekEnding": "{{date}} tarihinde sona eren hafta",
+      "unknownPriceDate": "Gözlem zamanı bilinmiyor",
+      "unknownQuoteSource": "Fiyat kaynağı bilinmiyor",
+      "stalePrice": "Güncel değil"
     },
     "consumerPrices": {
       "tabs": {
@@ -2426,7 +2513,7 @@
         "brier": "Brier puanı {{score}} (n={{n}})",
         "brierHint": "{{n}} puanlanmış tahmin üzerinden Brier puanı: tahmin edilen olasılık ile gerçekleşen sonuç arasındaki farkın karesinin ortalaması. 0 mükemmel, 0,25 yazı tura atmaya denk; düşük olan daha iyidir.",
         "baseRate": "Gerçek oran {{score}} (n={{n}})",
-        "baseRateHint": "Bu {{n}} tahminin gerçekte ne sıklıkla doğru çıktıklarını ({{pct}}% evet ile çözüldü) her zaman tahmin etmenin alacağı puan. O oran yalnızca sonradan bilinir.",
+        "baseRateHint": "Bu {{n}} tahminin gerçekte ne sıklıkla doğru çıktıklarını (%{{pct}} evet ile çözüldü) her zaman tahmin etmenin alacağı puan. O oran yalnızca sonradan bilinir.",
         "void": "Geçersiz %{{pct}} ({{resolved}} içinden {{count}})",
         "voidHint": "Sonuçlanan ancak puanlanamayan tahminler; dönemde sonuçlanan {{resolved}} tahmin içinden.",
         "stale": "Güncel değil",
@@ -2522,7 +2609,9 @@
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Yakıt Fiyatları</strong> 30+ ülkede benzin ve dizel perakende pompa fiyatları, karşılaştırma için USD/litre'ye normalize edilmiş. Fiyatlar resmi hükümet açık veri programlarından kaynaklanır ve haftalık güncellenir. En ucuz ve en pahalı ülkeler vurgulanır. Haftalık değişim, önceki hafta verisi mevcut olduğunda gösterilir.",
-      "countries": "ülke"
+      "countries": "ülke",
+      "observedStale": "{{date}}, {{days}} gün önce",
+      "monthlyMean": "{{month}} ortalaması"
     },
     "faoFoodPriceIndex": {
       "infoTooltip": "<strong>FAO Gıda Fiyat Endeksi</strong> BM Gıda ve Tarım Örgütü'nün Gıda Fiyat Endeksi, gıda emtiası sepeti (Tahıllar, Süt Ürünleri, Et, Yağlar, Şeker) için uluslararası ihracat fiyatlarını izler; taban 2014-2016=100. Her ayın ilk Cuma günü aylık olarak güncellenir.",
@@ -2540,7 +2629,9 @@
     },
     "climateNews": {
       "infoTooltip": "<strong>İklim Haberleri</strong> Carbon Brief, UNEP, NASA, The Guardian ve diğer güvenilir kaynaklardan en son çevre ve iklim istihbaratı. Her 30 dakikada güncellenir.",
-      "loadError": "İklim haberleri geçici olarak kullanılamıyor"
+      "loadError": "İklim haberleri geçici olarak kullanılamıyor",
+      "restoreOriginal": "Özgün metni geri yükle",
+      "translate": "Çevir"
     },
     "liquidityShifts": {
       "title": "Likidite Kaymalar",
@@ -2575,7 +2666,13 @@
       "headline": "E-posta veya Slack'te günlük AI raporları",
       "tagline": "artı WM Analyst, uyarı kuralları ve Claude için MCP",
       "cta": "Pro'ya Yükselt →",
-      "dismiss": "Kapat"
+      "dismiss": "Kapat",
+      "promoBadge": "Kara Cuma",
+      "promoHeadline": "Pro için ilk yılınızda %{{savings}} indirim",
+      "promoTagline": "Aylık {{monthly}} yerine {{perMonth}}, yıllık faturalandırılır. İstediğiniz zaman iptal edebilirsiniz. {{date}} tarihinde sona erer.",
+      "promoHeadlineYearlyOnly": "Pro Yıllık için ilk yılınızda %{{percent}} indirim",
+      "promoTaglineYearlyOnly": "İstediğiniz zaman iptal edin. {{date}}'de sona eriyor.",
+      "promoCta": "Teklifi al"
     },
     "billingState": {
       "onHoldDesc": "Ödeme başarısız oldu. Premium erişimi geri yüklemek için ödeme yönteminizi güncelleyin.",
@@ -2698,7 +2795,7 @@
     },
     "sanctionsPressure": {
       "title": "Yaptırımlar ve Tanımlamalar",
-      "infoTooltip": "Yabancı Varlıklar Kontrol Ofisi Özel Olarak Belirlenen Vatandaşlar ve Birleştirilmiş Listeler artı Global İşler Kanada SEMA/JVCFOA listeleme ekleri. Hangi ülkelerin en yüksek listeleme baskısı altında olduğunu, hangi programların bunu çalıştırdığını ve son güncellemeden bu yana yeni eklenenler gösterir.",
+      "infoTooltip": "OFAC SDN ve birleştirilmiş listeler ile Kanada SEMA/JVCFOA yaptırımları. Ülke satırları doğrudan bağlantıları kullanır. Gemi bayrakları ve uçak tescilleri sicillerde ayrı sayılır; bir ülkenin varlık sayısının sıfır olması yaptırıma tabi varlık bulunmadığı anlamına gelmez.",
       "loading": "Yaptırım verileri yükleniyor...",
       "unavailable": "Yaptırım verileri kullanılamıyor.",
       "summary": {
@@ -2710,7 +2807,9 @@
       "sections": {
         "countries": "Yaptırım altındaki ülkeler",
         "entries": "Son tanımlamalar",
-        "programs": "Programlar"
+        "programs": "Programlar",
+        "flagRegistries": "Gemi bayrağı ve hava aracı sicilleri",
+        "regulationTargets": "SEMA düzenlemelerinin hedef ülkeleri"
       },
       "empty": {
         "countries": "Ülke atılması mevcut değildir.",
@@ -2733,7 +2832,8 @@
         "unattributed": "Atlanmamış",
         "program": "Program",
         "undated": "tarihsiz"
-      }
+      },
+      "targetExplanation": "Düzenlemelerin hedef ülkeleri vatandaşlık veya adres kanıtı değildir. Ülke risk puanlarına ve özet raporlara dahil edilmez."
     },
     "radiationWatch": {
       "title": "Radyasyon İzlemesi",
@@ -2807,7 +2907,21 @@
       "saved": "Bilinen son güncelleme {{time}} · Güncellemeler kontrol ediliyor",
       "savedOffline": "Bilinen son güncelleme {{time}} · Çevrimdışı",
       "localSignals": "Panoya yüklenen sinyallere dayanır",
-      "emptySaved": "Bilinen son güncellemede yakınsama yoktu."
+      "emptySaved": "Bilinen son güncellemede yakınsama yoktu.",
+      "signalTypes": {
+        "militaryFlight": "Askeri uçuş",
+        "militaryVessel": "Askeri gemi",
+        "aisGap": "AIS boşluğu",
+        "conflictEvent": "Çatışma olayı",
+        "escalationOutage": "İletişim kesintisi",
+        "newsSeverity": "Ciddi haberler",
+        "sanctionsNews": "Yaptırım haberleri",
+        "marketMove": "Piyasa hareketi",
+        "commoditySpike": "Emtia sıçraması",
+        "earthquake": "Deprem",
+        "infraOutage": "Altyapı kesintisi",
+        "other": "Sinyal"
+      }
     },
     "thermalEscalation": {
       "title": "Termal Yükseltme",
@@ -3109,6 +3223,151 @@
           "placeholder": "İsteğe bağlı"
         }
       }
+    },
+    "githubStarPrompt": {
+      "title": "World Monitor'ı beğeniyor musunuz?",
+      "body": "GitHub'da bir yıldız, başkalarının onu bulmasına yardımcı olur.",
+      "star": "GitHub'da Yıldız Ver",
+      "dismiss": "Kapat ve bir daha sorma"
+    },
+    "reservoirLevels": {
+      "note": "NASA ICESat-2 uydu lidarından su yüzeyi seviyesi. NASA her geçişi ölçümden yaklaşık iki ay sonra yayımlar; bu nedenle bu veri günleri değil, haftalar ve mevsimler boyunca değişimi izler. Yalnızca seviye, hacim değil.",
+      "source": "Kaynak:",
+      "processedWith": "işleyen:",
+      "empty": "Henüz ölçüm yok",
+      "filterEmpty": "Bu filtreyle eşleşen su kütlesi yok",
+      "unavailable": "Su seviyesi verileri şu anda kullanılamıyor",
+      "filterLabel": "Su kütlelerini filtrele",
+      "filter": {
+        "all": "Tümü",
+        "attention": "Dikkat gerekiyor",
+        "transboundary": "Sınır aşan"
+      },
+      "status": {
+        "record_low": "Rekor düşük",
+        "record_high": "Rekor yüksek",
+        "falling_fast": "Hızla düşüyor",
+        "rising_fast": "Hızla yükseliyor",
+        "low": "Mevsime göre düşük",
+        "high": "Mevsime göre yüksek",
+        "normal": "Olağan",
+        "insufficient_history": "Yetersiz geçmiş",
+        "no_recent_data": "Yakın tarihli geçiş yok",
+        "lowInRange": "Aralığında düşük",
+        "highInRange": "Aralığında yüksek"
+      },
+      "vsUsual": "{{month}} olağanına göre {{value}}",
+      "in12Months": "12 ayda {{value}}",
+      "noComparison": "Henüz karşılaştırma yok",
+      "measured": "{{date}} tarihinde ölçüldü ({{age}})",
+      "noPass": "Henüz kullanılabilir geçiş yok",
+      "popup": {
+        "level": "Seviye",
+        "levelValue": "Deniz seviyesinden {{value}} yukarıda (EGM2008)",
+        "anomaly": "{{month}} olağanına göre",
+        "anomalyPlain": "Ayın olağanına göre",
+        "changePrev": "Önceki geçişten beri",
+        "change90": "90 günde",
+        "change365": "12 ayda",
+        "measured": "Ölçüm",
+        "sparkline": "36 aylık su seviyesi"
+      },
+      "nextPass": {
+        "label": "Sonraki ICESat-2 geçişi",
+        "loading": "Yükleniyor…",
+        "at": "{{date}} ({{epoch}} tarihli yörünge verilerinden tahmin; bulutlar lidarı engelleyebilir)",
+        "none": "Bu aralıkta ölçüm yok ({{date}} tarihine kadar); {{epoch}} tarihli yörünge verileri",
+        "unavailable": "Yörünge verileri kullanılamıyor"
+      },
+      "siteContext": {
+        "label": "Bu konumdaki stratejik baraj gölü"
+      },
+      "energyContext": {
+        "heading": "Stratejik baraj gölleri",
+        "hydro": "Hidroelektrik, birincil enerjinin %{{share}} kadarı"
+      },
+      "countryEvidence": {
+        "heading": "Su seviyeleri",
+        "empty": "Bu ülkedeki hiçbir stratejik baraj gölü son geçişte mevsimsel taban çizgisinin dışında değil.",
+        "measured": "{{date}} tarihinde ölçüldü"
+      },
+      "card": {
+        "measured": "Ölçüldü {{date}} · {{age}}",
+        "noCrossing": "bu aralıkta yok ({{date}} tarihine kadar)",
+        "crossing": "Öngörülen ICESat-2 geçişi",
+        "summary": "{{total}} rezervuardan {{beyond}} tanesi mevsimsel tabanın dışında",
+        "latestPass": "son ICESat-2 geçişi {{date}}",
+        "sparkline": "36 aylık seviye, mevsimsel taban kesikli çizgi",
+        "source": "NASA ICESat-2 ATL13 / ATL06 (NSIDC). Tarihli geçişlerden lidar su yüzeyi seviyeleri; canlı okuma veya depolama hacmi değildir."
+      },
+      "water": {
+        "heading": "{{name}} suyu",
+        "level": "Lidar seviyesi",
+        "extent": "Radar su alanı",
+        "extentValue": "{{date}} itibarıyla %{{percent}} açık su ({{area}} km²)",
+        "extentChange": "Aynı yörüngede {{date}} tarihinden bu yana {{delta}} puan",
+        "extentNoComparison": "Karşılaştırılacak aynı yörüngede önceki ölçüm yok",
+        "extentNone": "Henüz radar ölçümü yok",
+        "unavailable": "Yüklenemedi; yeniden denemek için tekrar açın",
+        "optical": "En son optik görüntü",
+        "opticalNone": "30 gün içinde optik görüntü yok",
+        "note": "Her satır ayrı bir geçişten alınmış tarihli bir ölçümdür, canlı değer değildir. Radar, rezervuarın çekirdek alanındaki açık suyu ölçer; rüzgârla dalgalanan su kara olarak okunabilir."
+      }
+    },
+    "gridDisruptionClock": {
+      "region": "Eyalet seçin",
+      "unknown": "Bilinmiyor",
+      "customers": "Bildirilen elektriksiz abone sayısı",
+      "lastCustomers": "Son bildirime göre elektriksiz aboneler",
+      "denominatorUnknown": "İzlenen toplam abone sayısı bilinmiyor",
+      "tracked": "{{amount}} abone izleniyor",
+      "dataAge": "Bildirimden bu yana",
+      "minutes": "{{amount}} dk.",
+      "hours": "{{amount}} sa.",
+      "warnings": "Uyarılar",
+      "recovery": "Bildirilen değişiklikler",
+      "decreased": "Bildirilen elektriksiz abone sayısı {{amount}} azaldı",
+      "increased": "Bildirilen elektriksiz abone sayısı {{amount}} arttı",
+      "unchanged": "Bildirilen sayı değişmedi",
+      "since": "şu zamandan bu yana",
+      "peakLoad": "Normal puant yükün %{{percent}} kadarı yeniden karşılanıyor",
+      "noComparison": "Karşılaştırılabilir kesinti sayıları bulunmuyor.",
+      "history": "Son elektriksiz abone sayıları ({{total}})",
+      "priorNotice": "Önceki uyarı",
+      "sources": "İzlenen uyarı kaynakları",
+      "operatorLink": "Şebeke duyuruları için başvurulacak kaynak",
+      "issued": "Yayımlanma",
+      "until": "bitiş",
+      "noActive": "İzlenen kaynaklarda geçerli bir uyarı yok.",
+      "unknownWarnings": "Şu anda bazı uyarı kaynaklarına ulaşılamıyor.",
+      "noObservation": "Güncel abone sayısı ve kapsama bilgisi alınamıyor.",
+      "loadError": "Elektrik kesintisi saati verileri alınamıyor.",
+      "retained": "Yenileme başarısız oldu. Alınan son rapor gösteriliyor.",
+      "phase": {
+        "unknown": "Etkisi bilinmiyor",
+        "monitoring": "İzlemede",
+        "watch": "Dikkat",
+        "disrupted": "Kesinti bildirildi",
+        "recovering": "Elektriğin yeniden verilmeye başlandığı bildirildi",
+        "restored": "Elektriğin geri geldiği bildirildi"
+      },
+      "kind": {
+        "grid": "Şebeke duyurusu",
+        "weather": "Hava durumu uyarısı",
+        "space-weather": "Uzay hava durumu"
+      },
+      "checks": {
+        "available": "Kontrol edildi",
+        "unavailable": "Ulaşılamıyor",
+        "not_monitored": "Doğrudan işletmeciden kontrol edin",
+        "stale": "Son kontrol güncelliğini yitirdi"
+      },
+      "warningAge": "Hâlen geçerli ilk uyarıdan bu yana",
+      "days": "{{amount}} gün"
+    },
+    "externalNavigation": {
+      "blocked": "Tarayıcınız yeni sekmeyi engelledi.",
+      "openLink": "{{host}} sitesini aç"
     }
   },
   "popups": {
@@ -3146,7 +3405,6 @@
       }
     },
     "protest": {
-      "acledVerified": "ACLED (dogrulanmis)",
       "gdelt": "GDELT",
       "records": "kayıt",
       "mediaSignal": "Doğrulanmamış medya sinyali",
@@ -4085,6 +4343,21 @@
       "yellowWarning": "Sarı uyarı",
       "orangeWarning": "Turuncu uyarı",
       "redWarning": "Kırmızı uyarı"
+    },
+    "displacement": {
+      "event": "Olay",
+      "cause": "Neden",
+      "date": "Tarih",
+      "operation": "Operasyon",
+      "reportDate": "Rapor tarihi",
+      "measure": "Ölçü",
+      "kinds": {
+        "outflow": "Çıkışlar",
+        "return": "Geri dönüşler",
+        "arrival": "Varışlar",
+        "death": "Ölümler",
+        "encounter": "Sınırda kayıtlı vakalar"
+      }
     }
   },
   "signals": {
@@ -4178,7 +4451,13 @@
     "alert": "Uyari: {{location}}",
     "multipleRegions": "Birden Fazla Bolge",
     "trending": "\"{{term}}\" Gundemde - {{hours}} saatte {{count}} bahis",
-    "eventsDetected": "Bolgede {{count}} olay tespit edildi ({{lat}} derece, {{lon}} derece)"
+    "eventsDetected": "{{count}} olay tespit edildi: {{types}} ({{lat}}°, {{lon}}°)",
+    "eventTypes": {
+      "protest": "protestolar",
+      "military_flight": "askeri uçuşlar",
+      "military_vessel": "deniz kuvvetleri gemileri",
+      "earthquake": "sismik aktivite"
+    }
   },
   "intel": {
     "topics": {
@@ -4275,7 +4554,6 @@
     "dataAndCommunity": "Veri ve Topluluk",
     "theme": "Tema",
     "themeDesc": "Otomatik olarak sistem tercihlerini takip eder.",
-    "themeAuto": "Otomatik (sistemi takip et)",
     "themeDark": "Koyu",
     "themeLight": "Açık",
     "mapProvider": "Harita döşeme sağlayıcısı",
@@ -4334,7 +4612,9 @@
   },
   "contextMenu": {
     "openCountryBrief": "Ülke özetini aç",
-    "copyCoordinates": "Koordinatları kopyala"
+    "copyCoordinates": "Koordinatları kopyala",
+    "satellitePasses": "Buradan geçen uydular",
+    "imageryEvidenceHere": "Buradaki uydu görüntü kanıtı"
   },
   "shell": {
     "documentTitle": "World Monitor — Gerçek Zamanlı Küresel İstihbarat Paneli",
@@ -4429,7 +4709,9 @@
   "auth": {
     "signIn": "Oturum Aç",
     "createAccount": "Hesap oluştur",
+    "freeReason": "Ücretsiz: düzeni kaydet, ülkeleri takip et, uyarılar",
     "settings": "Ayarlar",
+    "planBilling": "Plan ve faturalama",
     "passkeyOffer": {}
   },
   "mcp": {
@@ -4473,7 +4755,17 @@
     "renameHint": "{{name}} — yeniden adlandırmak için çift tıklayın",
     "deleteTab": "Sekmeyi sil",
     "deleteTabAria": "{{name}} sekmesini sil",
-    "tabNameAria": "Sekme adı"
+    "tabNameAria": "Sekme adı",
+    "addTabTitleSaved": "Yeni sekme (kaydettiğiniz panellerle başlar)",
+    "newTabOptions": "Yeni sekme seçenekleri",
+    "newTabStartsDefault": "Yeni sekmeler varsayılan panellerle başlar.",
+    "newTabStartsSaved": "Yeni sekmeler kaydettiğiniz panellerle başlar.",
+    "newTabOptionsHint": "Zaten sahip olduğunuz sekmeler değişmez.",
+    "useThisTabPanels": "Bu sekmenin panellerini kullan",
+    "useDefaultPanels": "Varsayılan panelleri kullan",
+    "newTabPanelsNotSaved": "Kaydedilemedi. Bu tarayıcı site depolamayı engelliyor.",
+    "team": "Takım",
+    "teamDashboards": "Takım panoları"
   },
   "theaterPresets": {
     "label": "Kapsama ön ayarları",
@@ -4566,6 +4858,21 @@
         "related": {
           "0": "Çin faaliyet nowcast'ı",
           "1": "Ülke özeti"
+        }
+      },
+      "reservoirLevels": {
+        "category": "İklim",
+        "purpose": "Stratejik baraj gölleri ve gölleri, su seviyesinin yılın aynı dönemindeki olağan seviyeye göre durumuna ve ne kadar hızlı değiştiğine göre işaretler.",
+        "source": "NSIDC üzerinden NASA ICESat-2 ATL13 iç su yüzeyi yüksekliği; SlideRule Earth ile işlenir ve seed-reservoir-levels hizmeti tarafından her uydu geçişi için birleştirilir.",
+        "freshness": "Günlük güncellenir. NASA her geçişi ölçümden 50 ila 70 gün sonra yayımlar ve her baraj gölü birkaç günde bir ile yaklaşık ayda bir arasında yeniden ölçülür.",
+        "confidence": "Bir geçiş yalnızca en az 5 su segmenti 0,25 m içinde uyuştuğunda sayılır. Mevsimsel karşılaştırma, yılın aynı dönemine ait en az 3 önceki yıldan geçiş gerektirir.",
+        "limitations": {
+          "0": "Yalnızca seviye, hacim değil: aynı düşüş her baraj gölünde farklı bir depolama kaybı anlamına gelir.",
+          "1": "150 gündür geçişi olmayan bir su kütlesi yakın tarihli geçiş yok olarak işaretlenir; son ölçümü, değişimleri ve tarihi yine gösterilir."
+        },
+        "related": {
+          "0": "Stratejik Su Seviyeleri paneli",
+          "1": "İklim anomalileri"
         }
       },
       "conflicts": {
@@ -4742,7 +5049,7 @@
         "category": "Doğal afetler",
         "purpose": "Durum farkındalığı için depremleri, ciddi afet uyarılarını ve etkin Yer gözlem olaylarını gösterir.",
         "source": "USGS depremleri, GDACS uyarıları ve NASA EONET olayları doğal olay hizmetinde birleştirilir.",
-        "freshness": "Doğal olaylar her 3 saatte bir yüklenir. USGS depremleri için kaynak temposu yaklaşık 5 dakika olarak belgelenmiştir.",
+        "freshness": "Doğal olaylar her 30 dakikada bir yüklenir. USGS depremleri için kaynak temposu yaklaşık 5 dakika olarak belgelenmiştir.",
         "confidence": "Kamuya açıklanmış afet sinyalleri için güçlüdür. Güvenilirlik, tehlike türüne ve kaynağın bildirim gecikmesine göre değişir.",
         "limitations": {
           "0": "Düşük şiddetli GDACS uyarıları, harita okunaklı kalsın diye elenir.",
@@ -4811,7 +5118,8 @@
     "current": "Kaynak kontrol edildi",
     "reportedClaims": "Yayıncı raporları. İddialar hâlâ araştırılıyor olabilir.",
     "occurred": "Olay",
-    "reported": "Yayımlandı"
+    "reported": "Yayımlandı",
+    "listed": "Kaydedildi"
   },
   "panelVariants": {
     "finance": {
@@ -4835,6 +5143,842 @@
     },
     "happy": {
       "map": "İyi Haberler Haritası"
+    }
+  },
+  "pwaInstall": {
+    "title": "Uygulamayı yükle",
+    "share": "Safari'de Paylaş'a (yukarı oklu kare) dokunun. Önce Daha Fazla menüsünü açmanız gerekebilir.",
+    "add": "Ana Ekrana Ekle'yi seçin.",
+    "confirm": "Ekle'ye dokunun, ardından World Monitor'ı ana ekranınızdan açın.",
+    "close": "Kapat",
+    "alertsHint": "Bu iPhone veya iPad'de uyarı almak için World Monitor'ı ana ekranınıza yükleyin.",
+    "how": "Nasıl yüklenir"
+  },
+  "teamDashboards": {
+    "desc": "Takımınızın paylaştığı panolar. Yeni sekme olarak eklemek için bir tanesini açın.",
+    "empty": "Takımınız henüz bir pano paylaşmamış. Panonun tüm panellerini, boyutlarını ve haritasını takımınızın herkes tarafından görmesi için bu sekmeyi paylaşın.",
+    "open": "{{name}} öğesini yeni sekme olarak aç",
+    "stopSharing": "{{name}} öğesini paylaşmayı durdur",
+    "confirmStop": "{{name}} öğesini takımınızla paylaşmayı durdursun? Kişilerin zaten açtıkları sekmeler olduğu gibi kalır.",
+    "shareTab": "Bu sekmeyi takımınızla paylaş",
+    "shareChanges": "Bu sekmedeki değişiklikleri takımınızla paylaş",
+    "behind": "Takımınız bu panoyu açtıktan sonra değiştirdi.",
+    "getLatest": "En son sürümü al",
+    "opened": "{{name}} öğesi takımınızdan açıldı.",
+    "shared": "{{name}} öğesi takımınızla paylaşıldı.",
+    "updated": "Bu sekme artık takımınızın en son sürümünü içeriyor.",
+    "stopped": "{{name}} öğesini paylaşmak durduruldu.",
+    "failed": "Takımınızın panolarına ulaşılamadı. Lütfen tekrar deneyin.",
+    "limit": "Takımınız burada zaten {{limit}} pano paylaşıyor. Önce bir tanesini paylaşmayı durdurun.",
+    "focusNotEntitled": "Planınız odaklanmış panoyu paylaşmayı içermez. Bu sekmenin odağını temizleyerek panolarını paylaşın.",
+    "focusUnreadable": "{{name}} öğesinin bu sürümün gösteremediği bir odağı vardır. Güncellemek için yeniden yükleyin, ardından tekrar açın."
+  },
+  "focus": {
+    "barLabel": "Odak",
+    "summary": "{{countries}} üzerinde odaklanmış",
+    "neighboursOff": "Komşu ülkeler dahil değil",
+    "chosenLabel": "Seçilen",
+    "neighboursLabel": "Komşu Ülkeler",
+    "neighbourItem": "Komşu: {{name}}",
+    "range": "{{start}} - {{end}}",
+    "windowEnded": "Pencere {{date}} tarihinde sona erdi",
+    "windowStarts": "{{date}} tarihinde başlıyor",
+    "windowUntil": "{{date}} tarihine kadar",
+    "windowFrom": "{{date}} tarihinden itibaren",
+    "edit": "Düzenle",
+    "clear": "Temizle",
+    "clearAria": "Odağı temizleyin ve tüm dünyayı görüntüleyin",
+    "clearFocus": "Odağı temizle",
+    "notFiltered": "Filtrelenmemiş",
+    "notFilteredGlobal": "Küresel veriler: ülkeye göre filtrelenmemiş",
+    "notFilteredYet": "Henüz ülkeye göre filtrelenmemiş",
+    "gateSignedOutDesc": "Pano sekmesini izlediğiniz ülkelere odaklamak için oturum açın.",
+    "gateUpgradeDesc": "Sekmeyi seçilen ülkelere odaklamak Pro Business, API Business ve Enterprise sürümleriyle sunulur.",
+    "gateUpgradeCta": "Yükselt",
+    "tabButton": "Odak",
+    "tabButtonTitle": "Bu sekmeyi seçilen ülkelere odakla",
+    "tabButtonTitleActive": "Bu sekmenin odağını düzenle",
+    "newTitle": "Bu sekmeyi odakla",
+    "editTitle": "Odağı düzenle",
+    "intro": "Ülkeye göre filtreleyebilen panolar yalnızca bu ülkeleri gösterir. Diğerleri \"Filtrelenmemiş\" derler.",
+    "countriesLabel": "Ülkeler",
+    "count": "{{n}} / {{max}}",
+    "searchPlaceholder": "Ülkeleri ara",
+    "resultsLabel": "Eşleşen ülkeler",
+    "limitReached": "{{max}} ülkeyi seçtiniz; bu, odağın barındırabileceği maksimum sayıdır.",
+    "removeCountry": "{{name}} öğesini kaldır",
+    "includeNeighbours": "Komşu ülkeleri dahil et",
+    "neighboursHint": "Risk sınırları aşar. Komşular bu şekilde işaretlenir ve {{max}} sınırına doğru sayılmaz.",
+    "startLabel": "Başlangıç (isteğe bağlı)",
+    "endLabel": "Bitiş (isteğe bağlı)",
+    "datesHint": "Bir gezi veya görev için. Pencere sona erdiğinde, odak kalır ve çubuk bunu gösterir.",
+    "errorNoCountries": "En az bir ülke seçin.",
+    "errorTooMany": "Odak en fazla {{max}} ülkeyi barındırabilir.",
+    "errorDates": "Bitiş tarihi başlangıç tarihinden öncedir.",
+    "save": "Kaydet",
+    "cancel": "İptal",
+    "saved": "Bu sekme {{countries}} üzerinde odaklanmıştır.",
+    "cleared": "Odak temizlendi. Bu sekme tüm dünyayı göstermektedir.",
+    "notSaved": "Kaydedilemedi. Bu tarayıcı site depolamasını engelliyor.",
+    "plusNeighbours_one": "+ {{count}} komşu",
+    "plusNeighbours_other": "+ {{count}} komşu",
+    "filter": {
+      "showing": "{{countries}} gösteriliyor",
+      "showingNeighbours": "{{countries}} + komşu ülkeler gösteriliyor",
+      "showAll": "Tümünü göster",
+      "focusOff": "Bu panelde odak kapalı: her şey gösteriliyor",
+      "applyFocus": "Odağı uygula",
+      "applyFocusAria": "Bu paneli odağa göre filtrele",
+      "show": "Göster",
+      "hide": "Gizle",
+      "noCountryTag": "Ülke yok",
+      "emptyHint": "Diğer her şey yukarıda sayılmıştır.",
+      "emptyNews": "Bu ülkeler için güncel başlıklarda hiçbir şey yok",
+      "emptyAdvisories": "Bu ülkeler için seyahat uyarısı yok",
+      "emptyConflict": "Bu ülkeler için UCDP çatışma olayı yok",
+      "emptyConflictPartial": "Bu ülkeler için son olaylar arasında çatışma olayı yok. Tam liste yüklenmedi.",
+      "loadingConflict": "Bu ülkeler için tüm çatışma olayları yükleniyor…",
+      "emptyAirports": "İzlenen havaalanlarınızdan hiçbiri bu ülkelerde değil",
+      "emptyFlights": "Bu ülkelere veya bu ülkelerden bu panoda uçuş yok",
+      "emptyAviationNews": "Son 24 saatte bu ülkeler için havacılık haberi yok",
+      "tabNotFiltered": "Bu sekme ülkeye göre filtrelenmemiş",
+      "hidden_one": "{{count}} odak tarafından gizlendi",
+      "hidden_other": "{{count}} odak tarafından gizlendi",
+      "showAllAria_one": "Bu panelde odağın dışında {{count}} öğe dahil olmak üzere her şeyi göster",
+      "showAllAria_other": "Bu panelde odağın dışında {{count}} öğe dahil olmak üzere her şeyi göster",
+      "unattributed_one": "Ülkesi olmayan {{count}} öğe",
+      "unattributed_other": "Ülkesi olmayan {{count}} öğe",
+      "showUnattributedAria_one": "Ülkesi olmayan {{count}} öğeyi göster",
+      "showUnattributedAria_other": "Ülkesi olmayan {{count}} öğeyi göster",
+      "hideUnattributedAria_one": "Ülkesi olmayan {{count}} öğeyi gizle",
+      "hideUnattributedAria_other": "Ülkesi olmayan {{count}} öğeyi gizle",
+      "partialConflict": "Son 150 çatışma olayı gösteriliyor. Tam liste yüklenemedi.",
+      "partialConflictLoading": "En son 150 çatışma olayı gösterilmektedir, tam liste yüklenirken.",
+      "emptyInstability": "Bu ülkeler için istikrarsızlık puanı yok",
+      "emptyOutbreaks": "Bu ülkeler için hastalık salgını yok",
+      "emptyOutages": "Bu ülkeler için internet kesintisi yok",
+      "emptyRadiation": "Bu ülkeler için radyasyon ölçümü yok",
+      "emptyFuelShortages": "Bu ülkeler için yakıt kıtlığı yok",
+      "emptyEnergyDisruptions": "Bu ülkeler için enerji kesintisi yok",
+      "emptyDisplacement": "Bu ülkeler için yer değiştirme verisi yok",
+      "emptyCorrelation": "Bu ülkeler için sinyal yok",
+      "emptyExposure": "Bu ülkeler için nüfus maruziyeti konumu yok",
+      "emptyExposurePartial": "Mevcut verilerde bu ülkeler için maruziyet konumu yok. Tam UCDP kapsamı bekleniyor.",
+      "partialExposureLoading": "Maruziyet filtrelenmeden önce tüm UCDP konumları yükleniyor. Kapsam sayıları yalnızca huzursuzluk olaylarını içerir.",
+      "partialExposure": "Tüm UCDP konumları yüklenemedi. Maruziyet verileri eksik; kapsam sayıları yalnızca huzursuzluk olaylarını içerir."
+    },
+    "draftAssessment": "Seyahat değerlendirmesi",
+    "draftAssessmentAria": "Seyahat değerlendirmesini açın, bu odak noktasıyla önceden doldurulmuş",
+    "draftCopied": "İstem kopyalandı. AI asistanınıza yapıştırın.",
+    "draftCopiedPartial": "İlk {{count}} ülke için istek kopyalandı. Bir değerlendirme en fazla {{max}} ülkeyi kapsar. Dışarıda bırakılan ülkeler: {{omitted}}.",
+    "draftCopyFailed": "İstem kopyalanamadı."
+  },
+  "tripAssessment": {
+    "heading": "Seyahat değerlendirmesi",
+    "intro": "Bir analistin tamamlaması için hazırlanmış, kaynaklı bir ilk taslak seyahat risk değerlendirmesi. Verilerin içeriğini bildirir ve herhangi bir tavsiye vermez.",
+    "privacy": "Yalnızca ülkeler, şehirler ve tarihler. Seyahat edenin adını, oteli veya sokak adresini girmeyin. Girdiğiniz hiçbir şey depolanmaz.",
+    "taskLabel": "Görev etiketi (isteğe bağlı)",
+    "taskLabelPlaceholder": "Bölgesel site ziyaretleri",
+    "windowStart": "Seyahat başlangıcı",
+    "windowEnd": "Seyahat sonu",
+    "countriesLabel": "Ülkeler, seyahat sırasına göre",
+    "count": "{{n}} / {{max}}",
+    "searchPlaceholder": "Ülke ekle",
+    "addCountry": "Seyahate bir ülke ekle",
+    "limit": "Bir seyahat en fazla {{max}} ülkeyi kapsar.",
+    "omitted": "Bir seyahat en fazla {{max}} ülkeyi kapsadığı için çıkarıldı: {{names}}.",
+    "cities": "Şehirler, virgülle ayrılmış (en fazla {{max}})",
+    "arrive": "Varış",
+    "depart": "Kalkış",
+    "moveEarlier": "{{name}} öğesini seyahatte daha erken taşı",
+    "moveLater": "{{name}} öğesini seyahatte daha sonra taşı",
+    "remove": "{{name}} öğesini seyahatten çıkar",
+    "downloadMarkdown": "Markdown olarak indir",
+    "downloadWord": "Word için indir",
+    "print": "Yazdır veya PDF olarak kaydet",
+    "copyRequest": "AI asistanı için isteği kopyala",
+    "close": "Kapat",
+    "building": "Son verilerden taslak oluşturuluyor…",
+    "downloaded": "{{file}} indirildi. Her indirme en son verilerden oluşturulur ve kendi yakalama saati ile damgalanır.",
+    "printOpened": "Yazdırma iletişim kutusu açıldı. Bir kopya tutmak için PDF olarak kaydet seçeneğini seçin.",
+    "errNoCountries": "En az bir ülke ekleyin.",
+    "errTooMany": "Bir seyahat en fazla {{max}} ülkeyi kapsar.",
+    "errWindow": "Seyahat, başladığı gün veya daha sonra bitmelidir.",
+    "errCities": "{{name}}: en fazla {{max}} şehir listeleyin.",
+    "errCountryDates": "{{name}}: kalkış, varış günü veya daha sonra olmalıdır.",
+    "errOutsideWindow": "{{name}}: tarihler seyahat penceresinin içinde olmalıdır.",
+    "errInvalid": "Taslak bu seyahatten oluşturulamadı:",
+    "errAuth": "Taslağı oluşturmak için yeniden oturum açın.",
+    "errUpgrade": "Seyahat değerlendirmesi Pro Business, API Business ve Enterprise planlarında bulunur.",
+    "errBusy": "Çok fazla istek. Bir dakika sonra yeniden deneyin.",
+    "errUnavailable": "Taslağın arkasındaki veriler şu anda kullanılamıyor. Bir dakika sonra yeniden deneyin.",
+    "errGeneric": "Taslak oluşturulamadı. Yeniden deneyin.",
+    "errDownload": "Dosya buraya indirilemedi. Bunun yerine Yazdır seçeneğini kullanın veya PDF olarak kaydedin.",
+    "errLoad": "Seyahat değerlendirmesi açılamadı. Sayfayı yeniden yükleyin ve tekrar deneyin."
+  },
+  "orbitalWatch": {
+    "track": {},
+    "replay": {},
+    "counts": {},
+    "tier": {
+      "checking": "arşiv kontrol ediliyor",
+      "notInArchive": "arşivde yok",
+      "confirmed": "teyitli",
+      "likely": "muhtemel",
+      "unmatchedImage": "hesaplanmış geçiş olmayan görüntü",
+      "weatherFrame": "hava durumu görüntüsü",
+      "unavailable": "kullanılamıyor",
+      "inReach": "hedeflenebilir",
+      "capability": "görüntüleyebilir",
+      "inRange": "menzilde",
+      "mosaic": "mozaik",
+      "upcoming": "yaklaşan"
+    },
+    "row": {
+      "offNadir": "nadirden {{deg}}°",
+      "distance": "ize {{km}} km",
+      "orbitAge": "Yörünge verisi",
+      "imageLoading": "Sahne yükleniyor…",
+      "satellite": "Uydu",
+      "sensor": "Sensör",
+      "time": "Saat",
+      "in": "Ne zaman",
+      "tier": "Durum",
+      "elevation": "Yükselim",
+      "point": "Nokta",
+      "pixel": "Piksel",
+      "credit": "Arşiv",
+      "orbitAgeValue": "{{age}} önce"
+    },
+    "ui": {
+      "tab": {},
+      "caption": {},
+      "tile": {},
+      "grid": {},
+      "group": {},
+      "order": {},
+      "row": {},
+      "section": {},
+      "status": {},
+      "step": {}
+    },
+    "viewer": {
+      "open": "Sahneyi aç: {{image}}",
+      "imageAlt": "{{name}} sahne, {{time}}",
+      "close": "Sahne görüntüleyiciyi kapat",
+      "northUp": "Kuzey yukarı",
+      "unreferenced": "Arşiv yönü; kuzey işaretlenmemiş",
+      "compareDates": "Bu koleksiyondaki tarihler",
+      "compareNone": "Bu koleksiyonda ikinci sahne yok.",
+      "divider": "Referans ayırıcı",
+      "searching": "{{days}} günlük arşiv sahneleri aranıyor",
+      "historyFailed": "{{archive}} hata döndürdü; eski sahneler eksik.",
+      "historyTimeout": "{{archive}} zaman aşımına uğradı; eski sahneler eksik.",
+      "loading": "Yüklenen kareler: {{loaded}}/{{total}}",
+      "closeLabel": "Kapat",
+      "agoNow": "Şimdi",
+      "agoHours": "{{count}} sa önce",
+      "agoDays": "{{count}} g önce",
+      "clear": "Açık",
+      "clouded": "Bulut %{{pct}}",
+      "tabImage": "Sahne",
+      "tabChange": "Karşılaştırma",
+      "metaAcquired": "Çekim",
+      "metaDate": "Tarih",
+      "metaPixel": "Piksel",
+      "metaSpot": "Noktadaki bulut",
+      "metaScene": "Sahne bulutu",
+      "metaSun": "Güneş yükselimi",
+      "showCloudy": "Bulutlu tarihleri dahil et ({{count}})",
+      "eventMark": "Olay {{date}}"
+    },
+    "timelapse": {},
+    "passDetail": {
+      "dir": {},
+      "heading": {}
+    },
+    "search": {
+      "label": "Yer veya koordinatlar",
+      "placeholder": "Yer veya 25.11, 55.14",
+      "submit": "Ara",
+      "locate": "Konumum",
+      "hint": "Yazılan koordinatlar ve konumunuz asla WorldMonitor'a gönderilmez. Yazılan yer adları WorldMonitor ve OpenStreetMap Nominatim'e gönderilir.",
+      "results": "Yerler",
+      "searching": "Aranıyor…",
+      "tooShort": "En az iki karakter girin veya 25.11, 55.14 gibi koordinatlar girin.",
+      "invalidCoordinates": "Enlem -90 ile 90 arasında, boylam -180 ile 180 arasında olmalıdır.",
+      "failed": "Yer araması başarısız oldu. Koordinatlar ve harita tıklamaları yine de çalışır.",
+      "noResults": "Eşleşen yer yok.",
+      "locating": "Konum belirleniyor…",
+      "locationDenied": "Konum erişimi reddedildi. Herhangi bir yer adı yazın veya haritaya sağ tıklayın.",
+      "locationUnavailable": "Konum bulunamadı. Herhangi bir yer adı yazın veya haritaya sağ tıklayın.",
+      "idle": "Herhangi bir yer adı yazın, cihaz konumunu kullanın veya görüntü kanıtını açmak için haritaya sağ tıklayın."
+    },
+    "share": {
+      "copied": "Bağlantı kopyalandı",
+      "copyManually": "Bu bağlantıyı kopyala",
+      "link": "Paylaşım bağlantısı",
+      "dismiss": "Kapat",
+      "passOutsideWindow": "Bağlantılı geçiş bu pencere dışında; hiçbiri seçili değil.",
+      "passNotFound": "Bağlantılı geçiş yeniden hesaplanan listede eksik; hiçbiri seçili değil."
+    },
+    "timeline": {
+      "now": "şimdi",
+      "nowAt": "Şimdi: {{time}}",
+      "density": "{{label}}, {{start}} ile {{end}} arasında: {{count}}",
+      "daylight": "Burada gündüz: {{start}}–{{end}}",
+      "unavailable": "kullanılamıyor",
+      "notRetained": "akış geçmiş tutmaz",
+      "notRetainedSpan": "{{label}}: akışın {{start}} ile {{end}} arasında geçmişi yok",
+      "countryWide": "tüm ülke",
+      "source": {
+        "conflict": "Çatışmalar",
+        "fires": "Yangın",
+        "unrest": "Huzursuzluk",
+        "outages": "Kesinti"
+      },
+      "live": {
+        "vessels": "Deniz trafiği",
+        "militaryFlights": "Askeri uçak",
+        "gpsJamming": "GPS karıştırma"
+      },
+      "name": "Zaman çizelgesi",
+      "span": "{{days}} g geri · {{hours}} s ileri",
+      "daylightHere": "Noktada gündüz",
+      "row": {
+        "images": "Görüntüler",
+        "events": "Olaylar",
+        "passes": "Geçişler"
+      },
+      "retained": "{{start}} ile {{end}} arasında geçmiş",
+      "retainedDay": "yalnızca {{day}} geçmişi",
+      "geoLine": "Yerdurağan görünüm: {{names}}",
+      "away": "{{km}} km",
+      "densityTip_one": "{{start}} tarihinden {{count}} geçiş · {{names}}",
+      "densityTip_other": "{{start}} tarihinden {{count}} geçiş · {{names}}"
+    },
+    "satelliteSites": {
+      "heading": "İzlenen konumlar · önümüzdeki {{hours}} sa",
+      "projecting": "Geçişler hesaplanıyor…",
+      "notLoaded": "Uyduya tekrar tıklayın; yörünge elemanları yüklenmedi.",
+      "failed": "Yeniden denemek için uyduya tekrar tıklayın; geçiş hesaplaması başarısız oldu.",
+      "viewFailed": "Yeniden denemek için uyduya tekrar tıklayın; konum listesi yüklenemedi.",
+      "unavailable": "Yeniden denemek için uyduya tekrar tıklayın; geçiş geometrisi bu yörünge elemanlarını reddetti.",
+      "signals": "Sinyal istihbaratı uydusu. Görüntüleyicisi olmadığından yer kapsaması modellenmiyor.",
+      "noProfile": "Bu uydu için sensör profili yok, bu nedenle yer kapsaması modellenmiyor.",
+      "geostationary": "Yerdurağan: tek bir boylamın üzerinde sabit, bu nedenle listelenecek geçiş yok.",
+      "badElements": "Yörünge elemanları okunamıyor.",
+      "none": "Önümüzdeki {{hours}} sa içinde kapsama alanına giren izlenen konum yok.",
+      "utc": "{{time}} UTC",
+      "inMinutes": "{{minutes}} dk içinde",
+      "inHours": "{{hours}} sa {{minutes}} dk içinde",
+      "offTrack": "yer izinden {{km}} km uzakta",
+      "swathEdge": "tarama şeridinin kenarında",
+      "card": {
+        "norad": "NORAD {{id}}",
+        "type": "Tür",
+        "operator": "İşletmeci",
+        "over": "Üzerinde",
+        "ocean": "Okyanus",
+        "altBand": "Yükseklik bandı",
+        "inclination": "Eğim",
+        "velocity": "Hız",
+        "types": {
+          "sar": "SAR Görüntüleme",
+          "optical": "Optik Görüntüleme",
+          "military": "Askeri",
+          "sigint": "SIGINT",
+          "signals": "Sinyal istihbaratı"
+        }
+      },
+      "tooOld_one": "Yörünge elemanları {{count}} günlük; geçişleri hesaplamak için çok eski.",
+      "tooOld_other": "Yörünge elemanları {{count}} günlük; geçişleri hesaplamak için çok eski.",
+      "count_one": "{{family}} kapsama alanında {{count}} konum",
+      "count_other": "{{family}} kapsama alanında {{count}} konum",
+      "passes_one": "{{count}} geçiş",
+      "passes_other": "{{count}} geçiş"
+    },
+    "siteSatellites": {
+      "heading": "Bu konum üzerindeki izlenen uydular · önümüzdeki {{hours}} sa",
+      "none": "{{hours}} sa içinde bu konumu kapsayan izlenen görüntüleme uydusu yok.",
+      "notLoaded": "Yeniden denemek için konumu tekrar açın; uydu yörünge elemanları yüklenmedi.",
+      "failed": "Yeniden denemek için konumu tekrar açın; geçiş hesaplaması başarısız oldu."
+    },
+    "sheet": {
+      "heading": "Uydu görüntü kanıtı",
+      "window": "Son {{days}} gün, sonraki {{hours}} s",
+      "apart": "Sayılmayan:",
+      "newest": "en yeni {{when}}",
+      "newestNoPreview": "{{when}} tarihli en son çekimin önizlemesi yok; daha eski bir sahne gösteriliyor.",
+      "noneConfirmed": "Bu dönemde teyitli görüntü yok",
+      "noneYet": "Arşivler hala yanıt veriyor",
+      "latest": "En son görüntü",
+      "latestNone": "Arşivler bu nokta ve dönem için hiç sonuç döndürmedi.",
+      "latestChecking": "Arşiv araması devam ediyor. Hesaplanan geçişler aşağıda listelenmiştir.",
+      "compareWith": "Şununla karşılaştır",
+      "compareDate": "Referans tarihi",
+      "moreImages": "Diğer teyitli görüntüler",
+      "imageAlt": "{{sensor}} sahnesi, {{time}}",
+      "dailyMosaic": "günlük mozaik",
+      "weatherFrame": "meteoroloji uydusu karesi",
+      "change": "Konumu değiştir",
+      "showUtc": "UTC",
+      "showLocal": "Yerel saat",
+      "alert": "Noktanın üzerinden her açık geçişten önce ve her yeni bulutsuz görüntüde uyarı al.",
+      "alertCta": "Uyarı ayarla · Pro",
+      "height": {
+        "collapsed": "Panel daraltılmış. Yarı yüksekliğe genişlet",
+        "half": "Panel yarı yükseklikte. Tam yüksekliğe genişlet",
+        "full": "Panel genişletilmiş. Daralt"
+      },
+      "apartMosaics_one": "{{count}} günlük mozaik",
+      "apartMosaics_other": "{{count}} günlük mozaik",
+      "apartFrames_one": "{{count}} meteoroloji uydusu karesi",
+      "apartFrames_other": "{{count}} meteoroloji uydusu karesi",
+      "apartInRange_one": "{{count}} geçiş menzilde",
+      "apartInRange_other": "{{count}} geçiş menzilde",
+      "confirmedCount_one": "{{count}} teyitli görüntü",
+      "confirmedCount_other": "{{count}} teyitli görüntü"
+    },
+    "tierDef": {
+      "confirmed": "Arşivde noktayı kapsayan bir sahne var.",
+      "likely": "Sabit tarama alanı noktayı içeriyordu; henüz arşivlenmiş sahne yok.",
+      "inReach": "Yönlendirilebilir bir sensör burayı hedefleyebilir. Çekim planlaması kamuya açık değil.",
+      "capability": "Kamuya açık arşivi olmayan bir sensör sınıfı noktanın üzerinden geçti."
+    },
+    "events": {
+      "heading": "Bu noktada meydana gelen olaylar",
+      "kindLabel": "Tür",
+      "detail": "Ayrıntı",
+      "now": "şimdi",
+      "loading": "Olay kaynakları yükleniyor…",
+      "none": "Son {{days}} gün içinde {{km}} km yarıçapında olay yok.",
+      "unavailable": "Kullanılamıyor: {{sources}}",
+      "kind": {
+        "conflict": "Çatışma",
+        "fires": "Yangın",
+        "unrest": "Huzursuzluk",
+        "outages": "Kesinti",
+        "vessels": "Deniz trafiği",
+        "military-flights": "Askeri uçak",
+        "gps-jamming": "GPS müdahalesi"
+      }
+    },
+    "capability": {
+      "heading": "Bu noktayı kim görüntüleyebilir",
+      "none": "Bu dönem içinde uydu geçişi yok.",
+      "tooOld": "Yörünge verisi çok eski: {{names}}",
+      "showAll": "Tümünü göster ({{count}})",
+      "showFewer": "Daha azını göster",
+      "group": {
+        "open": "Açık veri",
+        "commercial": "Ticari",
+        "government": "Hükümet",
+        "military": "Askeri",
+        "other": "Diğer"
+      }
+    },
+    "windows": {
+      "heading": "Sonraki görüntüleme pencereleri",
+      "optical": "Açık optik",
+      "radar": "Açık radar",
+      "none": "{{hours}} saat içinde açık optik veya radar geçişi yok."
+    },
+    "status": {
+      "catalog": "Uydu kataloğu yükleniyor…",
+      "computing": "Geçişler hesaplanıyor · uydu {{done}}/{{total}}",
+      "checking": "Arşivler yanıt verdi: {{done}}/{{total}}",
+      "partial": "{{sources}} yanıt vermedi. Sayılar düşük olabilir.",
+      "staleCatalog": "Katalog {{age}} eski; tahmini saatler değişebilir.",
+      "empty": "Bu dönemde hiçbir uydu bu noktanın erişim alanına girmedi.",
+      "unavailable": "Geçiş verisi kullanılamıyor. Daha sonra tekrar deneyin."
+    },
+    "privacy": {
+      "line": "Noktanız yalnızca görüntü arşivlerine gider.",
+      "more": "Ayrıntılar",
+      "body": "Geçişler bu cihazda hesaplanır. Görüntüleri bulmak için tarayıcınız noktayı doğrudan Earth Search, Planetary Computer, NASA GIBS ve EUMETSAT'a gönderir; WorldMonitor bunu almaz. İzlenen bir alanda, WorldMonitor'dan o alanın günlük kaydı noktanızla değil alanın kimliğiyle istenir. Yazılan bir yer adı, bulunması için WorldMonitor ve OpenStreetMap Nominatim'e gider. Paylaşılan bağlantılar iki ondalık basamak içerir (0,01°)."
+    },
+    "sources": {
+      "heading": "Kaynaklar ({{count}})",
+      "docs": "Yöntem ve kapsam",
+      "conflict": "çatışma ve huzursuzluk olayları",
+      "fires": "yangın tespitleri",
+      "outages": "internet kesinti akışı",
+      "vessels": "gemi konumları"
+    },
+    "caption": {
+      "clear": "Noktada bulut yok",
+      "clearSceneCloud": "Noktada bulut yok · sahne %{{pct}} bulutlu",
+      "clouded": "Nokta bulutlu · %{{pct}}",
+      "cloudShadow": "Nokta gölgeli",
+      "spotNotChecked": "Nokta bulutluluğu bilinmiyor",
+      "sceneCloud": "Sahne %{{pct}} bulutlu · nokta bilinmiyor",
+      "radar": "Radar · buluttan etkilenmiyor"
+    },
+    "tile": {
+      "failed": "Sahne yüklenmedi · {{archive}}",
+      "noPreview": "Bu sahne için henüz yayımlanmış ön izleme yok",
+      "processing": "Sahne hâlâ işleniyor. Daha sonra tekrar deneyin.",
+      "radar": "radar"
+    },
+    "target": {
+      "acquired": "ÇEKİLDİ {{time}} · {{resolution}}"
+    },
+    "popup": {
+      "title": "Uydu görüntüleri",
+      "loading": "Uydu arşivleri kontrol ediliyor…",
+      "latest": "En son görüntü",
+      "nextPass": "Sonraki geçiş",
+      "noImage": "Yakın tarihli görüntü bulunamadı",
+      "noPass": "72 saat içinde geçiş yok",
+      "openEvidence": "Kanıtları aç",
+      "compareEvent": "Önce / sonra",
+      "compareEventLocked": "Önce / sonra · Pro",
+      "compareSearching": "{{date}} öncesi ve sonrası görüntüler aranıyor…",
+      "compareNoAfter": "{{date}} sonrasında henüz net görüntü yok.",
+      "compareNoAfterWindow": "{{date}} sonrasındaki {{days}} gün içinde net görüntü yok.",
+      "compareNoBefore": "Arşiv aralığında {{date}} öncesine ait net görüntü yok.",
+      "compareFailed": "Arşiv araması başarısız oldu. Tekrar deneyin.",
+      "imageAlt": "{{source}} uydu görünümü",
+      "unavailable": "Uydu görüntüleri yüklenemedi.",
+      "fire": {
+        "title": "Uydu yangın tespiti",
+        "detected": "Tespit edildi",
+        "satellite": "Uydu",
+        "confidence": "Güven",
+        "confidenceHigh": "Yüksek",
+        "confidenceNominal": "Normal",
+        "confidenceLow": "Düşük",
+        "power": "Yangın gücü",
+        "powerValue": "{{value}} MW",
+        "region": "Bölge",
+        "source": "Kaynak",
+        "sourceCredit": "NASA FIRMS",
+        "mosaicTitle": "Günlük mozaik",
+        "mosaicLoading": "NASA GIBS kontrol ediliyor…",
+        "mosaicCaption": "{{date}} tarihinde {{source}} geçişlerinin günlük bileşimi; yangın bulut veya duman tarafından gizlenebilir.",
+        "mosaicNone": "NASA GIBS'te {{date}} tarihi için {{source}} mozaiği bulunmuyor.",
+        "mosaicNoLayer": "Bu uydu için günlük mozaik mevcut değildir.",
+        "mosaicUnavailable": "Günlük mozaik yüklenemedi.",
+        "mosaicAlt": "NASA GIBS {{source}} {{date}} günlük mozaiği"
+      }
+    },
+    "site": {
+      "heading": "İzlenen alan",
+      "loading": "Alanın günlük kaydı yükleniyor…",
+      "failed": "Alanın günlük kaydı yüklenemedi; yeniden denemek için noktayı tekrar açın.",
+      "stale": "Bu alan için güncel bir günlük kontrol kaydı yok.",
+      "checked": "Kontrol edildi",
+      "noPass": "Kayıtlı yaklaşan geçiş yok",
+      "list": {
+        "hotspot": "sıcak nokta",
+        "conflictZone": "çatışma bölgesi",
+        "militaryBase": "askeri üs",
+        "nuclearFacility": "nükleer tesis",
+        "port": "liman",
+        "chokepoint": "boğaz",
+        "reservoir": "baraj gölü"
+      }
+    }
+  },
+  "settings": {
+    "back": "Ayarlara dön",
+    "signIn": {
+      "label": "Oturum aç",
+      "desc": "Ayarları senkronize et ve planını yönet"
+    },
+    "summary": {
+      "themeAuto": "Otomatik",
+      "count": "{{on}} / {{total}}"
+    },
+    "groups": {
+      "dashboard": "Pano",
+      "preferences": "Tercihler",
+      "developer": "Geliştirici",
+      "app": "Uygulama"
+    },
+    "sections": {
+      "account": "Hesap",
+      "map": "Harita",
+      "ai": "YZ ve analiz",
+      "video": "Video ve akışlar",
+      "apiKeys": "API anahtarları",
+      "embeds": "Gömüler",
+      "aiAgents": "YZ ajanları (MCP)",
+      "sync": "Senkronizasyon, içe aktarma ve dışa aktarma",
+      "about": "Hakkında"
+    },
+    "descriptions": {
+      "panels": "Göster, gizle ve yeniden düzenle",
+      "sources": "Bölgeler ve akışlar",
+      "notifications": "Kanallar ve uyarı kuralları",
+      "display": "Tema, yazı tipi ve dil",
+      "map": "Sağlayıcı, tema ve küre",
+      "ai": "Modeller, bellek ve çerçeveler",
+      "video": "Kalite ve otomatik oynatma",
+      "apiKeys": "World Monitor API anahtarları",
+      "embeds": "Kendi siteniz için widget'lar",
+      "aiAgents": "Bağlı MCP istemcileri",
+      "about": "Site bağlantıları, şartlar ve gizlilik"
+    },
+    "signOut": "Çıkış yap",
+    "signOutFailed": "Oturum kapatılamadı. Lütfen tekrar deneyin.",
+    "search": {
+      "empty": "Eşleşen ayar yok"
+    },
+    "account": {
+      "intro": "Geçerli planınızı görüntüleyin ve ödeme bilgilerini, faturaları veya iptal işlemlerini yönetin.",
+      "planFree": "Ücretsiz",
+      "planPremium": "Premium",
+      "external": {
+        "heading": "Premium erişimi",
+        "desc": "Bu erişim WorldMonitor hesabınız üzerinden faturalandırılmaz. Burada ödeme yöntemi veya fatura bulunmamaktadır."
+      },
+      "checking": {
+        "heading": "Plan kontrol ediliyor…",
+        "desc": "Bu genellikle sadece bir an sürer."
+      },
+      "status": {
+        "cancelScheduled": "İptal planlandı -- {{date}} tarihine kadar erişim",
+        "renews": "Yenilenir: {{date}}",
+        "onHold": "Askıda -- ödeme yönteminizi güncelleyin",
+        "cancelled": "İptal edildi -- {{date}} tarihine kadar erişim",
+        "expired": "Süresi doldu",
+        "unknown": "Geçerli plan detayları için Faturalama Yönetimi'ne bakın.",
+        "ownerManaged": "Faturalama plan sahibi tarafından yönetilmektedir."
+      },
+      "upgradeToBusiness": "Business'a Yükselt",
+      "unavailable": {
+        "heading": "Plan durumu kullanılamıyor",
+        "desc": "Geçerli planınız doğrulanamadı. Yeniden deneyin veya planları yeni bir sekmede görüntüleyin."
+      },
+      "free": {
+        "heading": "WorldMonitor Ücretsiz",
+        "desc": "Geçerli planınız Ücretsiz'dir. Tüm paneller, AI analizi ve öncelikli veri yenilemesi için yükseltin."
+      },
+      "portal": {
+        "openFailed": "Faturalama portalı açılamadı. Lütfen açılır pencerelere izin verin ve yeniden deneyin.",
+        "unavailable": "Faturalama portalı kullanılamıyor. Yardım için support@worldmonitor.app adresine e-posta gönderin."
+      },
+      "deletion": {
+        "heading": "Hesabı sil",
+        "desc": "Bu World Monitor hesabını kalıcı olarak silin. Abonelikler hemen iptal edilir ve kalan ön ödemeli süre için iade yapılmaz. API anahtarları, gömme anahtarları ve MCP belirteçleri çalışmayı durdurur. Muhasebe, anlaşmazlıklar ve yasal talepler için gereken fatura kayıtları, içerdikleri müşteri iletişim bilgileriyle birlikte saklanır; bu kayıtlar artık giriş hesabınızı belirtmez, ancak silme işleminden önce yazılan ödeme sağlayıcısı webhook günlükleri teslim edildikleri tanımlayıcıları korur. Pano tercihleri ve masaüstü uygulamasının bu cihazdaki anahtar zincirinde saklanan gizli bilgileri uzaktan silinmez.",
+        "dialogTitle": "Bu hesap silinsin mi?",
+        "dialogCopy": "Bu geri alınamaz. Abonelikler iptal olur, anahtarlar hemen çalışmayı durdurur ve fatura kayıtları muhasebe, anlaşmazlık ve yasal taleplere yönelik olarak tutulur — taşıdıkları iletişim bilgileri de dahil. Diğer cihazlarda oturumu kapatın ve sonrasında bu cihazın site verilerini temizleyin — bunlar sunucu erişiminin dışındadır.",
+        "phraseLabel": "Onaylamak için {{phrase}} yazın",
+        "deleted": "Hesap silindi. Diğer cihazlarda oturumu kapatın ve bu cihazın site verilerini temizleyin.",
+        "failed": "Hesap silme işlemi başarısız oldu. Yeniden deneyin."
+      },
+      "seats": {
+        "used": "{{used}} / {{cap}} kullanıldı",
+        "invite": "Davet et",
+        "inviting": "Davet gönderiliyor...",
+        "remove": "Kaldır",
+        "removing": "Kaldırılıyor...",
+        "inviteSent": "Davet gönderildi",
+        "alreadyInvited": "Zaten davet edildi"
+      },
+      "businessSeats": {
+        "heading": "Business koltukları",
+        "statusAccepted": "Kabul edildi",
+        "statusExpired": "Süresi doldu",
+        "statusPending": "Beklemede",
+        "expires": "{{date}} tarihinde süresi sona eriyor",
+        "hintCorporate": "Herhangi bir kurumsal e-posta alan adından takım arkadaşlarını davet edin.",
+        "hintPersonal": "Takım arkadaşlarını davet etmek için kurumsal bir e-posta ekleyin.",
+        "personalDomain": "Ücretsiz veya tek kullanımlık e-posta alan adları takım arkadaşlarını davet edemez. Bu özelliği kullanmak için kurumsal bir e-posta ekleyin.",
+        "empty": "Henüz kimse davet edilmedi.",
+        "confirmRemove": "Bu koltuğu kaldırmak istiyor musunuz? Davet edilen kişi Pro erişimini hemen kaybedecek.",
+        "removed": "Koltuk kaldırıldı",
+        "alreadyInactive": "Koltuk zaten etkin değil",
+        "loadFailed": "Koltuklar yüklenemedi",
+        "inviteFailed": "Davet gönderilemedi",
+        "removeFailed": "Koltuk kaldırılamadı",
+        "errors": {
+          "seatCap": "4 koltuğun tümü kullanımda. Önce bir koltuğu kaldırın.",
+          "ownerDomain": "Takım arkadaşlarını davet etmek için hesap e-postanız kurumsal bir alan adında olmalıdır.",
+          "self": "Kendinizi davet edemezsiniz.",
+          "inviteeDomain": "Davet edilen kişinin e-postası kurumsal bir alan adında olmalıdır.",
+          "rateLimited": "Kayan 24 saatlik pencere içinde en fazla 20 davet sınırına ulaştınız. Daha fazla ekip arkadaşı davet etmeden önce lütfen bekleyin."
+        }
+      },
+      "enterpriseSeats": {
+        "heading": "{{account}} Enterprise koltukları",
+        "memberHint": "Hesap yöneticiniz bu hesaptaki kişileri ekler ve kaldırır.",
+        "hintFull": "Tüm koltuklar kullanımda. Bir koltuğu boşaltmak için birini kaldırın veya daveti geri çekin.",
+        "hintOpen": "Kurumsal e-posta ile kişileri davet edin. 14 gün geçerli olan bir bağlantı alırlar ve bu hesabın limitini paylaşırlar.",
+        "emailLabel": "Davet edilecek e-posta adresi",
+        "statusActive": "Etkin",
+        "statusExpired": "Davet süresi doldu",
+        "statusInvited": "Davet edildi",
+        "emailFailed": "Davet e-postası gönderilemedi. Adresi kontrol edin, sonra daveti geri çekin ve yeniden davet edin.",
+        "inviteExpires": "Davet {{date}} tarihinde sona eriyor",
+        "roleAdmin": "Yönetici",
+        "you": "Siz",
+        "withdraw": "Geri çek",
+        "unknownEmail": "Bilinmeyen e-posta",
+        "alreadyMember": "Zaten üye",
+        "confirmRemove": "{{email}} kullanıcısını kaldırmak istiyor musunuz? Enterprise erişimini hemen kaybedecek.",
+        "confirmRemoveUnknown": "Bu kişiyi kaldırmak istiyor musunuz? Enterprise erişimini hemen kaybedecek.",
+        "confirmWithdraw": "{{email}} adresine gönderilen daveti geri çekmek istiyor musunuz?",
+        "confirmWithdrawUnknown": "Bu adrese gönderilen daveti geri çekmek istiyor musunuz?",
+        "removed": "Üye kaldırıldı",
+        "withdrawn": "Davet geri çekildi",
+        "loadFailed": "Koltuklar yüklenemedi. Tekrar deneyin.",
+        "inviteFailed": "Davet gönderilemedi. Tekrar deneyin.",
+        "removeFailed": "Kaldırılamadı. Tekrar deneyin.",
+        "errors": {
+          "seatCap": "Tüm koltuklar kullanımda. Önce birini kaldırın veya bir daveti geri çekin.",
+          "inviteeDomain": "Kurumsal bir e-posta adresini davet edin. Ücretsiz ve geçici e-posta alan adları kabul edilmez.",
+          "self": "Zaten bir koltuğunuz var.",
+          "contractEnded": "Enterprise sözleşmeniz sona erdi. Yenilemek için desteğe başvurun.",
+          "notAdmin": "Yalnızca hesap yöneticisi koltukları yönetebilir.",
+          "removeSelf": "Kendi koltuğunuzu kaldıramazsınız. Yöneticiyi değiştirmek için desteğe başvurun.",
+          "tooMany": "Aynı anda en fazla 10 kişiye davet gönderin.",
+          "rateLimited": "Bir gün içinde izin verilen en fazla daveti gönderdiniz. Yarın tekrar deneyin."
+        }
+      },
+      "switchYearly": {
+        "entryLabel": "Yıllık plana geç",
+        "offerLine": "Kara Cuma: aylık {{monthly}} yerine ayda {{perMonth}}, yıllık faturalandırılır. Bu, ilk yılınızda aylık ödemeye göre %{{percent}} daha az demektir. Yılda {{renewal}} olarak yenilenir. İstediğiniz zaman iptal edebilirsiniz.",
+        "title": "Pro Yıllık'a Geç",
+        "confirm": "Şimdi geç",
+        "dismiss": "Şimdi değil",
+        "previewMoves": "Pro Aylık aboneliğiniz şimdi Pro Yıllık'a geçiyor.",
+        "previewChargeOffer": "Bugün {{charge}} ödersiniz: %{{percent}} indirimli ilk yılınız, bu ayın kullanılmayan kısmı düşülerek.",
+        "previewCharge": "Bugün, bu ayın kullanılmayan kısmı düşülerek {{charge}} ödersiniz.",
+        "previewRestart": "Fatura döneminiz bugün yeniden başlıyor.",
+        "renewsPriceDate": "Aboneliğiniz {{date}} tarihinde yılda {{price}} artı geçerli vergilerle yenilenir.",
+        "renewsPrice": "Aboneliğiniz yılda {{price}} artı geçerli vergilerle yenilenir.",
+        "renewsListDate": "Aboneliğiniz {{date}} tarihinde Pro Yıllık fiyatıyla yenilenir.",
+        "renewsList": "Aboneliğiniz Pro Yıllık fiyatıyla yenilenir.",
+        "previewTerms": "O tarihten önce istediğiniz zaman iptal ederseniz tekrar ücretlendirilmezsiniz. Ödeme başarısız olursa Pro Aylık'ta kalırsınız.",
+        "offerNotApplied": "Teklif bu geçiş için geçerli değil. İndirimsiz fiyatı aşağıda görebilirsiniz.",
+        "quoteChanged": "Teklif artık geçerli değil ve planınız değişmedi. İndirimsiz fiyatı aşağıda görebilirsiniz.",
+        "chargeChanged": "Fiyat, size gösterildiğinden bu yana değişti ve planınız değişmedi. Yeni fiyatı aşağıda görebilirsiniz.",
+        "successTitle": "Pro Yıllık'a Geçildi",
+        "successBody": "Planınız, ödeme onaylanır onaylanmaz değişir; bu genellikle bir dakika içinde olur.",
+        "done": "Tamam",
+        "cancelScheduledTitle": "Önce Pro Aylık'ı Devam Ettirin",
+        "cancelScheduledBody": "Pro Aylık aboneliğiniz bu dönemin sonunda iptal edilecek. Önce faturalama portalında aboneliğinizi devam ettirin, ardından Pro Yıllık'a geçin.",
+        "openPortal": "Faturalama portalını aç",
+        "failedTitle": "Geçiş Onaylanmadı",
+        "failedBody": "Geçişi onaylayamadık. Tekrar denemeden önce planınızı faturalama portalında kontrol edin veya support@worldmonitor.app adresine e-posta gönderin.",
+        "accountChangedTitle": "Hesap Değişti",
+        "accountChangedBody": "Bu fiyat teklifinden sonra hesap değiştirdiniz. Geçişi, Pro Yıllık'a geçirmek istediğiniz hesaptan yeniden başlatın.",
+        "unavailable": "Geçişin fiyatını şu anda hesaplayamadık. Birkaç dakika sonra tekrar deneyin veya support@worldmonitor.app adresine e-posta gönderin."
+      }
+    },
+    "keywords": {
+      "panels": {
+        "0": "düzen",
+        "1": "widget'lar",
+        "2": "metin boyutu",
+        "3": "düzeni sıfırla"
+      },
+      "sources": {
+        "0": "haberler",
+        "1": "beslemeler",
+        "2": "RSS",
+        "3": "bölgeler",
+        "4": "haber kapsamı"
+      },
+      "notifications": {
+        "0": "uyarılar",
+        "1": "Telegram",
+        "2": "Slack",
+        "3": "e-posta",
+        "4": "Discord",
+        "5": "webhook",
+        "6": "push bildirimi"
+      },
+      "display": {
+        "0": "tema",
+        "1": "koyu",
+        "2": "açık",
+        "3": "yazı tipi",
+        "4": "dil",
+        "5": "metin boyutu"
+      },
+      "map": {
+        "0": "küre",
+        "1": "sağlayıcı",
+        "2": "kutucuklar",
+        "3": "temel harita"
+      },
+      "ai": {
+        "0": "yapay zeka",
+        "1": "Ollama",
+        "2": "çerçeveler",
+        "3": "başlık belleği",
+        "4": "tarayıcı modeli"
+      },
+      "video": {
+        "0": "akış",
+        "1": "otomatik oynatma",
+        "2": "kalite",
+        "3": "canlı"
+      },
+      "apiKeys": {
+        "0": "anahtar",
+        "1": "token",
+        "2": "masaüstü anahtarı"
+      },
+      "embeds": {
+        "0": "widget",
+        "1": "iframe",
+        "2": "gömme anahtarı"
+      },
+      "aiAgents": {
+        "0": "MCP",
+        "1": "Claude",
+        "2": "ajanlar",
+        "3": "ChatGPT",
+        "4": "istemciler"
+      },
+      "sync": {
+        "0": "içeri aktar",
+        "1": "dışarı aktar",
+        "2": "yedek",
+        "3": "bulut"
+      },
+      "about": {
+        "0": "koşullar",
+        "1": "gizlilik",
+        "2": "lisans",
+        "3": "yasal"
+      },
+      "account": {
+        "0": "kullanıcı",
+        "1": "faturalandırma",
+        "2": "abonelik",
+        "3": "fatura",
+        "4": "koltuk",
+        "5": "oturumu kapat",
+        "6": "hesabı sil"
+      }
+    },
+    "reservoirAlert": {
+      "title": "Su seviyesi uyarıları",
+      "description": "Stratejik bir rezervuarın lidar su seviyesi düşük olduğunda uyarı alın. NASA her uydu geçişini ölçüldükten yaklaşık iki ay sonra yayınlar, bu nedenle her uyarı ölçüm tarihini verir.",
+      "scopeHint": "En fazla {{max}} rezervuar seçin. Uyarılar yalnızca burada listelenen rezervuarları kapsar.",
+      "searchPlaceholder": "Reservoir adına göre ekleyin",
+      "searchLabel": "Rezervuar ekle",
+      "removeLabel": "{{name}} öğesini kaldır",
+      "thresholdLabel": "Seviye eşiği",
+      "thresholdHint": "En son ölçülen seviye, rezervuarın kendi ölçülen aralığının bu yüzdesinin altında olduğunda uyarı alın; burada 0 ölçülen en düşük seviye ve 100 en yüksek seviyedir. Eşik yoksa boş bırakın.",
+      "thresholdInputLabel": "Seviye eşiği, ölçülen aralığın yüzdesi",
+      "seasonalLabel": "Mevsimsel taban çizgisinin ötesinde düşüş",
+      "seasonalHint": "En son ölçülen seviye, o rezervuarın yılın bu döneminde genellikle ölçtüğü değerin önemli ölçüde altında olduğunda uyarı alın.",
+      "quietNote": "Bu uyarılar, gerçek zamanlı uyarılar yalnızca kritik olarak ayarlanmış olsa bile gelir. Sessiz saatler bunları susturur.",
+      "quietNoteBatch": "Bu uyarılar, gerçek zamanlı uyarılar yalnızca kritik olarak ayarlanmış olsa bile gelir. Sessiz saatler bunları susturur veya Batch seçeneğini seçerseniz sessiz saatler bitene kadar bekletir."
+    },
+    "briefLanguage": {
+      "label": "Brifing dili",
+      "hint": "Günlük brifinginiz {{language}} dilinde yazılacak.",
+      "sameAsApp": "Uygulama diliyle aynı",
+      "loadFailed": "Yükleme başarısız",
+      "saveFailed": "Kaydedilemedi. Lütfen tekrar deneyin."
     }
   }
 }

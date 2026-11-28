@@ -60,14 +60,46 @@ export async function fetchCbp() {
   return { routes: [{ id: 'us-southwest-border', name: 'US southwest land border encounters', kind: 'encounter', measure: 'monthly', countryCode: 'US', latitude: 31.5, longitude: -109.5, ...monthlyRoute(points) }] };
 }
 
+const FRONTEX_MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
+function frontexCalendarDate(year, monthIndex, day) {
+  if (!Number.isInteger(year) || monthIndex < 0 || monthIndex > 11 || !Number.isInteger(day)) return null;
+  const date = new Date(Date.UTC(year, monthIndex, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== monthIndex || date.getUTCDate() !== day) return null;
+  return date.getTime();
+}
+
+const FRONTEX_WORKBOOKS = [
+  {
+    pattern: /^EUROSUR_data_as_of_(\d{2})([A-Z]{3})(\d{2})\.xlsx$/i,
+    publishedAt: match => frontexCalendarDate(2000 + Number(match[3]), FRONTEX_MONTHS.indexOf(match[2].toUpperCase()), Number(match[1])),
+  },
+  {
+    pattern: /^Monthly_detections_of_IBC_(\d{4})_(\d{2})_(\d{2})\.xlsx$/i,
+    publishedAt: match => frontexCalendarDate(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
+  },
+];
+
+function frontexWorkbookPublishedAt(pathname) {
+  const file = pathname.split('/').pop() ?? '';
+  for (const workbook of FRONTEX_WORKBOOKS) {
+    const match = file.match(workbook.pattern);
+    if (match) return workbook.publishedAt(match);
+  }
+  return null;
+}
+
 export async function fetchFrontex() {
   const html = await request(BORDER_SOURCES.frontex.url);
-  const files = [...html.matchAll(/href=["']([^"']+Monthly_detections_of_IBC_\d{4}_\d{2}_\d{2}\.xlsx)["']/gi)]
-    .map(m => new URL(m[1], BORDER_SOURCES.frontex.url))
-    .filter(url => url.origin === 'https://www.frontex.europa.eu' && /^\/assets\/Migratory_routes\/\d{4}\//.test(url.pathname))
-    .sort((a, b) => b.pathname.localeCompare(a.pathname));
+  const files = [...html.matchAll(/href=["']([^"']+\.xlsx)["']/gi)].flatMap(match => {
+    let url;
+    try { url = new URL(match[1], BORDER_SOURCES.frontex.url); } catch { return []; }
+    if (url.origin !== 'https://www.frontex.europa.eu' || !/^\/assets\/Migratory_routes\/\d{4}\/[^/]+\.xlsx$/i.test(url.pathname)) return [];
+    const publishedAt = frontexWorkbookPublishedAt(url.pathname);
+    return publishedAt == null ? [] : [{ url, publishedAt }];
+  }).sort((a, b) => b.publishedAt - a.publishedAt);
   if (!files.length) throw new Error('Frontex monthly workbook missing');
-  return { routes: await parseFrontex(await request(files[0].href, 'bytes')) };
+  return { routes: await parseFrontex(await request(files[0].url.href, 'bytes')) };
 }
 
 export async function fetchPanama() {

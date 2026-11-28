@@ -642,6 +642,9 @@ const HEALTH_REGISTRY_ACCOUNTED_MUTATIONS = [
   // -1: the strike-pressure tally (since CII v12) is produced by the same relay loop,
   // so the same switch drops it from STANDALONE_KEYS.
   'delete STANDALONE_KEYS.strikePressure;',
+  // -1: the v2 strike tally (CII v15 B3 shadow) runs in the same relay loop's
+  // shadow twin under the same switch.
+  'delete STANDALONE_KEYS.strikePressureV2;',
 ];
 
 const normalizeMutation = (line) => line.trim().replace(/\s+/g, ' ');
@@ -803,13 +806,15 @@ function parseHealthProbedKeys(rawSource = read('api/health.js')) {
   // key missed, one phantom invented) net to an identical count but not to an
   // identical set. computeStats stores only the counts: dumping 256 key names
   // into the committed stats.json would bury the claims it actually publishes.
-  if (!standaloneKeys.includes('strikePressure')) {
-    throw new Error('docs-stats: STANDALONE_KEYS no longer declares strikePressure, so the sunset delete subtracts twice');
+  for (const gated of ['strikePressure', 'strikePressureV2']) {
+    if (!standaloneKeys.includes(gated)) {
+      throw new Error(`docs-stats: STANDALONE_KEYS no longer declares ${gated}, so the sunset delete subtracts twice`);
+    }
   }
   const effectiveBootstrap = [...bootstrapKeys, ...addedNames].filter((k) => k !== 'iranEvents');
-  const effectiveStandalone = standaloneKeys.filter((k) => k !== 'strikePressure');
+  const effectiveStandalone = standaloneKeys.filter((k) => k !== 'strikePressure' && k !== 'strikePressureV2');
   const bootstrap = bootstrapKeys.length + addedMarkets - 1;
-  const standalone = standaloneKeys.length - 1;
+  const standalone = standaloneKeys.length - 2;
   if (effectiveBootstrap.length !== bootstrap) {
     throw new Error(`docs-stats: internal — bootstrap arithmetic (${bootstrap}) disagrees with its key list (${effectiveBootstrap.length})`);
   }
@@ -1362,11 +1367,11 @@ export function validateVolatileInventoryClaims() {
     { path: 'docs/data-sources.mdx', text: /25 feed categories would have generated 25,000 edge invocations/ },
     { path: 'docs/tradingview-screener-integration.md', text: /41\/41 operations/ },
     { path: 'docs/api-versioning.mdx', text: /version 1 operation/ },
-    { path: 'docs/architecture.mdx', text: /protoc-gen-openapiv3.*OpenAPI 3\.1\.0 specs/ },
+    { path: 'docs/architecture-topics/api-contracts-and-bootstrap.mdx', text: /protoc-gen-openapiv3.*OpenAPI 3\.1\.0 specs/ },
     { path: 'docs/PRESS_KIT.md', text: /72 indicators, 21 active dimensions, 6 domains/ },
     { path: 'docs/documentation.mdx', text: /72 indicators across 21 active dimensions and 6 domains/ },
     { path: 'docs/features.mdx', text: /72 indicators across 21 active dimensions and 6 domains/ },
-    { path: 'docs/overview.mdx', text: /72 indicators across 21 active dimensions and 6 domains/ },
+    { path: 'docs/platform-evaluation.mdx', text: /72 indicators across 21 active dimensions and 6 domains/ },
     { path: 'public/llms-full.txt', text: /72 indicators across 21 active dimensions, 6 domains/ },
     { path: 'public/llms.txt', text: /live in 190\+ countries/ },
     { path: 'public/llms.txt', text: /structural resilience ranked for/ },
@@ -1399,9 +1404,9 @@ export function validateVolatileInventoryClaims() {
     { path: 'docs/methodology/news-digest-and-briefing.mdx', text: /`high-event`.*\+5 sources/ },
     { path: 'docs/methodology/news-digest-and-briefing.mdx', text: /`sanctions-regulatory`.*\+5 sources/ },
     { path: 'docs/methodology/news-digest-and-briefing.mdx', text: /`med`.*\+5 sources/ },
-    { path: 'docs/mcp-tools-reference.mdx', text: /current four feeds, 5 is a compatibility safety threshold/ },
-    { path: 'docs/mcp-tools-reference.mdx', text: /across seven domains/ },
-    { path: 'docs/mcp-tools-reference.mdx', text: /between two airports/ },
+    { path: 'docs/mcp-tools/military-escalation.mdx', text: /current four feeds, 5 is a compatibility safety threshold/ },
+    { path: 'docs/mcp-tools/military-escalation.mdx', text: /across seven domains/ },
+    { path: 'docs/mcp-tools/movement-infrastructure.mdx', text: /between two airports/ },
     { path: 'docs/webcam-layer.mdx', text: /up to 4 webcams simultaneously/ },
     { path: 'docs/webcam-layer.mdx', text: /more than 4 webcams are pinned/ },
     { path: 'docs/webcam-layer.mdx', text: /Maximum 4 webcams can be active/ },

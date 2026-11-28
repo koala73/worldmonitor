@@ -20,10 +20,11 @@ import {
 } from '../shared/desktop-key-access.js';
 
 const NOW = 1_800_000_000_000;
-const PRO_PLANS = ['pro_monthly', 'pro_annual', 'pro_business_monthly', 'pro_business_annual'];
+const PRO_PLANS = ['pro_monthly', 'pro_monthly_mcp', 'pro_annual', 'pro_business_monthly', 'pro_business_annual'];
 const NON_PRO_PLANS = ['free', 'api_starter', 'api_starter_annual', 'api_business', 'api_business_annual', 'enterprise'];
 const EXPECTED_MAX_KEYS: Record<string, number> = {
   pro_monthly: 2,
+  pro_monthly_mcp: 2,
   pro_annual: 2,
   pro_business_monthly: 3,
   pro_business_annual: 3,

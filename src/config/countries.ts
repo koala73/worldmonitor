@@ -1,6 +1,4 @@
 import {
-  DEFAULT_CII_BASELINE_RISK,
-  DEFAULT_CII_EVENT_MULTIPLIER,
   getCiiCountryWeight,
 } from '../../shared/cii-weights';
 import type { CiiCountryCode } from '../../shared/cii-weights';
@@ -239,6 +237,3 @@ export const TIER1_COUNTRIES: Record<string, string> = {
   JP: 'Japan',
   QA: 'Qatar',
 };
-
-export const DEFAULT_BASELINE_RISK = DEFAULT_CII_BASELINE_RISK;
-export const DEFAULT_EVENT_MULTIPLIER = DEFAULT_CII_EVENT_MULTIPLIER;

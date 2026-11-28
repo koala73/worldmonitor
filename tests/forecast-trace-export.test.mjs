@@ -6023,6 +6023,48 @@ describe('simulation package export', () => {
     assert.equal(label, 'Black Sea maritime disruption state', `label should be stripped, got: "${label}"`);
   });
 
+  it('theaters from distinct state units that share a base label get distinguishable labels', () => {
+    const freight = makeCandidate({
+      candidateStateId: 'state-redsea-freight',
+      candidateStateLabel: 'Red Sea energy disruption state',
+      routeFacilityKey: 'Red Sea',
+      dominantRegion: 'Red Sea',
+      commodityKey: 'shipping_freight',
+      rankingScore: 0.85,
+      marketContext: { ...makeCandidate().marketContext, topBucketId: 'freight', topBucketLabel: 'Freight' },
+    });
+    const energy = makeCandidate({
+      candidateStateId: 'state-redsea-energy',
+      candidateStateLabel: 'Red Sea energy disruption state (supply_chain)',
+      routeFacilityKey: 'Red Sea',
+      dominantRegion: 'Red Sea',
+      rankingScore: 0.8,
+    });
+    const blackSea = makeCandidate({
+      candidateStateId: 'state-blacksea',
+      candidateStateLabel: 'Black Sea maritime disruption state',
+      routeFacilityKey: 'Black Sea',
+      dominantRegion: 'Black Sea',
+      rankingScore: 0.75,
+    });
+    const pkg = buildSimulationPackageFromDeepSnapshot(makeSnapshot([freight, energy, blackSea]));
+    assert.deepStrictEqual(pkg.selectedTheaters.map((t) => t.label), [
+      'Red Sea energy disruption state · Freight',
+      'Red Sea energy disruption state · Energy',
+      'Black Sea maritime disruption state',
+    ]);
+  });
+
+  it('colliding theaters with no distinguishing context fall back to ordinals', () => {
+    const a = makeCandidate({ candidateStateId: 'state-a', candidateStateLabel: 'Red Sea maritime disruption state', rankingScore: 0.85 });
+    const b = makeCandidate({ candidateStateId: 'state-b', candidateStateLabel: 'Red Sea maritime disruption state (supply_chain)', rankingScore: 0.8 });
+    const pkg = buildSimulationPackageFromDeepSnapshot(makeSnapshot([a, b]));
+    assert.deepStrictEqual(pkg.selectedTheaters.map((t) => t.label), [
+      'Red Sea maritime disruption state · #1',
+      'Red Sea maritime disruption state · #2',
+    ]);
+  });
+
   // P1 #010: inferEntityClassFromName — word-boundary fix
   it('inferEntityClassFromName does not classify "Salesforce Inc" as military', () => {
     const cls = inferEntityClassFromName('Salesforce Inc');

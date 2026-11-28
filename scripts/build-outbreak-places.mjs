@@ -98,7 +98,7 @@ for (const line of readFileSync(admin1Path, 'utf8').split('\n')) {
 const out = {};
 for (const country of [...places.keys()].sort()) {
   out[country] = [...places.get(country)]
-    .sort(([a], [b]) => b.length - a.length || a.localeCompare(b))
+    .sort(([a], [b]) => b.length - a.length || a.localeCompare(b, 'en-US'))
     .map(([name, { lat, lng }]) => [name, lat, lng]);
 }
 writeFileSync(TARGET, `${JSON.stringify(out)}\n`);

@@ -304,13 +304,13 @@ describe('getCableHealth cache publication', { concurrency: 1 }, () => {
     assert.equal(f.read(META_KEY).fetchedAt, second.generatedAt);
   });
 
-  it('migrates a legacy cache hit to its original 90-minute deadline', async () => {
+  it('migrates a legacy cache hit to its original 95-minute retention deadline', async () => {
     const f = clockFixture();
     const first = await getCableHealth({} as never, {} as never);
     f.store.get(CACHE_KEY)!.expiresAt = f.start + 30 * 60_000;
     f.advance(29);
     assert.deepEqual(await getCableHealth({} as never, {} as never), first);
-    assert.equal(f.store.get(CACHE_KEY)!.expiresAt, f.start + 90 * 60_000);
+    assert.equal(f.store.get(CACHE_KEY)!.expiresAt, f.start + 95 * 60_000);
     assert.equal(f.read(META_KEY).fetchedAt, first.generatedAt);
     f.advance(31);
     assert.equal(f.verdict().status, 'OK');
@@ -365,7 +365,7 @@ describe('getCableHealth cache publication', { concurrency: 1 }, () => {
     f.store.delete(META_KEY);
     f.store.get(CACHE_KEY)!.expiresAt = Infinity;
     f.advance(1);
-    f.beforeRepair(() => f.advance(90));
+    f.beforeRepair(() => f.advance(95));
     await getCableHealth({} as never, {} as never);
     assert.deepEqual(f.read(CACHE_KEY), first, 'late repair makes no cache mutation');
     assert.equal(f.read(META_KEY), null, 'late repair cannot claim a successful observation');
@@ -383,7 +383,7 @@ describe('getCableHealth cache publication', { concurrency: 1 }, () => {
     assert.deepEqual(sidecarCacheGet(META_KEY), { fetchedAt: first.generatedAt, recordCount: 0 });
     f.advance(31);
     assert.deepEqual(sidecarCacheGet(CACHE_KEY), first);
-    f.advance(90);
+    f.advance(95);
     assert.equal(sidecarCacheGet(CACHE_KEY), null);
   });
 
@@ -417,6 +417,18 @@ describe('getCableHealth cache publication', { concurrency: 1 }, () => {
     assert.equal(f.store.get(CACHE_KEY)!.expiresAt, expiry);
 
     f.advance(90);
+    assert.deepEqual(await getCableHealth({} as never, {} as never), { generatedAt: 0, cables: {} },
+      'the 90-minute serving cutoff is unchanged');
+    assert.equal(f.read(META_KEY).fetchedAt, f.start);
+    assert.equal(f.store.get(CACHE_KEY)!.expiresAt, expiry);
+
+    // Health rounds age to whole minutes, so 90m31s is the first stale reading.
+    // The payload must still exist then, or a late warm-ping reads as EMPTY.
+    f.advance(90 + 31 / 60);
+    assert.ok(f.read(CACHE_KEY), 'payload outlives the rounded staleness boundary');
+    assert.equal(f.verdict().status, 'STALE_SEED');
+
+    f.advance(95);
     await getCableHealth({} as never, {} as never);
     assert.equal(f.read(CACHE_KEY), null);
     assert.notEqual(f.verdict().status, 'OK');

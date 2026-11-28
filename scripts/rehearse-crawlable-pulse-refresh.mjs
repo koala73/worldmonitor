@@ -14,7 +14,8 @@
 // derives a capture from the committed one: re-dated to today, every
 // methodology version bumped, CII scores rotated across the scored countries,
 // chokepoint readings rotated across chokepoints, and PortWatch days all
-// published or all withheld. Every record keeps its
+// published or all withheld, and the optional Pizza Index reading present
+// when the capture has none and absent when it has one. Every record keeps its
 // shape, so the build accepts it the way it accepts a real capture. It then
 // runs the refresh workflow's own "Rebuild published artifacts" and "Verify
 // published artifacts" steps, read from the workflow file so the two cannot
@@ -30,6 +31,8 @@ import { readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
+
+import { PIZZINT_LEVEL_LABELS } from './crawlable-live-tools.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SNAPSHOT_DIR = 'docs/snapshots';
@@ -130,6 +133,21 @@ export function driftLivePulseCapture(capture, { targetDate }) {
       for (const field of PORTWATCH_DAY_FIELDS) reading[field] = null;
     }
   }
+  // The freeze writes pizzaIndex only when it has a current or carried
+  // reading, so the key comes and goes between weeks. The first capture to
+  // carry one failed a test written while the committed capture had none
+  // (#11151). Flip it, so a test that assumes either state fails here.
+  if (drifted.pizzaIndex) {
+    delete drifted.pizzaIndex;
+  } else {
+    drifted.pizzaIndex = {
+      updatedAt: `${targetDate}T00:00:00.000Z`,
+      level: '5',
+      label: PIZZINT_LEVEL_LABELS[5],
+      venues: [{ name: 'Rehearsal Pizza', status: 'No data' }],
+      retained: false,
+    };
+  }
   return drifted;
 }
 
@@ -179,7 +197,7 @@ function main() {
   try {
     for (const filename of snapshots) rmSync(join(REPO_ROOT, SNAPSHOT_DIR, filename));
     writeFileSync(join(REPO_ROOT, SNAPSHOT_DIR, driftedName), `${JSON.stringify(drifted, null, 2)}\n`);
-    console.log(`[rehearse-pulse] ${committed} -> ${driftedName} (methodology bumped, CII and chokepoint readings rotated, PortWatch days moved to one side)`);
+    console.log(`[rehearse-pulse] ${committed} -> ${driftedName} (methodology bumped, CII and chokepoint readings rotated, PortWatch days moved to one side, Pizza Index ${drifted.pizzaIndex ? 'added' : 'dropped'})`);
     for (const step of steps) {
       console.log(`[rehearse-pulse] ${step.name}`);
       const result = spawnSync('bash', ['-eo', 'pipefail', '-c', step.run], {

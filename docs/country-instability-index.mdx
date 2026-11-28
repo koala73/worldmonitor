@@ -79,6 +79,8 @@ arrive outside the base event components:
 | AIS disruptions | 10 | Maritime disruption buckets |
 | Strike pressure | 10 | Strikes on the country (Middle East strike feed, GDELT worldwide), decayed with a three-day half-life |
 
+Sanctions counts use OFAC location-based country evidence only; nationality-only features are not counted, and SEMA regulation targets are shown separately and do not feed risk scores.
+
 The score floor is the larger of UCDP conflict floors, State Department
 advisory floors and the strike floor. When live advisory data is absent, the scorer applies the
 curated fallback levels published in the

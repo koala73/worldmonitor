@@ -1,4 +1,5 @@
 import { expect, test, type Frame, type Page } from '@playwright/test';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 type SandboxProbeWindow = Window & typeof globalThis & {
   __bodyBeforeUnloadCalls: number;
@@ -146,7 +147,7 @@ test.describe('PRO widget sandbox', () => {
     await expect(frame.locator('#rendered')).toBeVisible();
     expect(await frame.evaluate(() => document.body.dataset.isolated)).toBe('true');
     expect(await page.evaluate(() => document.body.dataset.compromised)).toBeUndefined();
-    await page.screenshot({ path: testInfo.outputPath('widget-sandbox-normal.png') });
+    await evidenceScreenshot(page, { path: testInfo.outputPath('widget-sandbox-normal.png') });
     const sandboxUrl = new URL('/wm-widget-sandbox.html#id=foreign&token=foreign-token', page.url());
     const foreignParent = new URL('/widget-sandbox-parent', page.url());
     foreignParent.hostname = 'localhost';
@@ -171,6 +172,6 @@ test.describe('PRO widget sandbox', () => {
     await page.evaluate(() => {
       document.body.insertAdjacentHTML('beforeend', '<p>Different loopback parent origin: HTML delivery blocked.</p>');
     });
-    await page.screenshot({ path: testInfo.outputPath('widget-sandbox-blocked.png') });
+    await evidenceScreenshot(page, { path: testInfo.outputPath('widget-sandbox-blocked.png') });
   });
 });

@@ -1,0 +1,36 @@
+name: Sentry Resolve Markers
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+concurrency:
+  group: sentry-resolve-markers-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+
+      # Sentry scans "<body> <title>" as one text, so a run can start in the
+      # body and reach a short ID in the title. Match that join exactly.
+      - name: Scan the PR title and body for Sentry resolve markers
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          printf '%s %s\n' "$PR_BODY" "$PR_TITLE" > "$RUNNER_TEMP/pr-text.md"
+          node scripts/check-sentry-resolve-markers.mjs --text-file "$RUNNER_TEMP/pr-text.md"

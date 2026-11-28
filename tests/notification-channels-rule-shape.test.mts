@@ -134,3 +134,25 @@ describe('/api/notification-channels alert-rule shape bounds', () => {
     });
   }
 });
+
+describe('/api/notification-channels enabledIntent (#10976)', () => {
+  for (const action of ['set-alert-rules', 'set-notification-config']) {
+    it(`${action}: relays enabledIntent with enabled and returns the relay's first-channel decision`, async () => {
+      const decision = { ok: true, enabled: false, firstChannel: 'held', reason: { code: 'ALERT_COUNTRY_SCOPE_REQUIRED', message: 'Choose 1–3 countries.' } };
+      const { mod, relayBodies } = await installDeps({ status: 200, body: decision });
+      const res = await mod.default(makeRequest({ action, variant: 'full', enabled: false, enabledIntent: 'connect', eventTypes: [], channels: ['email'] }), ctx);
+      assert.equal(res.status, 200);
+      assert.deepEqual(await res.json(), decision);
+      assert.equal(relayBodies[0]!.enabled, false);
+      assert.equal(relayBodies[0]!.enabledIntent, 'connect');
+    });
+
+    it(`${action}: an unknown enabledIntent → 400 ENABLED_INTENT_INVALID without a relay call`, async () => {
+      const { mod, relayBodies } = await installDeps();
+      const res = await mod.default(makeRequest({ action, variant: 'full', enabled: true, enabledIntent: 'always', eventTypes: [], channels: ['email'] }), ctx);
+      assert.equal(res.status, 400);
+      assert.equal((await res.json() as { error: string }).error, 'ENABLED_INTENT_INVALID');
+      assert.deepEqual(relayBodies, []);
+    });
+  }
+});

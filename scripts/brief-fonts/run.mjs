@@ -15,6 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { briefFontFixtures } from './fixtures.mjs';
 import { briefFontInputs } from './inputs.mjs';
+import { BRIEF_SUBSET_LANGUAGES, UI_LANGUAGES, htmlLangFor } from '../../shared/ui-languages.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '../..');
@@ -32,12 +33,15 @@ function collectRuns(families) {
   const add = (el, text, cs) => {
     const family = cs.fontFamily.split(',')[0].trim().replace(/^["']|["']$/g, '');
     if (!families.includes(family)) return;
-    const t = cs.textTransform === 'uppercase' ? text.toUpperCase() : cs.textTransform === 'lowercase' ? text.toLowerCase() : text;
+    const lang = el.closest('[lang]')?.getAttribute('lang') || '';
+    // CSS case transforms follow the content language (Turkish dotted İ, Greek).
+    const locale = lang || 'en';
+    const t = cs.textTransform === 'uppercase' ? text.toLocaleUpperCase(locale) : cs.textTransform === 'lowercase' ? text.toLocaleLowerCase(locale) : text;
     runs.push({
       family, weight: Number(cs.fontWeight), style: cs.fontStyle, text: t,
       onFirstPage: !!firstPage && firstPage.contains(el),
       variants: [cs.fontFeatureSettings, cs.fontVariationSettings, cs.fontVariantNumeric, cs.fontVariantCaps, cs.fontVariantLigatures, cs.fontVariantPosition, cs.fontVariantAlternates, cs.fontVariantEastAsian].join(' '),
-      lang: el.closest('[lang]')?.getAttribute('lang') || '',
+      lang,
     });
   };
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
@@ -57,6 +61,9 @@ function collectRuns(families) {
   return runs;
 }
 
+const subsetLangs = new Set(briefFontInputs(root).langs);
+// Pages in these languages set their script in system fonts (Arabic, CJK, Devanagari, Thai); their runs are not subset inputs.
+const systemFontLangs = new Set(UI_LANGUAGES.filter((code) => !BRIEF_SUBSET_LANGUAGES.includes(code)).map(htmlLangFor));
 const browser = await chromium.launch();
 const faces = new Map();
 const unexpected = new Set();
@@ -69,12 +76,15 @@ try {
       await page.setContent(html, { waitUntil: 'domcontentloaded' });
       for (const run of await page.evaluate(collectRuns, FAMILIES)) {
         const key = `${run.family}|${run.style}|${run.weight}`;
-        const face = faces.get(key) ?? { family: run.family, style: run.style, weight: run.weight, runs: new Set(), on_first_page: false };
-        face.runs.add(run.text);
+        const face = faces.get(key) ?? { family: run.family, style: run.style, weight: run.weight, runs: new Set(), langRuns: new Map(), on_first_page: false };
+        const lang = run.lang || 'en';
+        if (systemFontLangs.has(lang)) continue;
+        if (lang === 'en') face.runs.add(run.text);
+        else face.langRuns.set(lang, (face.langRuns.get(lang) ?? new Set()).add(run.text));
         face.on_first_page ||= run.onFirstPage;
         faces.set(key, face);
         if (run.variants.split(' ').some((v) => v !== 'normal' && v !== '') ) unexpected.add(`${key}: ${run.variants}`);
-        if (run.lang && run.lang !== 'en') unexpected.add(`${key}: lang=${run.lang}`);
+        if (!subsetLangs.has(lang)) unexpected.add(`${key}: lang=${lang}`);
       }
       await context.close();
     }
@@ -82,12 +92,16 @@ try {
 } finally {
   await browser.close();
 }
-// The subsets keep only Chromium's default features and assume lang="en". Anything else needs the script taught first.
+// The subsets keep only Chromium's default features (with locl) for the languages in inputs.mjs. Anything else needs the script taught first.
 if (unexpected.size) throw new Error(`font settings the subsets do not cover:\n${[...unexpected].join('\n')}`);
 
 const usage = {
   inputs: briefFontInputs(root),
-  faces: [...faces.values()].map((f) => ({ ...f, runs: [...f.runs].sort() })).sort((a, b) => `${a.family}${a.style}${a.weight}`.localeCompare(`${b.family}${b.style}${b.weight}`)),
+  faces: [...faces.values()].map(({ langRuns, ...f }) => ({
+    ...f,
+    runs: [...f.runs].sort(),
+    lang_runs: Object.fromEntries([...langRuns].sort(([a], [b]) => a.localeCompare(b)).map(([l, t]) => [l, [...t].sort()])),
+  })).sort((a, b) => `${a.family}${a.style}${a.weight}`.localeCompare(`${b.family}${b.style}${b.weight}`)),
 };
 console.log(`[brief-fonts] faces in use: ${usage.faces.map((f) => `${f.family} ${f.style} ${f.weight}${f.on_first_page ? ' (cover)' : ''}`).join(', ')}`);
 fs.mkdirSync(path.dirname(usageFile), { recursive: true });

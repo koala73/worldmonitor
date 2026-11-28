@@ -1,0 +1,111 @@
+---
+title: "API Contracts, Bootstrap and Polling"
+sidebarTitle: "API & bootstrap"
+description: "How World Monitor defines proto-first API contracts, hydrates the dashboard from one bootstrap payload, and refreshes data with the adaptive SmartPollLoop."
+---
+
+Part of the [Architecture and Design Philosophy](/architecture) guide, which indexes every topic. For deployment topology, directory layout and CI/CD, see [`ARCHITECTURE.md`](https://github.com/koala73/worldmonitor/blob/main/ARCHITECTURE.md).
+
+---
+
+## API & Data Pipeline
+
+> **CORS** — all API endpoints enforce an origin allowlist. See [CORS.md](/cors) for the allowed origins, implementation details, and how to add CORS to new endpoints.
+
+### Proto-First API Contracts
+
+The entire API surface is defined in Protocol Buffer (`.proto`) files using [sebuf](https://github.com/SebastienMelki/sebuf) HTTP annotations. Code generation produces TypeScript clients, server handler stubs, and OpenAPI 3.1.0 documentation from a single source of truth — eliminating request/response schema drift between frontend and backend.
+
+Service domains cover every data vertical:
+
+| Domain           | RPCs                                             |
+| ---------------- | ------------------------------------------------ |
+| `aviation`       | Airport delays (FAA, AviationStack, ICAO NOTAM)  |
+| `climate`        | Climate anomalies                                |
+| `conflict`       | ACLED events, UCDP events, humanitarian summaries|
+| `cyber`          | Cyber threat IOCs                                |
+| `displacement`   | Population displacement, exposure data           |
+| `economic`       | Energy prices, FRED series, macro signals, World Bank, BIS policy rates, exchange rates, credit-to-GDP |
+| `infrastructure` | Internet outages, service statuses, temporal baselines |
+| `intelligence`   | Event classification, country briefs, risk scores|
+| `maritime`       | Vessel snapshots, navigational warnings          |
+| `market`         | Stock indices, crypto/commodity quotes, ETF flows|
+| `military`       | Aircraft details, theater posture, USNI fleet    |
+| `news`           | News items, article summarization                |
+| `prediction`     | Prediction markets                               |
+| `research`       | arXiv papers, HackerNews, tech events            |
+| `seismology`     | Earthquakes                                      |
+| `supply-chain`   | Chokepoint disruption scores, shipping rates, critical mineral concentration |
+| `trade`          | WTO trade restrictions, tariff trends, trade flows, trade barriers |
+| `unrest`         | Protest/unrest events                            |
+| `wildfire`       | Fire detections                                  |
+| `giving`         | Donation platform volumes, crypto giving, ODA    |
+| `positive-events`| Positive news classification, conservation data  |
+| `consumer-prices`| Consumer price overview, basket series, retailer spreads, inflation movers |
+| `forecast`       | Scenario forecasts, simulation packages and outcomes |
+| `health`         | Disease outbreaks, air quality alerts            |
+| `imagery`        | Satellite imagery search                         |
+| `leads`          | Contact submission, interest registration        |
+| `natural`        | Natural disaster events (USGS, GDACS, EONET)     |
+| `radiation`      | Radiation observations (RadNet, Safecast)        |
+| `resilience`     | Country resilience scores and rankings           |
+| `sanctions`      | Sanctions pressure, entity lookup                |
+| `scenario`       | Scenario simulations, templates, run status      |
+| `shipping`       | Route risk intelligence, delivery webhooks       |
+| `thermal`        | Thermal escalation detections                    |
+| `webcam`         | Live webcam directory and imagery                |
+
+**Code generation pipeline** — a `Makefile` drives `buf generate` with three custom sebuf protoc plugins:
+
+1. `protoc-gen-ts-client` → typed fetch-based client classes (`src/generated/client/`)
+2. `protoc-gen-ts-server` → handler interfaces and route descriptors (`src/generated/server/`)
+3. `protoc-gen-openapiv3` → OpenAPI 3.1.0 specs in YAML and JSON (`docs/api/`)
+
+Proto definitions include `buf.validate` field constraints (e.g., latitude ∈ [−90, 90]), so request validation is generated automatically — handlers receive pre-validated data. Breaking changes are caught at CI time via `buf breaking` against the main branch.
+
+**Edge gateway** — proto-backed domain entry points (`api/[domain]/v1/[rpc].ts`) register their generated `createServiceRoutes()` descriptors with a flat path router. Each RPC uses the HTTP method declared in its proto/OpenAPI contract: most read endpoints are `GET` (for example, `GET /api/aviation/v1/list-airport-delays`), while mutating and batch operations use `POST`. The shared gateway adds CORS enforcement, a top-level error boundary that hides internal details on 5xx responses, and rate-limit support (`retryAfter` on 429). The same router runs locally via a Vite dev-server plugin (`sebufApiPlugin` in `vite.config.ts`) with HMR invalidation on handler changes.
+
+### Bootstrap Hydration
+
+The dashboard eliminates cold-start latency by pre-fetching 38 commonly needed datasets in a single Redis pipeline call before any panel renders. On page load, the client fires two parallel requests — a **fast tier** and a **slow tier** — to the `/api/bootstrap` edge function, both with an 800ms abort timeout to avoid blocking first paint.
+
+```
+Page Load → parallel fetch ─┬─ /api/bootstrap?tier=fast  (s-maxage=1200)
+                             │    earthquakes, outages, serviceStatuses,
+                             │    macroSignals, chokepoints, marketQuotes,
+                             │    commodityQuotes, positiveGeoEvents,
+                             │    riskScores, flightDelays, insights,
+                             │    predictions, iranEvents
+                             │
+                             └─ /api/bootstrap?tier=slow  (s-maxage=7200)
+                                  bisPolicy, bisExchange, bisCredit,
+                                  minerals, giving, sectors, etfFlows,
+                                  shippingRates, wildfires, climateAnomalies,
+                                  cyberThreats, techReadiness, theaterPosture,
+                                  naturalEvents, cryptoQuotes, gulfQuotes,
+                                  stablecoinMarkets, unrestEvents, ucdpEvents
+```
+
+The edge function reads all keys in a single Upstash Redis pipeline — one HTTP round-trip for up to 38 keys. Results are stored in an in-memory `hydrationCache` Map. When panels initialize, they call `getHydratedData(key)` which returns the pre-fetched data and evicts it from the cache (one-time read) to free memory. Panels that find hydrated data skip their initial API call entirely, rendering instantly with pre-loaded content. Panels that mount after the hydration data has been consumed fall back to their normal fetch cycle.
+
+**Negative sentinel caching** — when a Redis key contains no data, the bootstrap endpoint stores a `__WM_NEG__` sentinel in the response rather than omitting the key. This allows consumers to distinguish between "data not yet loaded" (key absent from hydration) and "data source has no content" (negative sentinel), preventing unnecessary RPC fallback calls for empty data sources.
+
+**Per-tier CDN caching** — the fast tier uses `s-maxage=1200` (20 min) with `stale-while-revalidate=300` for near-real-time data like earthquakes and market quotes. The slow tier uses `s-maxage=7200` (2 hours) with `stale-while-revalidate=1800` for infrequently changing data like BIS policy rates and climate anomalies. Both tiers include `stale-if-error` directives to serve cached responses when the origin is temporarily unreachable.
+
+**Selective fetching** — clients can request a custom subset of keys via `?keys=earthquakes,flightDelays,insights` for targeted hydration, enabling partial bootstrap recovery when a specific panel needs re-initialization.
+
+This converts 38 independent API calls (each with its own DNS lookup, TLS handshake, and Redis round-trip) into exactly 2, cutting first-meaningful-paint time by 2–4 seconds on typical connections.
+
+### SmartPollLoop — Adaptive Data Refresh
+
+The `SmartPollLoop` is the core refresh orchestration primitive used by all data-fetching panels. Rather than fixed-interval polling, it adapts to network conditions, tab visibility, panel visibility, and failure history:
+
+**Adaptive behaviors**:
+
+- **Exponential backoff** — consecutive failures multiply the poll interval by a configurable `backoffMultiplier` (default 2×), up to 4× the base interval. A single successful fetch resets the multiplier to 1×
+- **Hidden-tab throttle** — when `document.visibilityState` is `hidden`, the poll interval is multiplied by a `hiddenMultiplier` (default 5×). A panel polling every 60s in the foreground slows to every 5 minutes when the tab is backgrounded
+- **Manual trigger** — `handle.triggerNow()` forces an immediate poll regardless of the current interval, used when users explicitly request a refresh or when a related panel's data changes
+- **Attempt tracking** — a consecutive failure counter feeds into circuit breaker integration. After `maxAttempts` failures, the poll loop stops entirely and the circuit breaker serves cached data
+- **Reason tagging** — each poll carries a `SmartPollReason` (`'interval'`, `'resume'`, `'manual'`, `'startup'`) so handlers can adjust behavior (e.g., `startup` polls may fetch larger datasets)
+
+**Panel integration** — panels create a `SmartPollLoop` in their constructor with their base interval and callback, call `handle.start()` on mount, and `handle.stop()` on destroy. The loop is paused automatically when the panel is collapsed or scrolled out of view (via Intersection Observer), and resumed when it reappears.

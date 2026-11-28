@@ -1,4 +1,6 @@
-import { hasCurrentEntitlementCoverage } from './entitlement-coverage.js';
+import { BILLING_PORTAL_URL, hasCurrentEntitlementCoverage, isTerminalBillingStatus } from './entitlement-coverage.js';
+
+export { BILLING_PORTAL_URL, isTerminalBillingStatus, TERMINAL_BILLING_STATUSES } from './entitlement-coverage.js';
 /**
  * Entitlement enforcement middleware for the Vercel API gateway.
  *
@@ -39,6 +41,7 @@ import { getCachedJson, setCachedJson } from './redis.js';
 // four surfaces cannot silently drift when a status is added.
 export type BillingVerificationStatus =
   | 'subscription_lapsed'
+  | 'payment_failed'
   | 'renewal_verification_pending'
   | 'renewal_verification_failed';
 
@@ -96,6 +99,20 @@ export interface CachedEntitlements {
     desktopKeyAccess?: boolean;
     /** Most active desktop keys one account may hold (R5); `0` without access. */
     maxDesktopKeys?: number;
+    /**
+     * Dashboard focus (#10453). Mirrors the catalog field the Convex read-time
+     * merge puts on the wire. Nothing at the edge gates on it — the shared
+     * focus is enforced in `convex/teamDashboards.ts` — so it adds no cache
+     * shape check. `undefined` is fail-CLOSED, as in `shared/tab-focus-access.ts`.
+     */
+    tabFocus?: boolean;
+    /**
+     * Travel risk assessment drafts (#10451), read by the MCP pre-check for
+     * `prepare_travel_risk_assessment`. `undefined` is **fail-CLOSED** at every
+     * tier. The cache-shape gate below checks it only for a read that opts in
+     * (`requireTravelRiskShape`), so other gates keep serving older entries.
+     */
+    travelRiskAssessment?: boolean;
     /**
      * Catalog plan limits, mirrored verbatim from `PlanFeatures.planLimits`
      * (convex/config/productCatalog.ts). Optional because legacy rows predate
@@ -195,6 +212,10 @@ export interface EntitlementCheckOptions {
  * 403'd real Pro subscribers calling via Clerk session (no tester key).
  */
 const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
+  // Orbital Watch REST: passes and images for any point, and per-country
+  // watched-site evidence. The in-app lookup stays free; the API is Pro.
+  '/api/orbital/v1/get-point-passes': 1,
+  '/api/orbital/v1/get-country-imagery-evidence': 1,
   '/api/forecast/v1/trigger-simulation': 1,
   '/api/intelligence/v1/classify-event': 1,
   // deduct-situation is a Pro panel (DeductionPanel premium: 'locked') and in
@@ -224,6 +245,7 @@ const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
   '/api/supply-chain/v1/get-multi-sector-cost-shock': 1,
   '/api/supply-chain/v1/get-sector-dependency': 1,
   '/api/trade/v1/list-comtrade-flows': 1,
+  '/api/trade/v1/get-monthly-sitc-trade': 1,
   '/api/trade/v1/get-tariff-trends': 1,
   '/api/trade/v1/get-bilateral-tariff': 1,
   '/api/trade/v1/get-us-import-duty': 1,
@@ -249,6 +271,12 @@ const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
   '/api/supply-chain/v1/list-vulnerability-rankings': 1,
   '/api/news/v1/list-media-perspective': 1,
   '/api/news/v1/list-news-pool': 1,
+  // Cmd+K headline search over 7 days; the 24-hour sibling stays free.
+  '/api/news/v1/search-headline-archive': 1,
+  // Account-private history of delivered realtime alerts (dashboard search).
+  // Tier-gated so the gateway resolves the session and stamps the trusted
+  // user id the handler reads; an anonymous or keyless caller never reaches it.
+  '/api/news/v1/list-sent-alerts': 1,
 };
 
 const CONVEX_INTERNAL_ENTITLEMENTS_PATH = '/api/internal-entitlements';
@@ -445,14 +473,14 @@ function clampRetryAfterSeconds(raw: number | undefined): number {
 function isBillingVerificationStatus(
   value: unknown,
 ): value is NonNullable<CachedEntitlements['billingStatus']> {
-  return value === 'subscription_lapsed'
+  return isTerminalBillingStatus(value)
     || value === 'renewal_verification_pending'
     || value === 'renewal_verification_failed';
 }
 
 function billingMarkerTtlSeconds(entitlements: CachedEntitlements): number | null {
   if (!isBillingVerificationStatus(entitlements.billingStatus)) return null;
-  if (entitlements.billingStatus === 'subscription_lapsed') {
+  if (isTerminalBillingStatus(entitlements.billingStatus)) {
     return LAPSED_BILLING_MARKER_TTL_SECONDS;
   }
   return clampRetryAfterSeconds(entitlements.retryAfterSeconds);
@@ -531,6 +559,14 @@ export interface GetEntitlementsOptions {
    * that turns it on.
    */
   requireDesktopKeyShape?: boolean;
+  /**
+   * #10451: the caller is deciding the travel risk assessment question, whose
+   * flag fails closed when absent. A cached entry written before the catalog
+   * carried `travelRiskAssessment` is then refetched through Convex instead of
+   * telling an entitled customer to upgrade until the entry ages out. Only the
+   * MCP pre-check for that one tool turns it on.
+   */
+  requireTravelRiskShape?: boolean;
 }
 
 export async function getEntitlements(
@@ -551,7 +587,9 @@ export async function getEntitlements(
 
   // Coalesced per (user, shape requirement): a desktop-shape read must not be
   // satisfied by a concurrent ordinary read that could return a legacy entry.
-  const inFlightKey = options.requireDesktopKeyShape ? `${userId}\u0000desktop-key-shape` : userId;
+  let inFlightKey = userId;
+  if (options.requireDesktopKeyShape) inFlightKey += '\u0000desktop-key-shape';
+  if (options.requireTravelRiskShape) inFlightKey += '\u0000travel-risk-shape';
   const existing = _inFlight.get(inFlightKey);
   if (existing) return existing;
 
@@ -635,7 +673,11 @@ async function _getEntitlementsImpl(
       // The cache-shape check must
       // run first: a pre-embedAccess marker is still an authorization row, and
       // serving it would bypass the canonical Convex merge below.
-      if (hasCurrentEmbedAccessShape && entitlementMarkerTtlSeconds(ent) !== null) return ent;
+      // The opt-in travel shape applies here too: a marker row written before
+      // `travelRiskAssessment` existed would otherwise admit the account at the
+      // MCP pre-check and then deny the tool as a missing plan feature.
+      const hasRequestedTravelShape = !options.requireTravelRiskShape || typeof ent.features.travelRiskAssessment === 'boolean';
+      if (hasCurrentEmbedAccessShape && hasRequestedTravelShape && entitlementMarkerTtlSeconds(ent) !== null) return ent;
       // Only use cached data if it hasn't expired AND has the post-U10 shape.
       //
       // Legacy cache entries written before plan 2026-05-10-001 U10 lack the
@@ -681,7 +723,8 @@ async function _getEntitlementsImpl(
         hasCurrentEmbedAccessShape &&
         ent.features.planLimits?.dashboardAiCallsPerDay !== undefined &&
         !legacySharedBudgetShape &&
-        (!options.requireDesktopKeyShape || hasDesktopKeyShape(ent))
+        (!options.requireDesktopKeyShape || hasDesktopKeyShape(ent)) &&
+        hasRequestedTravelShape
       ) {
         return ent;
       }
@@ -780,6 +823,14 @@ export type BillingVerificationInput = Pick<
   'billingStatus' | 'retryAfterSeconds' | 'verificationUnavailable'
 >;
 
+
+/**
+ * A paused subscription cannot be fixed by buying again: checkout is blocked
+ * while the hold lasts, so the copy sends the caller to the billing portal.
+ */
+export const PAYMENT_FAILED_MESSAGE =
+  `Payment failed. Update your payment method at ${BILLING_PORTAL_URL} to restore access.`;
+
 /** Wire code for a billing-verification denial, mirrored into `X-Billing-Verification`. */
 export type BillingVerificationCode =
   | BillingVerificationStatus
@@ -794,8 +845,8 @@ export function isBillingVerificationCode(
 
 export interface BillingVerificationDenial {
   /**
-   * False ONLY for a lapse the provider confirmed. Everything else in this
-   * union is a statement about the *verification*, not the subscription, so a
+   * False ONLY for a state the provider confirmed (lapsed or paused). Everything
+   * else in this union is a statement about the *verification*, not the subscription, so a
    * caller that renders it as terminal reproduces #5600.
    */
   retryable: boolean;
@@ -857,15 +908,14 @@ export function classifyBillingVerification(
   const status = entitlements?.billingStatus;
   if (!isBillingVerificationStatus(status)) return null;
 
-  if (status === 'subscription_lapsed') {
-    // The ONLY terminal member: the provider confirmed coverage ended, so
-    // retrying cannot flip it (tests/premium-denial.test.mts pins the same
-    // reading on the client side).
+  if (isTerminalBillingStatus(status)) {
+    // The provider confirmed the state, so retrying cannot flip it
+    // (tests/premium-denial.test.mts pins the same reading on the client side).
     return {
       retryable: false,
       code: status,
       retryAfterSeconds: 0,
-      message: 'Subscription lapsed',
+      message: status === 'payment_failed' ? PAYMENT_FAILED_MESSAGE : 'Subscription lapsed',
       status: 403,
     };
   }

@@ -10,7 +10,6 @@ import {
   getLocationName as reverseGeocode,
   type GeoConvergenceAlert,
   type GeoEventInput,
-  type GeoEventType,
   type GeoPlaceDatasets,
 } from '../../shared/analysis-geo-convergence';
 
@@ -33,15 +32,6 @@ const engine = new GeoConvergenceEngine({ convergenceThreshold: CONVERGENCE_THRE
 
 function toEpochMs(value: Date | undefined): number | undefined {
   return value ? value.getTime() : undefined;
-}
-
-export function ingestGeoEvent(
-  lat: number,
-  lon: number,
-  type: GeoEventType,
-  timestamp: Date = new Date()
-): void {
-  engine.ingest(lat, lon, type, timestamp.getTime());
 }
 
 export function ingestProtests(events: SocialUnrestEvent[]): void {
@@ -90,21 +80,6 @@ export function clearCells(): void {
 
 export function getCellCount(): number {
   return engine.cellCount();
-}
-
-export function debugGetCells(): Map<string, unknown> {
-  return new Map(
-    engine.snapshot().map(cell => [
-      cell.id,
-      {
-        id: cell.id,
-        lat: cell.lat,
-        lon: cell.lon,
-        events: new Map(cell.events.map(e => [e.type, { count: e.count, lastSeen: new Date(e.lastSeen) }])),
-        firstSeen: new Date(cell.firstSeen),
-      },
-    ])
-  );
 }
 
 export function getAlertsNearLocation(lat: number, lon: number, radiusKm: number): { score: number; types: number } | null {

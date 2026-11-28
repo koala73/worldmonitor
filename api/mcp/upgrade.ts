@@ -7,7 +7,9 @@
  */
 
 import { MCP_UPGRADE_URL } from '../../shared/mcp-attribution';
-import { recommendedPlanFor, START_UPGRADE_TOOL } from './checkout';
+import { BILLING_PORTAL_URL } from '../../server/_shared/entitlement-coverage';
+import { mcpOfferSentence, recommendedPlanFor, recommendedPlanForFeature, START_UPGRADE_TOOL } from './checkout';
+import type { McpPlanFeature } from './types';
 
 export {
   MCP_ATTRIBUTION_SOURCE,
@@ -28,7 +30,8 @@ export type McpStaticDenialReason =
   | 'no-account'
   | 'allowance-exhausted'
   | 'upgrade-required'
-  | 'lapsed-subscription';
+  | 'lapsed-subscription'
+  | 'payment-failed';
 
 /** Machine-readable denial reasons agents can branch on. */
 export type McpDenialReason = McpStaticDenialReason | 'quota-exceeded';
@@ -49,9 +52,20 @@ type McpUpgradeableReason = 'allowance-exhausted' | 'upgrade-required' | 'quota-
  * `upgradeFrom` is the caller's current plan key (`'free'` on the free-account
  * allowance). Set it only for a user-bound caller, who can call
  * `start_upgrade`; the denial then names the plan to buy and the tool.
+ *
+ * `planFeature` marks an `upgrade-required` refusal for one tool whose plan
+ * flag the caller lacks (#10451). The reason stays `upgrade-required`, so
+ * clients that branch on it keep working; the copy and the recommended plan
+ * name the plans that carry the flag instead of the next tier up.
+ *
+ * `paymentFailed` marks a spent free allowance whose owner is paused after a
+ * failed renewal (#11213). It carries no `upgradeFrom`: checkout is blocked
+ * while the hold lasts, so the denial points at the billing portal instead.
  */
 export type McpDenial =
   | { reason: McpStaticDenialReason; upgradeFrom?: string }
+  | { reason: 'allowance-exhausted'; paymentFailed: true; upgradeFrom?: undefined }
+  | { reason: 'upgrade-required'; planFeature: McpPlanFeature; upgradeFrom?: string }
   | {
       reason: 'quota-exceeded';
       /** The daily limit the reservation ENFORCED, so copy and cap agree. */
@@ -86,7 +100,8 @@ interface McpCheckoutHint {
  * when the caller has a plan to move to.
  */
 export type McpStructuredDenial =
-  | ({ reason: McpStaticDenialReason; nextStep: string; upgradeUrl: string } & McpCheckoutHint)
+  | ({ reason: McpStaticDenialReason; nextStep: string; upgradeUrl: string; paymentFailed?: true } & McpCheckoutHint)
+  | ({ reason: 'upgrade-required'; nextStep: string; upgradeUrl: string; planFeature: McpPlanFeature } & McpCheckoutHint)
   | ({
       reason: 'quota-exceeded';
       nextStep: string;
@@ -105,10 +120,16 @@ const UPGRADEABLE_REASONS: ReadonlySet<McpDenial['reason']> = new Set<McpUpgrade
 function checkoutHint(denial: McpDenial): McpCheckoutHint {
   if (!UPGRADEABLE_REASONS.has(denial.reason) || denial.upgradeFrom === undefined) return {};
   if (denial.reason === 'quota-exceeded' && denial.allowance !== undefined) return {};
-  const recommendedPlan = recommendedPlanFor(denial.upgradeFrom);
+  const recommendedPlan = 'planFeature' in denial
+    ? recommendedPlanForFeature(denial.upgradeFrom, denial.planFeature)
+    : recommendedPlanFor(denial.upgradeFrom);
   if (recommendedPlan === undefined) return {};
   return denial.upgradeFrom === 'free' ? { recommendedPlan, checkoutTool: START_UPGRADE_TOOL } : { recommendedPlan };
 }
+
+/** States the pause without a link, so inform-only hosts can keep it as is. */
+export const PAYMENT_FAILED_MCP_MESSAGE =
+  'Payment failed; paid access is paused. Re-authenticating will not help.';
 
 const DENIAL_COPY: Record<McpStaticDenialReason, { message: string; nextStep: string }> = {
   'no-account': {
@@ -149,7 +170,59 @@ const DENIAL_COPY: Record<McpStaticDenialReason, { message: string; nextStep: st
       'Resubscribe at the upgrade URL. The existing credential stays valid — '
       + 're-authenticating will not restore access.',
   },
+  // #11213: the subscription is paused, not ended. Dodo keeps retrying the
+  // charge and blocks a second checkout meanwhile, so the only way back is a
+  // working payment method. `upgradeUrl` is the billing portal for this reason.
+  'payment-failed': {
+    message: PAYMENT_FAILED_MCP_MESSAGE,
+    nextStep:
+      `Update the payment method at ${BILLING_PORTAL_URL}. A new checkout is blocked until then.`,
+  },
 };
+
+const PAYMENT_FAILED_ALLOWANCE_NEXT_STEP =
+  `Paid access is paused after a failed payment. Update the payment method at ${BILLING_PORTAL_URL}, or wait for the next UTC day.`;
+
+/**
+ * Copy for a plan-feature refusal. The message only states which plans include
+ * the tool, so inform-only hosts keep it; their `nextStep` drops the upgrade.
+ */
+const PLAN_FEATURE_COPY: Record<McpPlanFeature, { message: string; nextStep: string; informOnlyNextStep: string }> = {
+  travelRiskAssessment: {
+    message: 'Travel risk assessment drafts are included in the Pro Business, API Business and Enterprise plans. The current plan does not include them.',
+    nextStep:
+      'Upgrade to Pro Business or API Business at the upgrade URL to use this tool. '
+      + 'Every other tool the current plan includes still works.',
+    informOnlyNextStep:
+      'This tool is not included in the current plan. Every other tool the current plan includes still works.',
+  },
+};
+
+function isPlanFeature(value: unknown): value is McpPlanFeature {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(PLAN_FEATURE_COPY, value);
+}
+
+const PRO_BUSINESS_PLAN_HASH = '#plan-proBusiness';
+
+function planFeatureUpgradeUrl(denial: McpDenial & { planFeature: McpPlanFeature }): string {
+  const recommended = denial.upgradeFrom === undefined
+    ? undefined
+    : recommendedPlanForFeature(denial.upgradeFrom, denial.planFeature);
+  if (recommended === 'pro_business_monthly' || recommended === 'pro_business_annual') {
+    return `${MCP_UPGRADE_URL}${PRO_BUSINESS_PLAN_HASH}`;
+  }
+  return MCP_UPGRADE_URL;
+}
+
+/**
+ * `nextStep` for the anonymous handshake refusal (`initialize` and the GET
+ * discovery probe). A client refused there has no session, so it cannot call
+ * get_sources either; the shared no-account copy above keeps naming it because
+ * a refused `tools/call` can still reach that tool.
+ */
+export const HANDSHAKE_NO_ACCOUNT_NEXT_STEP =
+  'Connect via OAuth (see the WWW-Authenticate header) to sign in with a free account. '
+  + 'Subscribe to Pro at the upgrade URL for the full daily allowance.';
 
 /**
  * Auth-layer messages that carry a call to buy. Exported so auth.ts builds
@@ -162,8 +235,8 @@ export const API_PLAN_REQUIRED_MESSAGE =
 
 /**
  * Copy for hosts whose app rules forbid promoting an upgrade (ChatGPT, see
- * host-policy.ts). It states what the current plan covers and points at the
- * plans page; it never tells the agent to subscribe or buy. Messages that
+ * host-policy.ts). It states what the current plan covers; it never tells the
+ * agent to subscribe or buy, and links no plans page. Messages that
  * already only state a fact are left as they are.
  */
 export const INFORM_ONLY_MESSAGES: ReadonlyMap<string, string> = new Map([
@@ -174,16 +247,17 @@ export const INFORM_ONLY_MESSAGES: ReadonlyMap<string, string> = new Map([
 const INFORM_ONLY_NEXT_STEP: Record<McpStaticDenialReason, string> = {
   'no-account':
     'Connect via OAuth (see the WWW-Authenticate header) to sign in with a free account, '
-    + 'or call get_sources, which needs no credential. The upgrade URL describes the plans.',
+    + 'or call get_sources, which needs no credential.',
   'allowance-exhausted':
-    'The free-account allowance resets at the next UTC day. '
-    + 'The upgrade URL describes the plans with a higher daily limit.',
+    'The free-account allowance resets at the next UTC day.',
   'upgrade-required':
     'This tool is not included in the current plan. The free allowance covers cached-data tools only, '
-    + 'so call one of those. The upgrade URL describes the plans that include this tool.',
+    + 'so call one of those.',
   'lapsed-subscription':
     'The subscription is no longer active. The existing credential stays valid — '
-    + 're-authenticating will not restore access. The upgrade URL describes the plans.',
+    + 're-authenticating will not restore access.',
+  'payment-failed':
+    'Paid access is paused until the payment method is updated.',
 };
 
 /**
@@ -196,14 +270,19 @@ const ACCOUNT_SAFETY_LIMIT_NEXT_STEP =
   + "Contact the account's administrator if the account needs a higher limit.";
 
 /** `nextStep` for an inform-only host, from the denial's own `data`. */
-export function informOnlyNextStep(data: { reason: McpDenialReason; sharedWithRestApi?: boolean; allowance?: unknown }): string {
+export function informOnlyNextStep(data: { reason: McpDenialReason; sharedWithRestApi?: boolean; allowance?: unknown; planFeature?: unknown; paymentFailed?: unknown }): string {
+  if (data.reason === 'upgrade-required' && isPlanFeature(data.planFeature)) {
+    return PLAN_FEATURE_COPY[data.planFeature].informOnlyNextStep;
+  }
+  if (data.reason === 'allowance-exhausted' && data.paymentFailed === true) {
+    return `${INFORM_ONLY_NEXT_STEP['allowance-exhausted']} ${INFORM_ONLY_NEXT_STEP['payment-failed']}`;
+  }
   if (data.reason !== 'quota-exceeded') return INFORM_ONLY_NEXT_STEP[data.reason];
   if (typeof data.allowance === 'number') return ACCOUNT_SAFETY_LIMIT_NEXT_STEP;
   return data.sharedWithRestApi
     ? 'This allowance is shared with your REST API requests, so REST traffic spends it too — '
-      + 'the exhaustion may not be your tool calls. It resets at the next UTC day; '
-      + 'the upgrade URL describes the plans with a higher daily limit.'
-    : 'The allowance resets at the next UTC day. The upgrade URL describes the plans with a higher daily limit.';
+      + 'the exhaustion may not be your tool calls. It resets at the next UTC day.'
+    : 'The allowance resets at the next UTC day.';
 }
 
 export function buildMcpStructuredDenial(denial: McpDenial): {
@@ -247,14 +326,40 @@ export function buildMcpStructuredDenial(denial: McpDenial): {
       },
     };
   }
+  if ('paymentFailed' in denial) {
+    return {
+      message: DENIAL_COPY[denial.reason].message,
+      data: {
+        reason: denial.reason,
+        nextStep: PAYMENT_FAILED_ALLOWANCE_NEXT_STEP,
+        paymentFailed: true,
+        upgradeUrl: BILLING_PORTAL_URL,
+      },
+    };
+  }
+  if ('planFeature' in denial) {
+    const copy = PLAN_FEATURE_COPY[denial.planFeature];
+    return {
+      message: copy.message,
+      data: {
+        reason: denial.reason,
+        nextStep: copy.nextStep,
+        upgradeUrl: planFeatureUpgradeUrl(denial),
+        planFeature: denial.planFeature,
+        ...checkoutHint(denial),
+      },
+    };
+  }
   const copy = DENIAL_COPY[denial.reason];
+  const hint = checkoutHint(denial);
+  const offer = mcpOfferSentence(hint.recommendedPlan);
   return {
     message: copy.message,
     data: {
       reason: denial.reason,
-      nextStep: copy.nextStep,
-      upgradeUrl: MCP_UPGRADE_URL,
-      ...checkoutHint(denial),
+      nextStep: offer === undefined ? copy.nextStep : `${copy.nextStep} ${offer}`,
+      upgradeUrl: denial.reason === 'payment-failed' ? BILLING_PORTAL_URL : MCP_UPGRADE_URL,
+      ...hint,
     },
   };
 }

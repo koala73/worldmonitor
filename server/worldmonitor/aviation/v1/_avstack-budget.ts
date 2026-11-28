@@ -17,12 +17,16 @@ import { runRedisPipeline } from '../../../_shared/redis';
 // a fresh allowance, and it zeroes itself a week into a cycle that is already
 // partly spent. AVIATIONSTACK_CYCLE_RESET_DAY moves the anniversary.
 //
-// Two ceilings against ONE counter so user-panel traffic can't starve the
-// curated seeder (the seeder feeds the map + health; request-time is a panel
-// nicety):
-//   - request-time calls stop at AVIATIONSTACK_REQUEST_BUDGET (default 7k)
+// Two ceilings so user-panel and API traffic can't starve the curated seeder
+// (the seeder feeds the map + health):
+//   - request-time calls stop once THEIR OWN spend reaches
+//     AVIATIONSTACK_REQUEST_BUDGET (default 6k), counted on a separate
+//     `aviation:avstack:request-calls:<cycle>` key. Measured against the
+//     shared counter, seeder spend counted toward it, the total crossed 7k
+//     under three days into the cycle, and flight-status and airport-flights
+//     answered source "budget" for the remaining four weeks.
 //   - all calls (incl. seeder) stop at AVIATIONSTACK_MONTHLY_BUDGET (default
-//     48k) — the gap reserves headroom for the seeder.
+//     48k) on the shared counter — the gap reserves headroom for the seeder.
 // Defaults sit under a 50,000/cycle plan. Note the seeder alone needs ~40.3k
 // (56 airports x 24 sweeps x 30d) and ~41.7k on a 31-day cycle, so the reserved
 // gap is deliberately most of the budget and the real headroom is thin —
@@ -70,6 +74,10 @@ export function avstackBudgetKey(now = new Date()): string {
   return `aviation:avstack:calls:${aviationStackBudgetCycle(now)}`;
 }
 
+function avstackRequestBudgetKey(now = new Date()): string {
+  return `aviation:avstack:request-calls:${aviationStackBudgetCycle(now)}`;
+}
+
 const AVSTACK_BUDGET_TTL = 40 * 24 * 60 * 60; // 40d — outlives the longest cycle; the next cycle uses a new key
 
 function intEnv(name: string, fallback: number): number {
@@ -96,26 +104,36 @@ export async function reserveAviationStackCalls(
   if (count <= 0) return true;
   const hardCap = intEnv('AVIATIONSTACK_MONTHLY_BUDGET', 48_000);
   if (hardCap <= 0) return true; // cap disabled
-  const ceiling = kind === 'seed'
-    ? hardCap
-    : Math.min(hardCap, intEnv('AVIATIONSTACK_REQUEST_BUDGET', 7_000));
 
-  const key = avstackBudgetKey();
+  const now = new Date();
+  const counters: Array<{ key: string; ceiling: number }> = [{ key: avstackBudgetKey(now), ceiling: hardCap }];
+  if (kind === 'request') {
+    counters.push({
+      key: avstackRequestBudgetKey(now),
+      ceiling: Math.min(hardCap, intEnv('AVIATIONSTACK_REQUEST_BUDGET', 6_000)),
+    });
+  }
+
   try {
-    const res = await runRedisPipeline([
+    const res = await runRedisPipeline(counters.flatMap(({ key }) => [
       ['INCRBY', key, count],
       ['EXPIRE', key, AVSTACK_BUDGET_TTL],
-    ]);
-    const total = Number(res?.[0]?.result);
-    if (!Number.isFinite(total)) return true; // redis unavailable → fail-open
-    if (total > ceiling) {
-      // Give the reservation back so the counter reflects calls actually made.
-      const refund = await runRedisPipeline([['DECRBY', key, count]]);
-      const refundedTotal = Number(refund?.[0]?.result);
-      if (!Number.isFinite(refundedTotal)) {
+    ]));
+    const totals = counters.map((_, i) => Number(res?.[i * 2]?.result));
+    // A counter that did answer and is over its ceiling blocks the call even
+    // when the other one errored; fail-open covers only an unknown total.
+    const breached = counters.findIndex(({ ceiling }, i) => Number.isFinite(totals[i]) && totals[i]! > ceiling);
+    if (breached < 0 && !totals.every(Number.isFinite)) return true; // redis unavailable → fail-open
+    if (breached >= 0) {
+      // Give the reservation back so the counters reflect calls actually made.
+      const reserved = counters.filter((_, i) => Number.isFinite(totals[i]));
+      const refund = await runRedisPipeline(reserved.map(({ key }) => ['DECRBY', key, count]));
+      if (!reserved.every((_, i) => Number.isFinite(Number(refund?.[i]?.result)))) {
         console.warn(`[Aviation] AviationStack ${kind} budget refund failed for ${count} call(s); counter may be inflated`);
       }
-      console.warn(`[Aviation] AviationStack ${kind} call blocked — cycle budget reached (${total - count}/${ceiling})`);
+      const { ceiling } = counters[breached]!;
+      const scope = breached === 0 ? 'cycle' : 'request-time';
+      console.warn(`[Aviation] AviationStack ${kind} call blocked — ${scope} budget reached (${totals[breached]! - count}/${ceiling})`);
       return false;
     }
     return true;

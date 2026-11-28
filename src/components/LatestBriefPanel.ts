@@ -42,6 +42,8 @@ interface LatestBriefReady {
   dateLong: string;
   greeting: string;
   threadCount: number;
+  /** Language of the brief the magazine link serves; "en" when no localized copy exists. */
+  lang?: string;
   magazineUrl: string;
 }
 

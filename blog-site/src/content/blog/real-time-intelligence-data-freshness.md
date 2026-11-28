@@ -8,7 +8,7 @@ heroImage: "/blog/images/blog/what-is-worldmonitor-real-time-global-intelligence
 pubDate: "2026-10-26"
 ---
 
-A real-time intelligence dashboard brings together sources that update on different schedules. A screen refreshed seconds ago can contain an aircraft position from minutes ago, a news report about yesterday, and a weekly published series. To judge freshness, check when the underlying observation was made and whether the source is still reporting successfully.
+A real-time [intelligence dashboard](/blog/posts/osint-for-everyone-open-source-intelligence-democratized/) brings together sources that update on different schedules. A screen refreshed seconds ago can contain an aircraft position from minutes ago, a news report about yesterday, and a weekly published series. To judge freshness, check when the underlying observation was made and whether the source is still reporting successfully.
 
 WorldMonitor puts these inputs in a common workspace. That makes comparison easier, but it does not give every layer the same clock. This guide shows how to decide whether an observation is recent enough for your question.
 

@@ -8,6 +8,7 @@ import {
   parseSitemapDocument,
   verifyProductionSitemaps,
 } from '../scripts/verify-sitemaps.mjs';
+import { nonDefaultLandingLocales } from '../shared/indexable-landing-locales.ts';
 
 describe('production sitemap verifier helpers', () => {
   it('parses sitemap indexes and URL sets without mixing their ownership', () => {
@@ -51,6 +52,9 @@ describe('production sitemap verifier helpers', () => {
     assert.equal(classifySitemapUrl('https://www.worldmonitor.app/es/'), 'landing');
     assert.equal(classifySitemapUrl('https://www.worldmonitor.app/pt/'), 'landing');
     assert.equal(classifySitemapUrl('https://www.worldmonitor.app/ar'), 'landing');
+    for (const locale of nonDefaultLandingLocales()) {
+      assert.equal(classifySitemapUrl(locale.canonicalUrl), 'landing', `${locale.canonicalPath} is a registered landing`);
+    }
     assert.equal(classifySitemapUrl('https://www.worldmonitor.app/dashboard'), 'dashboard');
     assert.equal(classifySitemapUrl('https://worldmonitor.app/mcp'), 'mcp');
     assert.equal(classifySitemapUrl('https://tech.worldmonitor.app/dashboard'), 'dashboard-variant');

@@ -10,7 +10,7 @@ import {
 } from './src/config/docs-locale-seo';
 import { getRootlessDocsDestination } from './src/config/docs-root-redirects';
 import agentRequestPolicy from './shared/agent-request-policy.json';
-import { isMcpAliasRequest, normalizeMcpHost } from './shared/mcp-host-policy';
+import { isMcpProductionAliasPath, normalizeMcpHost } from './shared/mcp-host-policy';
 import { chokepointStatusViewModel } from './scripts/crawlable-live-tools.mjs';
 import {
   chokepointPulseRecord,
@@ -25,6 +25,7 @@ import {
   PIZZA_INDEX_STATUS_PATH,
   pizzaIndexReading,
   renderPizzaIndexSection,
+  withoutExpiredPizzaIndex,
 } from './scripts/live-pages/pentagon-pizza-index.mjs';
 import {
   SITUATION_PAGE_PATH,
@@ -33,6 +34,8 @@ import {
   situationSections,
 } from './scripts/situation-page/sections.mjs';
 import { CHOKEPOINT_REGISTRY } from './src/config/chokepoint-registry';
+import { firstTouchSetCookie } from './shared/acquisition-source';
+import { next } from '@vercel/functions/middleware';
 
 type LiveTopicPage = NonNullable<ReturnType<typeof liveTopicPageForPath>>;
 
@@ -43,6 +46,11 @@ function userAgentTokenPattern(tokens: readonly string[]): RegExp {
 }
 
 const AGENT_UA = userAgentTokenPattern(agentRequestPolicy.userAgents);
+
+// Assistants that fetch a page for a person (orank `agent-ua-markdown`). They
+// get the Markdown homepage when they accept any format, and HTML when their
+// Accept header names text/html ahead of Markdown.
+const USER_FETCHER_UA = userAgentTokenPattern(agentRequestPolicy.userFetchers);
 
 // AI crawlers and assistant fetchers allowed to read `/api/**/*.md` twins past
 // the bot gate. The shared agent list plus the tokens it does not carry; that
@@ -220,16 +228,68 @@ function uaConditionedRedirectHeaders(location: URL): Record<string, string> {
   };
 }
 
+/**
+ * A person opening a page, as opposed to a crawler, an API or asset fetch, or
+ * a speculative prefetch the person may never view.
+ */
+function isHumanPageNavigation(request: Request, url: URL): boolean {
+  if (request.method !== 'GET') return false;
+  if (BOT_UA.test(request.headers.get('user-agent') ?? '')) return false;
+  const path = url.pathname;
+  if (path === '/api' || path.startsWith('/api/') || path === '/mcp' || path.startsWith('/mcp/')) return false;
+  // The live-page branch's own fetch of the built page carries no visitor
+  // cookies; a cookie set on it would be copied onto the visitor's response.
+  if (url.searchParams.has(BUILT_PAGE_PARAM)) return false;
+  const purpose = `${request.headers.get('sec-purpose') ?? ''} ${request.headers.get('purpose') ?? ''}`;
+  if (/prefetch/i.test(purpose)) return false;
+  const dest = request.headers.get('sec-fetch-dest');
+  if (dest) return dest === 'document';
+  return /text\/html/i.test(request.headers.get('accept') ?? '');
+}
+
+function withSetCookie(response: Response, setCookie: string): Response {
+  // Copied rather than mutated: Response.redirect() and fetch() responses
+  // have immutable headers.
+  const headers = new Headers(response.headers);
+  headers.append('set-cookie', setCookie);
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+// The static content pages (corpus, blog) run no capture script, and the
+// visit that reaches /pro from one of them would otherwise record /pro and
+// an internal referrer as the first touch. Page-script captures remain as
+// the fallback for desktop and self-hosted builds, which have no middleware.
+// A synchronous routing result stays synchronous.
 export default function middleware(request: Request) {
+  const response = route(request);
+  return response instanceof Promise
+    ? response.then((resolved) => withFirstTouch(request, resolved))
+    : withFirstTouch(request, response);
+}
+
+function withFirstTouch(request: Request, response: Response | undefined): Response | undefined {
+  if (!isHumanPageNavigation(request, new URL(request.url))) return response;
+  const setCookie = firstTouchSetCookie({
+    url: request.url,
+    cookieHeader: request.headers.get('cookie'),
+    referrer: request.headers.get('referer'),
+    now: Date.now(),
+  });
+  if (!setCookie) return response;
+  return response ? withSetCookie(response, setCookie) : next({ headers: { 'set-cookie': setCookie } });
+}
+
+function route(request: Request) {
   const url = new URL(request.url);
   const ua = request.headers.get('user-agent') ?? '';
   const path = url.pathname;
   const host = normalizeMcpHost(request.headers.get('host') ?? url.hostname);
-  const aliasMcpRequest = isMcpAliasRequest(url.hostname, path)
-    || isMcpAliasRequest(request.headers.get('host') ?? '', path);
+  const aliasMcpRequest = isMcpProductionAliasPath(url.hostname, path)
+    || isMcpProductionAliasPath(request.headers.get('host') ?? '', path);
 
-  // Product MCP aliases are migration-only surfaces. Let every policy request
-  // reach the handler so it returns the protocol-shaped response and emits one
+  // Product MCP aliases (retired, or served like api.) are owned by the MCP
+  // handler. Let every policy request reach it so it either serves the
+  // transport or returns the protocol-shaped migration response and emits one
   // bounded migration event. This bypass must precede generic crawler/API bot
   // gates, which otherwise turn direct alias transport calls into a 403.
   // The handler repeats the policy because dotted well-known paths bypass this
@@ -279,13 +339,18 @@ export default function middleware(request: Request) {
   const markdownQuality = acceptQuality(accept, 'text/markdown') ?? 0;
   const wantsHomepageMarkdown = /(?:^|,)\s*text\/markdown\s*(?:;|,|$)/i.test(accept ?? '') &&
     markdownQuality > 0 && markdownQuality >= (acceptQuality(accept, 'text/html', true) ?? 0);
+  // Wildcards count for both types (RFC 9110 §12.5.1): `*/*` alone ties and
+  // picks Markdown, while `text/markdown;q=0` refuses it whatever else follows.
+  const fetcherMarkdownQuality = accept ? (acceptQuality(accept, 'text/markdown', true) ?? 0) : 1;
+  const userFetcherWantsMarkdown = USER_FETCHER_UA.test(ua) && fetcherMarkdownQuality > 0 &&
+    fetcherMarkdownQuality >= (acceptQuality(accept, 'text/html', true) ?? 0);
 
   if (
     path === '/' &&
     (host === 'www.worldmonitor.app' || host === 'worldmonitor.app') &&
     (request.method === 'GET' || request.method === 'HEAD') &&
     url.searchParams.get('mode') !== 'agent' &&
-    (AGENT_UA.test(ua) || wantsHomepageMarkdown)
+    (AGENT_UA.test(ua) || userFetcherWantsMarkdown || wantsHomepageMarkdown)
   ) {
     return new Response(null, {
       headers: {
@@ -306,14 +371,14 @@ export default function middleware(request: Request) {
       canonicalUrl.search = url.search;
       return Response.redirect(canonicalUrl.toString(), 308);
     }
+  }
 
-    // Mintlify rewrite cannot set zh-Hans <html lang> or reciprocal hreflang
-    // for /docs/zh/* (issue #7378). Proxy full-document HTML only — leave RSC
-    // flights and static assets on the direct Mintlify rewrite.
-    if (isDocsHtmlDocumentPath(path) && isDocsFullDocumentRequest(request)) {
-      return proxyDocsLocaleHtml(request, url, host);
-    }
+  // Every upstream docs response goes through the cookie filter. The two
+  // first-party MCP routes keep their explicit rewrites in vercel.json.
+  if (path === '/docs/' || path === '/docs/mcp' || path === '/docs/mcp/server-card') return;
+  if (path.startsWith('/docs/')) return proxyDocs(request, url, host);
 
+  if (request.method === 'GET' || request.method === 'HEAD') {
     // Real HTTP 404 for unknown pages. Agents get markdown (orank
     // `agent-friendly-404`); browsers that send Accept: text/html get HTML.
     // A rewrite to a static file would 200. Files with extensions skip this
@@ -409,6 +474,12 @@ export default function middleware(request: Request) {
 
 function docsResponseHeaders(upstream: Response, host: string): Headers {
   const headers = new Headers(upstream.headers);
+  // Keep vendor cookies and routing directives out of the app response.
+  for (const name of upstream.headers.keys()) {
+    if (name === 'set-cookie' || name.startsWith('x-middleware-') || name.startsWith('x-vercel-')) {
+      headers.delete(name);
+    }
+  }
   if (host !== new URL(DOCS_PUBLIC_ORIGIN).hostname) {
     const robots = headers.get('x-robots-tag');
     headers.set('x-robots-tag', robots ? `noindex, ${robots}` : 'noindex');
@@ -416,7 +487,7 @@ function docsResponseHeaders(upstream: Response, host: string): Headers {
   const varyParts = new Set(
     (headers.get('vary') ?? '').split(',').map((part) => part.trim().toLowerCase()).filter(Boolean),
   );
-  for (const name of ['host', 'accept', 'rsc', 'next-router-state-tree', 'next-router-prefetch']) {
+  for (const name of ['host', 'accept', 'rsc', 'next-router-state-tree', 'next-router-prefetch', 'next-router-segment-prefetch', 'next-url']) {
     varyParts.add(name);
   }
   headers.set('vary', [...varyParts].join(', '));
@@ -547,15 +618,20 @@ function liveTopicPage(url: URL, topic: LiveTopicPage): Promise<Response> {
 }
 
 /**
- * The glossary page's "Current level" section. The blog build ships it in its
- * browser-loading state; this swaps in the current level so the HTML a crawler
- * reads states it. No current level (expired seed, closed-only poll) keeps the
- * built section, which the page's script still fills for visitors.
+ * The glossary page's level section. The blog build ships the last published
+ * reading, dated; this swaps in the current level. No current level (expired
+ * seed, closed-only poll, failed read) keeps the built section, unless its
+ * published reading has aged out since the build.
  */
 function livePizzaIndexPage(url: URL): Promise<Response> {
   return liveHtmlPage(url, PIZZA_INDEX_SLUG, async (html) => {
-    const view = pizzaIndexReading(await fetchPublicReading(url, PIZZA_INDEX_STATUS_PATH));
-    if (view === null) return null;
+    let view: ReturnType<typeof pizzaIndexReading> = null;
+    try {
+      view = pizzaIndexReading(await fetchPublicReading(url, PIZZA_INDEX_STATUS_PATH));
+    } catch {
+      view = null;
+    }
+    if (view === null) return withoutExpiredPizzaIndex(html);
     return replaceLiveSection(html, PIZZA_INDEX_SLUG, renderPizzaIndexSection(view));
   });
 }
@@ -588,65 +664,76 @@ function liveSituationPage(url: URL): Promise<Response> {
   });
 }
 
-async function proxyDocsLocaleHtml(request: Request, url: URL, host: string): Promise<Response> {
+async function proxyDocs(request: Request, url: URL, host: string): Promise<Response> {
   const upstreamUrl = `${DOCS_UPSTREAM_ORIGIN}${url.pathname}${url.search}`;
-  const forwardHeaders = new Headers();
-  for (const name of ['accept', 'accept-language', 'user-agent', 'if-none-match', 'if-modified-since']) {
+  const forwardHeaders = new Headers({ 'accept-encoding': 'identity' });
+  for (const name of [
+    'accept', 'accept-language', 'user-agent', 'content-type',
+    'if-none-match', 'if-modified-since', 'range', 'if-range',
+    'rsc', 'next-router-state-tree', 'next-router-prefetch', 'next-router-segment-prefetch',
+    'next-url', 'next-action', 'origin',
+  ]) {
     const value = request.headers.get(name);
     if (value) forwardHeaders.set(name, value);
   }
   if (!forwardHeaders.has('user-agent')) {
-    forwardHeaders.set('user-agent', 'WorldMonitorDocsLocaleProxy/1.0');
+    forwardHeaders.set('user-agent', 'WorldMonitorDocsProxy/1.0');
   }
 
-  let upstream: Response;
-  let html: string;
+  // The deadline covers the headers and any body this middleware reads itself.
+  // A streamed body is passed through after that and ends with the platform's
+  // own middleware deadline, so a slow asset is not cut off midway.
+  const deadline = new AbortController();
+  const timer = setTimeout(
+    () => deadline.abort(new DOMException('Docs upstream timed out', 'TimeoutError')),
+    DOCS_UPSTREAM_TIMEOUT_MS,
+  );
   try {
-    upstream = await fetch(upstreamUrl, {
+    const options: RequestInit & { duplex?: 'half' } = {
       method: request.method,
       headers: forwardHeaders,
       redirect: 'manual',
-      signal: AbortSignal.timeout(DOCS_UPSTREAM_TIMEOUT_MS),
+      signal: deadline.signal,
+    };
+    if (request.body) {
+      options.body = request.body;
+      options.duplex = 'half';
+    }
+    const upstream = await fetch(upstreamUrl, options);
+    const headers = docsResponseHeaders(upstream, host);
+    headers.delete('connection');
+    headers.delete('transfer-encoding');
+
+    const rewriteHtml = upstream.status === 200 && request.method === 'GET'
+      && isDocsHtmlDocumentPath(url.pathname) && isDocsFullDocumentRequest(request)
+      && shouldTransformDocsUpstreamHtml(url.pathname, headers.get('content-type'));
+
+    if (rewriteHtml || (upstream.body && headers.has('content-encoding'))) {
+      // Fetch already decoded the body. Do not advertise the upstream framing
+      // after decoding or rewriting the document.
+      headers.delete('content-encoding');
+      headers.delete('content-length');
+    }
+    const body = rewriteHtml ? rewriteDocsLocaleHtml(await upstream.text(), url.pathname) : upstream.body;
+    if (rewriteHtml) headers.set('x-wm-docs-locale-seo', '1');
+
+    return new Response(body, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers,
     });
-
-    const contentType = upstream.headers.get('content-type');
-    if (upstream.status !== 304 && (
-      upstream.status !== 200 || !shouldTransformDocsUpstreamHtml(url.pathname, contentType)
-    )) {
-      return upstream;
-    }
-    if (upstream.status === 304 || request.method === 'HEAD') {
-      return new Response(null, {
-        status: upstream.status,
-        statusText: upstream.statusText,
-        headers: docsResponseHeaders(upstream, host),
-      });
-    }
-
-    html = await upstream.text();
   } catch {
     return new Response('Docs upstream unavailable', { status: 502 });
+  } finally {
+    clearTimeout(timer);
   }
-
-  const rewritten = rewriteDocsLocaleHtml(html, url.pathname);
-  const headers = docsResponseHeaders(upstream, host);
-  // Fetch already decoded the body; hop-by-hop / recomputed framing must not
-  // be forwarded onto the rewritten string response (Mintlify serves br).
-  for (const name of ['content-encoding', 'content-length', 'transfer-encoding', 'connection']) {
-    headers.delete(name);
-  }
-  headers.set('x-wm-docs-locale-seo', '1');
-  return new Response(rewritten, {
-    status: upstream.status,
-    statusText: upstream.statusText,
-    headers,
-  });
 }
 
 export const config = {
   matcher: [
     '/mcp',
     '/api/:path*',
+    '/docs/:path*',
     '/((?!api(?:/|$)|mcp(?:/|$)|.*\\.[^/]+$).*)',
   ],
 };

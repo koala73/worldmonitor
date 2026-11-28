@@ -1,8 +1,8 @@
 // @vitest-environment node
 
-// Translate mode is free, so the gateway may not resolve a Clerk session or
-// set x-user-id for it. The handler's own identity resolution must still bind
-// a restricted account to its AI routing policy.
+// Translate mode skips the gateway's direct-LLM quota, so the gateway may not
+// resolve a Clerk session or set x-user-id for it. The handler's own identity
+// resolution must still bind a restricted (Pro) account to its AI routing policy.
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -11,7 +11,7 @@ vi.mock("../_shared/premium-check", async (importOriginal) => {
   return {
     ...actual,
     resolvePremiumCallerIdentity: vi.fn(async () => ({
-      isPremium: false,
+      isPremium: true,
       userId: "user_restricted_bearer",
       kind: "bearer",
     })),

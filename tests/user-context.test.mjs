@@ -101,3 +101,61 @@ describe('formatUserProfile null-safety', () => {
     assert.match(profile, /Monitors airlines: UAL/);
   });
 });
+
+// l10n PR 3 (#10884): brief-language lookup on the relay call.
+describe('fetchUserPreferences brief language', () => {
+  const modPath = require.resolve('../scripts/lib/user-context.cjs');
+  async function withRelay(responseBody, fn, { ok = true } = {}) {
+    const savedFetch = globalThis.fetch;
+    const savedEnv = { CONVEX_SITE_URL: process.env.CONVEX_SITE_URL, CONVEX_NOTIFICATION_RELAY_SECRET: process.env.CONVEX_NOTIFICATION_RELAY_SECRET };
+    process.env.CONVEX_SITE_URL = 'https://convex.test';
+    process.env.CONVEX_NOTIFICATION_RELAY_SECRET = 'test-secret';
+    delete require.cache[modPath];
+    const bodies = [];
+    globalThis.fetch = async (_url, init) => {
+      bodies.push(JSON.parse(init.body));
+      return { ok, status: ok ? 200 : 500, json: async () => responseBody };
+    };
+    try {
+      const { fetchUserPreferences } = require(modPath);
+      return await fn(fetchUserPreferences, bodies);
+    } finally {
+      globalThis.fetch = savedFetch;
+      for (const [k, v] of Object.entries(savedEnv)) {
+        if (v === undefined) delete process.env[k]; else process.env[k] = v;
+      }
+      delete require.cache[modPath];
+    }
+  }
+
+  it('without the flag, posts { userId, variant } and returns the raw body', async () => {
+    await withRelay({ watchlist: [] }, async (fetchUserPreferences, bodies) => {
+      const out = await fetchUserPreferences('u1', 'full');
+      assert.deepEqual(bodies[0], { userId: 'u1', variant: 'full' });
+      assert.deepEqual(out, { data: { watchlist: [] }, error: false });
+    });
+  });
+
+  it('with the flag, unwraps { data, briefLanguage }', async () => {
+    await withRelay({ data: { watchlist: [] }, briefLanguage: 'fr' }, async (fetchUserPreferences, bodies) => {
+      const out = await fetchUserPreferences('u1', 'full', { includeBriefLanguage: true, timeoutMs: 3000 });
+      assert.deepEqual(bodies[0], { userId: 'u1', variant: 'full', includeBriefLanguage: true });
+      assert.deepEqual(out, { data: { watchlist: [] }, error: false, briefLanguage: 'fr' });
+    });
+  });
+
+  it('an old Convex response without briefLanguage reads as a legacy blob in English', async () => {
+    await withRelay({ watchlist: ['x'] }, async (fetchUserPreferences) => {
+      const out = await fetchUserPreferences('u1', 'full', { includeBriefLanguage: true });
+      assert.deepEqual(out, { data: { watchlist: ['x'] }, error: false, briefLanguage: 'en' });
+    });
+  });
+
+  it('an HTTP error still returns { data: null, error: true }', async () => {
+    await withRelay({}, async (fetchUserPreferences) => {
+      const out = await fetchUserPreferences('u1', 'full', { includeBriefLanguage: true });
+      assert.equal(out.data, null);
+      assert.equal(out.error, true);
+    }, { ok: false });
+  });
+});

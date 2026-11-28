@@ -106,7 +106,7 @@ const NEWS_EDITIONS = Object.keys(NEWS_POOL_LAYOUT.editions);
 const ALL_DIGEST_CATEGORIES = [...new Set(Object.values(NEWS_POOL_LAYOUT.editions).flat())];
 const NEWS_LANGUAGE_LIMIT = 8;
 const DIGEST_CATEGORY_DESC =
-  'Restrict to one category of the selected editions. '
+  'Feed category to keep; it must belong to one of the selected editions. Categories by edition: '
   + Object.entries(NEWS_POOL_LAYOUT.editions).map(([edition, categories]) => `${edition}: ${categories.join(', ')}`).join('; ')
   + '. Echoed as `category` in the result; an unknown value yields headlineCount 0 and a `note` listing categories present in the current digest.';
 const NEWS_SCOPE_INPUT_PROPERTIES = {
@@ -115,14 +115,14 @@ const NEWS_SCOPE_INPUT_PROPERTIES = {
     items: { type: 'string', enum: [...NEWS_POOL_LAYOUT.languages] },
     maxItems: NEWS_LANGUAGE_LIMIT,
     uniqueItems: true,
-    description: `Content languages to read (ISO 639-1), up to ${NEWS_LANGUAGE_LIMIT}. Defaults to ["en"]. Each language is processed on its own and titles stay untranslated.`,
+    description: 'Content languages of the headline pool to read (ISO 639-1). Each language is processed on its own and titles stay untranslated. Omitted means English only.',
   },
   editions: {
     type: 'array',
     items: { type: 'string', enum: NEWS_EDITIONS },
     maxItems: NEWS_EDITIONS.length,
     uniqueItems: true,
-    description: 'Digest editions to read. Defaults to ["full"]; overrides variant.',
+    description: 'Dashboard editions whose headline pools to read, e.g. finance or energy. Pass this or variant, not both: the call errors unless editions is exactly [variant]. Omitted means the variant edition, full by default.',
   },
 } as const;
 const NEWS_SCOPE_OUTPUT_PROPERTIES = {
@@ -165,6 +165,15 @@ const SOURCE_PROVENANCE_PROPERTIES = {
   summary: { type: 'string', description: 'Every provenance fact as short fixed-order clauses in one string; includes "Perspective: none recorded." when no label exists.' },
   ...OUTLET_PROFILE_OUTPUT_PROPERTIES,
 };
+
+/**
+ * The claim card with each headline's outlet profile. buildClaimCard stays
+ * profile-free because the /verify page bundles it and the outlet table would ride along.
+ */
+function claimCardWithOutletProfiles(...args: Parameters<typeof buildClaimCard>) {
+  const card = buildClaimCard(...args);
+  return { ...card, headlines: card.headlines.map((headline) => withOutletProfile(headline.source, headline)) };
+}
 
 function nlpTruncateUtf8(value: string, maxBytes: number): string {
   let bytes = 0;
@@ -685,7 +694,7 @@ export const NLP_TOOLS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        text: { type: 'string', maxLength: CLASSIFY_TEXT_MAX_CHARS, description: 'Headline or short excerpt to classify (1-500 characters). Longer input is rejected, not truncated.' },
+        text: { type: 'string', maxLength: CLASSIFY_TEXT_MAX_CHARS, description: 'Headline or short news excerpt describing one event; must be non-empty after trimming. Over-length input is rejected, not truncated.' },
       },
       required: ['text'],
     },
@@ -695,19 +704,25 @@ export const NLP_TOOLS: ToolDef[] = [
       properties: {
         classification: {
           type: ['object', 'null'],
-          description: 'null when the classifier could not produce an enum-valid result for this text.',
+          description: 'The classification of the supplied text; null when the classifier could not produce an enum-valid result.',
           required: ['category', 'level', 'severity', 'confidence'],
           properties: {
             category: {
               type: 'string',
               enum: CLASSIFY_CATEGORIES,
+              description: 'Event domain; general when no specific domain fits.',
             },
-            level: { type: 'string', enum: CLASSIFY_LEVELS },
+            level: {
+              type: 'string',
+              enum: CLASSIFY_LEVELS,
+              description: 'Threat level by real-world event severity, not headline tone: critical needs geopolitical scope (e.g. strikes with international implications, coups, waterway closures); high covers armed clashes, sanctions and major disasters; info covers opinion, explainers and routine news.',
+            },
             severity: {
               type: 'string',
               enum: CLASSIFY_SEVERITIES,
+              description: 'Coarse band derived from level: critical and high map to HIGH, medium to MEDIUM, low and info to LOW.',
             },
-            confidence: { type: 'number' },
+            confidence: { type: 'number', description: 'Fixed 0.9 for every enum-valid result; not a calibrated probability.' },
           },
         },
         error: { type: 'string', description: 'Present instead of a result when input validation fails.' },
@@ -766,19 +781,19 @@ export const NLP_TOOLS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        text: { type: 'string', maxLength: EXTRACT_TEXT_MAX_CHARS, description: 'Optional text to extract from (max 2048 characters; longer input is rejected). When omitted, the tool aggregates entities across recent headlines.' },
+        text: { type: 'string', maxLength: EXTRACT_TEXT_MAX_CHARS, description: 'Text to scan for entities, such as an article excerpt; over-length input is rejected, not truncated. Omitted or blank aggregates entities across the current headlines chosen by variant, editions, languages and category.' },
         variant: {
           type: 'string',
           enum: [...NLP_DIGEST_VARIANTS],
-          description: 'Headline digest variant used when text is omitted. Defaults to full; use tech for Tech dashboard categories. Same as editions with one value.',
+          description: 'Digest to read when text is omitted: full is the main world-news digest, tech the Tech dashboard digest. Same as editions with that one value; omitted means full.',
         },
         ...NEWS_SCOPE_INPUT_PROPERTIES,
         category: {
           type: 'string',
           enum: [...ALL_DIGEST_CATEGORIES],
-          description: 'When text is omitted, ' + DIGEST_CATEGORY_DESC,
+          description: 'Headline mode only. ' + DIGEST_CATEGORY_DESC,
         },
-        limit: { type: 'integer', minimum: 1, maximum: 50, description: 'Maximum entities per list. Defaults to 20.' },
+        limit: { type: 'integer', minimum: 1, maximum: 50, description: 'Maximum items in each of entities and patternEntities; omitted means 20.' },
       },
       required: [],
     },
@@ -889,12 +904,12 @@ export const NLP_TOOLS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        limit: { type: 'integer', minimum: 1, maximum: 25, description: 'Maximum clusters returned. Defaults to 10.' },
-        min_sources: { type: 'integer', minimum: 1, maximum: 10, description: 'Only return clusters carrying at least this many DISTINCT sources (outlets), not merely this many member headlines. Defaults to 1.' },
+        limit: { type: 'integer', minimum: 1, maximum: 25, description: 'Maximum clusters returned, applied after min_sources and query filtering; omitted means 10.' },
+        min_sources: { type: 'integer', minimum: 1, maximum: 10, description: 'Fewest distinct publisher families (distinctSourceCount) a cluster needs to be returned, so one outlet filing several headlines counts once. Omitted means 1.' },
         variant: {
           type: 'string',
           enum: [...NLP_DIGEST_VARIANTS],
-          description: 'Headline digest variant. Defaults to full; use tech for Tech dashboard categories. Same as editions with one value.',
+          description: 'Digest to cluster: full is the main world-news digest, tech the Tech dashboard digest. Same as editions with that one value; omitted means full.',
         },
         ...NEWS_SCOPE_INPUT_PROPERTIES,
         category: {
@@ -1077,15 +1092,15 @@ export const NLP_TOOLS: ToolDef[] = [
     name: 'verify_claim',
     title: 'Check a claim against news coverage',
     _outputBudgetBytes: 65536,
-    description: 'Return an evidence card for a claim or headline: the live-digest clusters reporting the same event, a result state (corroborated, single-publisher, tier4-only, unknown, or not-found when the digest was searched and nothing reports it; unknown when there were no headlines to search), WorldMonitor\'s coverage verdict over the matched clusters, the publishers roster with declared tiers, matched headlines with fail-closed source provenance, a figure check (numbers and dates in the claim that no matched headline states) and first/last sighting. found=false means the claim was not matched, never that it is false; this is coverage, not accuracy. factChecks quotes ratings IFCN-verified fact-checkers published about a similar claim, each with checker, date and link; the rating is theirs and never changes state. Deterministic, no LLM. Requires a paid plan; one downstream search, weight 2 on API plans. claim is up to 300 characters; variant picks the full or tech digest. It searches the English edition only. Read-only.',
+    description: 'Return an evidence card for a claim or headline: how many live-headline clusters report the same event, a result state (corroborated, single-publisher, tier4-only, unknown, or not-found when the digest was searched and nothing reports it; unknown when there were no headlines to search), WorldMonitor\'s coverage verdict over the matched clusters, the publishers roster with declared tiers, matched headlines with fail-closed source provenance, a figure check (numbers and dates in the claim that no matched headline states) and first/last sighting. found=false means the claim was not matched, never that it is false; this is coverage, not accuracy. factChecks quotes ratings IFCN-verified fact-checkers published about a similar claim, each with checker, date and link; the rating is theirs and never changes state. Deterministic, no LLM. Requires a paid plan; one downstream search, weight 2 on API plans. It searches the English edition only. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
-        claim: { type: 'string', minLength: 1, maxLength: CLAIM_MAX_CHARS, description: `The claim or headline to check, up to ${CLAIM_MAX_CHARS} characters.` },
+        claim: { type: 'string', minLength: 1, maxLength: CLAIM_MAX_CHARS, description: 'The claim or headline to check, as one statement; its numbers and dates are checked against matched headlines in figures.' },
         variant: {
           type: 'string',
           enum: [...NLP_DIGEST_VARIANTS],
-          description: 'Headline digest variant to search. Defaults to full.',
+          description: 'Headlines to search: full searches every fresh headline in the English full-edition feed caches (the full digest when that search is unavailable), tech the Tech dashboard digest. Omitted means full.',
         },
       },
       required: ['claim'],
@@ -1156,8 +1171,8 @@ export const NLP_TOOLS: ToolDef[] = [
             },
           },
         },
-        generatedAt: { type: 'string' },
-        variant: { type: 'string', enum: [...NLP_DIGEST_VARIANTS] },
+        generatedAt: { type: 'string', description: 'When the searched headlines were read (ISO 8601); empty on an input error.' },
+        variant: { type: 'string', enum: [...NLP_DIGEST_VARIANTS], description: 'Digest variant that was searched.' },
         digestCoverage: NLP_DIGEST_COVERAGE_OUTPUT_SCHEMA,
         error: { type: 'string', description: 'Present when the claim or variant is invalid.' },
       },
@@ -1180,7 +1195,7 @@ export const NLP_TOOLS: ToolDef[] = [
       ]);
       if (search && search.state !== 'unavailable') {
         return {
-          ...buildClaimCard(claim, search.candidates, search.searchedHeadlines),
+          ...claimCardWithOutletProfiles(claim, search.candidates, search.searchedHeadlines),
           factChecks,
           generatedAt: search.readAt,
           variant,
@@ -1189,7 +1204,7 @@ export const NLP_TOOLS: ToolDef[] = [
       // The claim pool searches the English full edition's feeds; other languages need translation first.
       const digest = await fetchNlpNewsItems(base, context, { languages: ['en'], editions: [variant], echo: false }, '', execution);
       return {
-        ...buildClaimCard(claim, digest.items),
+        ...claimCardWithOutletProfiles(claim, digest.items),
         factChecks,
         generatedAt: digest.generatedAt,
         variant: digest.variant,
@@ -1208,13 +1223,13 @@ export const NLP_TOOLS: ToolDef[] = [
     name: 'get_keyword_spikes',
     title: 'Keyword and threat spikes',
     _outputBudgetBytes: 32768,
-    description: 'Keyword/CVE/APT spikes vs baseline, each with sourceNames and {title, source, link}. Uses the dashboard term-candidacy and spike-decision math. sourceNames are curated publisher names, or the original feed label when unmapped. sampleHeadlines are up to 3 newest recent-window stories; sourceNames is the complete publisher set. Baseline derives from the 48-hour story accumulator (per-window story rate), not the dashboard\'s incremental 7-day client history. The accumulator holds the English full edition only; there are no languages or editions filters. Results are cached for 10 minutes. Deterministic — no LLM.',
+    description: 'Keyword/CVE/APT spikes vs baseline, each with sourceNames (the complete publisher set) and up to 3 sampleHeadlines as {title, source, link}. Uses the dashboard term-candidacy and spike-decision math. Baseline derives from the 48-hour story accumulator (per-window story rate), not the dashboard\'s incremental 7-day client history. The accumulator holds the English full edition only; there are no languages or editions filters. Complete results are cached for 10 minutes. Deterministic — no LLM.',
     inputSchema: {
       type: 'object',
       properties: {
-        window_hours: { type: 'integer', minimum: 1, maximum: 12, description: 'Recent window to test for spikes. Defaults to 2.' },
-        min_count: { type: 'integer', minimum: 2, maximum: 20, description: 'Minimum recent-window story count for a term to spike. Defaults to 5.' },
-        limit: { type: 'integer', minimum: 1, maximum: 25, description: 'Maximum spikes returned. Defaults to 10.' },
+        window_hours: { type: 'integer', minimum: 1, maximum: 12, description: 'Length in hours of the recent window whose story counts are compared with the per-window baseline rate; omitted means 2.' },
+        min_count: { type: 'integer', minimum: 2, maximum: 20, description: 'Fewest recent-window stories a term needs before it can spike; it must also exceed 3 times its baseline rate (or have no baseline) and come from at least 2 publishers. Omitted means 5.' },
+        limit: { type: 'integer', minimum: 1, maximum: 25, description: 'Maximum spikes returned, highest recent count first; omitted means 10.' },
       },
       required: [],
     },
@@ -1227,7 +1242,7 @@ export const NLP_TOOLS: ToolDef[] = [
           items: { type: 'object', required: [
             'term', 'count', 'baseline', 'multiplier', 'uniqueSources', 'sourceNames', 'sampleHeadlines',
           ], properties: {
-            term: { type: 'string' },
+            term: { type: 'string', description: 'Spiking term: a keyword, entity name, CVE id or threat-group designator.' },
             count: { type: 'number', description: 'Distinct stories mentioning the term inside the recent window.' },
             baseline: { type: 'number', description: 'Per-window story rate over the exact sampled pre-window duration (see baseline_hours). 0 means this term was absent from the available baseline cohort.' },
             multiplier: { type: 'number', description: 'count / baseline; 0 when the term has no baseline mentions.' },
@@ -1252,11 +1267,11 @@ export const NLP_TOOLS: ToolDef[] = [
             },
           } },
         },
-        window_hours: { type: 'number' },
+        window_hours: { type: 'number', description: 'Recent window length in hours that was applied.' },
         baseline_hours: { type: 'number', description: 'Exact hours in the sampled pre-window baseline cohort. 0 means no baseline was available and spikes is empty.' },
         story_count: { type: 'number', description: 'Stories this computation saw across the separately bounded recent and baseline cohorts.' },
         sample_truncated: { type: 'boolean', description: 'True when either bounded cohort hit its 800-story cap.' },
-        generatedAt: { type: 'string' },
+        generatedAt: { type: 'string', description: 'When the spikes were computed (ISO 8601); up to 10 minutes old when served from cache.' },
         note: { type: 'string', description: 'Present when the accumulator was unavailable/empty or the story store was only partially readable.' },
       },
     },

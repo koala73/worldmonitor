@@ -31,17 +31,24 @@ function stripReasoningPreamble(text) {
 const ANTHROPIC_DEFAULT_MODEL = 'claude-opus-5-5';
 const ANTHROPIC_THINKING_HEADROOM_TOKENS = 4_096;
 
-async function callAnthropic({ apiKey, model, systemPrompt, userPrompt, maxTokens, timeout }) {
+async function callAnthropic({ apiKey, model, systemPrompt, userPrompt, maxTokens, timeout, jsonSchema, deadlineAt }) {
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
+  // The first import can take long enough to use up the caller's budget; a
+  // request sent after it costs money and its reply is no longer awaited.
+  const left = Number.isFinite(deadlineAt) ? deadlineAt - Date.now() : Infinity;
+  if (left <= 0) return { text: '', finishReason: 'deadline', usage: { tokensTotal: 0, tokensPrompt: 0, tokensCompletion: 0 } };
+  const requestTimeout = Math.min(timeout ?? 60_000, left);
   const client = new Anthropic({ apiKey, maxRetries: 0, fetch: (...args) => globalThis.fetch(...args) });
   const response = await client.messages.create({
     model,
     max_tokens: maxTokens + ANTHROPIC_THINKING_HEADROOM_TOKENS,
     ...(systemPrompt ? { system: systemPrompt } : {}),
     messages: [{ role: 'user', content: userPrompt }],
-    output_config: { effort: 'low' },
+    // A schema constrains the reply to bare JSON, as `response_format` does on
+    // OpenRouter; without it a model may reason in prose before the object.
+    output_config: { effort: 'low', ...(jsonSchema ? { format: { type: 'json_schema', schema: jsonSchema } } : {}) },
     fallbacks: 'default',
-  }, { headers: { 'anthropic-beta': 'server-side-fallback-2026-07-01' }, timeout, signal: AbortSignal.timeout(timeout ?? 60_000) });
+  }, { headers: { 'anthropic-beta': 'server-side-fallback-2026-07-01' }, timeout: requestTimeout, signal: AbortSignal.timeout(requestTimeout) });
   const text = response.stop_reason === 'refusal'
     ? ''
     : (response.content ?? [])
@@ -129,11 +136,19 @@ const LLM_PROVIDERS = [
  * @param {number} [opts.maxTokens=500]
  * @param {number} [opts.temperature=0.3]
  * @param {number} [opts.timeoutMs] - Override per-provider timeout
+ * @param {number} [opts.deadlineAt] - Epoch ms. No provider starts after it, and
+ *   each attempt's timeout is capped at the time left before it.
  * @param {string[]} [opts.allowedProviders] - Optional exact provider allowlist,
  *   tried in the order given. Opt-in providers (anthropic) run only when named here.
  * @param {string[]} [opts.skipProviders] - Optional provider denylist
  * @param {Record<string, string>} [opts.modelOverrides] - Per-provider model override, keyed by provider name
+ * @param {Record<string, unknown>} [opts.extraBody] - Request fields added to every OpenAI-compatible
+ *   attempt after the provider's own (e.g. `reasoning`, `response_format`). Not sent to `invoke` providers.
+ * @param {Record<string, unknown>} [opts.jsonSchema] - JSON schema for the reply, sent to `invoke`
+ *   providers (anthropic) as structured output. OpenAI-compatible attempts take theirs from `extraBody`.
  * @param {string} [opts.stage] - llm_call telemetry surface tag (#4944 U5)
+ * @param {(attempt: { provider: string, ok: boolean, reason?: string }) => void} [opts.onAttempt] - Called
+ *   after each provider attempt; a failed one carries the telemetry reason (`http_402`, `timeout`, ...).
  * @returns {Promise<string|null>} Generated text, or null if all providers fail
  */
 async function callLLM(systemPrompt, userPrompt, opts = {}) {
@@ -141,10 +156,14 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
     maxTokens = 500,
     temperature = 0.3,
     timeoutMs,
+    deadlineAt,
     allowedProviders,
     skipProviders,
     modelOverrides,
+    extraBody,
+    jsonSchema,
     stage = 'llm-chain',
+    onAttempt,
   } = opts;
   const allowedSet = allowedProviders ? new Set(allowedProviders) : null;
   const skipSet = skipProviders ? new Set(skipProviders) : null;
@@ -168,7 +187,9 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
     const apiUrl = provider.apiUrlFn ? provider.apiUrlFn(envVal) : provider.apiUrl;
     const model = modelOverrides?.[provider.name]
       ?? (typeof provider.model === 'function' ? provider.model() : provider.model);
-    const timeout = timeoutMs ?? provider.timeout;
+    const leftMs = Number.isFinite(deadlineAt) ? deadlineAt - Date.now() : Infinity;
+    if (leftMs <= 0) break;
+    const timeout = Math.min(timeoutMs ?? provider.timeout, leftMs);
 
     // Skipped/unconfigured providers never sent the prompt — only real
     // attempts get an event and advance the fallback index.
@@ -180,13 +201,18 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
         fallbackIndex: attemptIndex++,
         ...extra,
       }));
+      // Inside the attempt's try: a throwing hook must not record it twice.
+      try { onAttempt?.({ provider: provider.name, ok, reason: extra.reason }); } catch { /* the caller's hook */ }
     };
 
     try {
       if (provider.invoke) {
         const result = await provider.invoke({
-          apiKey: envVal, model, systemPrompt, userPrompt, maxTokens, timeout,
+          apiKey: envVal, model, systemPrompt, userPrompt, maxTokens, timeout, jsonSchema, deadlineAt,
         });
+        // The deadline passed before the request was sent: nothing was
+        // attempted, and no later provider may start either.
+        if (result.finishReason === 'deadline') break;
         if (result.finishReason === 'max_tokens') {
           console.warn(`[llm-chain] ${provider.name}: length-limited response, trying next provider`);
           record(false, { ...result.usage, reason: 'length' });
@@ -216,6 +242,7 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
           max_tokens: maxTokens,
           temperature,
           ...provider.extraBody,
+          ...extraBody,
         }),
         signal: AbortSignal.timeout(timeout),
       });

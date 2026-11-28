@@ -3,6 +3,7 @@
 import { loadEnvFile, CHROME_UA, runSeed, httpsProxyFetchRaw, resolveProxyForConnect, describeErr, readSeedSnapshot, writeExtraKeyWithMeta, sleep } from './_seed-utils.mjs';
 import { getAcledToken, hasAcledCredentials } from './shared/acled-oauth.mjs';
 import { GDELT_BULK_UNREST_KEY } from './_gdelt-bulk-contract.mjs';
+import { unrestHistoryAfterPublish } from './_intel-history-collectors.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -174,7 +175,7 @@ async function fetchAcledProtestPage(token, params) {
   return Array.isArray(data.data) ? data.data : [];
 }
 
-function normalizeAcledProtestEvents(rawEvents) {
+export function normalizeAcledProtestEvents(rawEvents) {
   return rawEvents
     .filter((e) => {
       const lat = parseFloat(e.latitude || '');
@@ -189,6 +190,7 @@ function normalizeAcledProtestEvents(rawEvents) {
         summary: typeof e.notes === 'string' ? e.notes.substring(0, 500) : '',
         eventType: mapAcledEventType(e.event_type || '', e.sub_event_type || ''),
         city: e.location || '',
+        hasPreciseLocation: Number(e.geo_precision) === 1,
         country: e.country || '',
         region: e.admin1 || '',
         location: {
@@ -535,6 +537,7 @@ if (isMain) {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 120,
+    afterPublish: unrestHistoryAfterPublish,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
     process.exit(1);

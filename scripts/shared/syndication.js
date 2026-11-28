@@ -18,6 +18,10 @@
  *    shared copy;
  *  - a family that carried more than one copy shared with others merges with
  *    nobody: a hub reprinting two independent reports must not join them.
+ *
+ * A copy under a Reuters, AP or AFP headline is a different case: the wire is
+ * the original, so wire-reprints.js gives such an item the wire's family, even
+ * a curated one, before the counts the realtime score reads call this.
  */
 import { publisherFamilyForItem } from './publisher-families.js';
 

@@ -53,7 +53,16 @@ export function installUtmInterceptor(): void {
     const campaign = detectCampaign(anchor);
     const destination = appendUtmParams(href, campaign);
     if (destination === href) return;
-    e.preventDefault();
-    window.open(destination, '_blank', 'noopener,noreferrer');
+    // The browser follows the anchor after this listener returns, reading href
+    // and rel then. Reissuing the click through window.open dropped every
+    // external link on browsers that refuse scripted tabs.
+    const rel = anchor.getAttribute('rel');
+    anchor.href = destination;
+    anchor.relList.add('noopener', 'noreferrer');
+    setTimeout(() => {
+      anchor.href = href;
+      if (rel === null) anchor.removeAttribute('rel');
+      else anchor.setAttribute('rel', rel);
+    }, 0);
   });
 }

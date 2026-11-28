@@ -135,8 +135,3 @@ export function aggregateGeoActivity(clusters: ClusteredEvent[]): GeoHubActivity
 export function getTopActiveGeoHubs(clusters: ClusteredEvent[], limit = 10): GeoHubActivity[] {
   return aggregateGeoActivity(clusters).slice(0, limit);
 }
-
-export function getGeoHubActivity(hubId: string, clusters: ClusteredEvent[]): GeoHubActivity | undefined {
-  const activities = aggregateGeoActivity(clusters);
-  return activities.find(a => a.hubId === hubId);
-}

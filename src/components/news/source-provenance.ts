@@ -13,6 +13,7 @@ import {
 } from '@/config/feeds';
 import type { PropagandaRisk } from '@/types';
 import { escapeHtml } from '@/utils/sanitize';
+import { publisherFamilyFor } from '../../../shared/publisher-families.js';
 
 export { resolveRegisteredTelegramSourceName, resolveTelegramSourceName };
 
@@ -91,12 +92,40 @@ export function resolveCredibilityScore(
  */
 export function renderCredibilityBadge(
   sourceName: string,
-  item?: { credibilityScore?: number; corroborationCount?: number },
+  item?: { credibilityScore?: number; corroborationCount?: number; credibilityUnassessed?: boolean },
 ): string {
+  if (item?.credibilityUnassessed === true) {
+    return '<span class="credibility-score-badge band-unknown" title="Credibility unknown: this publisher has no reviewed tier or risk profile.">CRED ?</span>';
+  }
   const score = resolveCredibilityScore(sourceName, item);
   const band = score < 40 ? 'low' : score < 70 ? 'medium' : 'high';
   const title = `Credibility ${score}/100 — source reliability, not newsworthiness. State-controlled media scores low even when the story is highly newsworthy.`;
   return `<span class="credibility-score-badge band-${band}" title="${escapeHtml(title)}">CRED ${score}</span>`;
+}
+
+export interface ItemAttribution {
+  /** The outlet to credit, as the aggregator names it. */
+  publisher: string;
+  /** The reviewed name to look up provenance and credibility for. */
+  provenanceName: string;
+  /** The search feed that found the item, when it is not the publisher. */
+  viaFeed: string | null;
+}
+
+/** Credit the outlet a search feed names, keeping the feed label as a separate "via" note. */
+export function itemAttribution(item: { source: string; publisher?: string; originPublisher?: string }): ItemAttribution {
+  const publisher = item.publisher?.trim();
+  const provenanceName = item.originPublisher || publisher;
+  if (!publisher || !provenanceName || publisherFamilyFor(provenanceName) === publisherFamilyFor(item.source)) {
+    return { publisher: item.source, provenanceName: item.source, viaFeed: null };
+  }
+  return { publisher, provenanceName, viaFeed: item.source };
+}
+
+export function renderViaFeedLabel(viaFeed: string | null): string {
+  return viaFeed
+    ? `<span class="item-feed-label" title="Search feed: it collects stories from many publishers">via ${escapeHtml(viaFeed)}</span>`
+    : '';
 }
 
 /**

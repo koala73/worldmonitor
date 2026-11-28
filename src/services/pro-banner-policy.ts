@@ -48,6 +48,11 @@ export interface ProBannerDecisionInput {
   signedIn: boolean;
   /** True when the first Convex entitlement snapshot has arrived. */
   entitlementLoaded: boolean;
+  /**
+   * The entitlement load gave up (no Convex configured, auth wait timed out,
+   * query failed), so no snapshot will arrive to settle a signed-in user.
+   */
+  entitlementUnavailable: boolean;
 }
 
 /**
@@ -239,7 +244,8 @@ export function stabilizeProBannerPremium(
  * Decide whether the "Upgrade to Pro" banner may mount.
  *
  * - `suppress` — never show; clear the pre-paint reservation.
- * - `defer` — wait for auth/entitlement; keep reservation only when no premium hint.
+ * - `defer` — wait for auth/entitlement; keep reservation only when no premium hint
+ *   and the entitlement load has not given up.
  * - `mount` — show the free-tier upsell.
  *
  * Critical race (#5728): during Clerk hydration `getCurrentClerkUser()` is
@@ -253,6 +259,10 @@ export function decideProBannerMount(input: ProBannerDecisionInput): ProBannerDe
 
   const hydrationPending = input.authPending && input.clerkConfigured;
   const entitlementUnknown = input.signedIn && !input.entitlementLoaded;
+
+  // The plan will not load this session: the upsell may be wrong for this
+  // account, and a reservation would stay an empty strip until reload.
+  if (entitlementUnknown && input.entitlementUnavailable) return 'suppress';
 
   if (hydrationPending || entitlementUnknown) {
     // Prefer suppress when a prior session marked this browser as entitled so

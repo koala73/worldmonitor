@@ -74,3 +74,102 @@ export function scoreAlertLabels(rows, labels) {
     exactLevelPct: scored.length ? +(100 * exact / scored.length).toFixed(1) : null,
   };
 }
+
+// The critical/high boundary at production's small batch size (#10976). The relay asks
+// only for cache misses, so most completions carry far fewer than 50 titles, and a prompt
+// can hold at 50 and slip at 5. Each completion here is one judged boundary headline among
+// four tuning headlines, at a random position, as a cache-miss batch is a boundary story
+// among general news. The held-out set is never used: a gate is something prompts are tuned on.
+export const BATCH_BOUNDARY_SOURCES = {
+  boundary: ['tests/fixtures/classify-judged-statements.json', 'tests/fixtures/classify-judged-shipping-energy.json'],
+  fill: 'tests/fixtures/classify-judged-headlines.json',
+};
+
+// readFixture(path) returns a parsed judged fixture. A title in two sources throws: its
+// per-title counts would be ambiguous.
+export function buildBatchBoundaryRows(readFixture) {
+  const pick = (r, role) => ({ title: r.title, judge: r.judge, borderline: r.borderline === true, role });
+  const boundary = BATCH_BOUNDARY_SOURCES.boundary.flatMap((p) => readFixture(p).rows.map((r) => pick(r, 'boundary')));
+  const fill = readFixture(BATCH_BOUNDARY_SOURCES.fill).rows.map((r) => pick(r, 'fill'));
+  const rows = [...boundary, ...fill];
+  if (new Set(rows.map((r) => r.title)).size !== rows.length) throw new Error('classify-eval: a title appears in two batch-boundary sources');
+  return { boundary, fill, rows };
+}
+
+export const batchBoundaryRowsSha = (rows) => createHash('sha256')
+  .update(JSON.stringify(rows.map((r) => [r.title, r.judge, r.borderline, r.role]))).digest('hex').slice(0, 16);
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function shuffled(items, rand) {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+// One pass asks every boundary row once, each beside chunk - 1 fill rows no other batch in
+// the pass gets, at a random position. Deterministic in (seed, pass).
+export function planBatchBoundaryPass({ boundary, fill }, { seed, pass, chunk }) {
+  if (boundary.length * (chunk - 1) > fill.length) throw new Error('classify-eval: not enough fill rows for one pass');
+  const rand = mulberry32(Math.imul(seed, 0x9e3779b1) + pass);
+  const fills = shuffled(fill, rand);
+  return shuffled(boundary, rand).map((row, b) => {
+    const batch = fills.slice(b * (chunk - 1), (b + 1) * (chunk - 1));
+    batch.splice(Math.floor(rand() * chunk), 0, row);
+    return batch;
+  });
+}
+
+// The gate's count: `critical` on any row judged below critical, borderline rows included.
+// A borderline high labelled critical still pages users on a story the judge called high.
+export const isFalseCritical = (row, level) => level === 'critical' && row.judge !== 'critical';
+
+const LEVEL_KEYS = ['critical', 'high', 'medium', 'low', 'info'];
+const unlabelledOf = (c) => c.asked - LEVEL_KEYS.reduce((n, k) => n + (c[k] ?? 0), 0);
+
+// Boundary rows that were not asked once per pass, or went unlabelled more than maxPerRow
+// times. A skipped boundary row cannot be a false critical, so skips would lower the count
+// for free; the capture writer and the gate both refuse a capture that lists any.
+export function incompleteBoundaryRows(boundary, capture, { passes, maxPerRow }) {
+  return boundary.flatMap((r) => {
+    const c = capture.labels[r.title];
+    if (c?.asked !== passes) return [`asked ${c?.asked ?? 0} of ${passes}: ${r.title}`];
+    const n = unlabelledOf(c);
+    return n > maxPerRow ? [`unlabelled ${n} of ${passes}: ${r.title}`] : [];
+  });
+}
+
+// capture.labels: { [title]: { asked, critical?, high?, medium?, low?, info? } }, summed
+// over every pass. A title asked but given no valid label is unlabelled: production skips it.
+// falseCritical is the gate's count; the borderline split is reported beside it.
+export function scoreBatchBoundary(rows, capture) {
+  const s = { asked: 0, unlabelled: 0, falseCritical: 0, borderlineFalseCritical: 0, clearCriticalAsked: 0, clearCriticalKept: 0, falseCriticalTitles: [] };
+  for (const r of rows) {
+    const c = capture.labels[r.title];
+    if (!c) continue;
+    const critical = c.critical ?? 0;
+    s.asked += c.asked;
+    s.unlabelled += unlabelledOf(c);
+    if (isFalseCritical(r, 'critical')) {
+      s.falseCritical += critical;
+      if (r.borderline) s.borderlineFalseCritical += critical;
+      if (critical) s.falseCriticalTitles.push(`${critical}/${c.asked}${r.borderline ? ' (borderline)' : ''} ${r.title}`);
+    } else if (!r.borderline) {
+      s.clearCriticalAsked += c.asked;
+      s.clearCriticalKept += critical;
+    }
+  }
+  return s;
+}

@@ -9,7 +9,7 @@ pubDate: "2026-06-11"
 modifiedDate: "2026-07-22"
 ---
 
-Maps are most useful when they appear next to the story people are reading. A live conflict map, earthquake map, or weather-risk map can turn a static explainer into something readers can revisit as conditions change.
+Maps are most useful when they appear next to the story people are reading. A [live conflict map](/blog/posts/best-global-conflict-trackers-2026/), earthquake map, or weather-risk map can turn a static explainer into something readers can revisit as conditions change.
 
 World Monitor now includes a public iframe embed for the live map. Publishers, analysts, and researchers can place a small real-time map in an article, briefing page, or internal dashboard without shipping the full World Monitor app. The same source layers are used across the [real-time conflict tracker](/blog/posts/track-global-conflicts-in-real-time/), [natural disaster monitor](/blog/posts/natural-disaster-monitoring-earthquakes-fires-volcanoes/), and [supply-chain risk workflows](/blog/posts/monitor-global-supply-chains-and-commodity-disruptions/).
 
@@ -65,7 +65,7 @@ The easiest way to create a snippet is to open the dashboard, move the map to th
 
 ## Why Use a Live Map Instead of a Screenshot?
 
-Screenshots are easy, but they go stale immediately. A live intelligence map is better when the reader needs to understand where something is happening and whether the situation is still active.
+Screenshots are easy, but they go stale immediately. A live [intelligence map](/blog/posts/osint-for-everyone-open-source-intelligence-democratized/) is better when the reader needs to understand where something is happening and whether the situation is still active.
 
 Use a live map when:
 

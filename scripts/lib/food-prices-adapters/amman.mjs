@@ -95,8 +95,12 @@ export async function collect(ctx) {
   const first = await ctx.get(AMMAN_URL);
   let state = ammanFormState(first);
   if (!state) throw new Error('amman ASP.NET form state missing; format changed');
+  // The landing page may carry today's report or only the empty search form (the site's
+  // behaviour since 2026-11-12). Reuse it only when it is dated; otherwise post back.
+  let firstDate = '';
+  try { firstDate = ammanReportDate(first); } catch { /* no report on the landing page */ }
   const report = async date => {
-    const html = date === ammanReportDate(first) ? first : await ctx.get(AMMAN_URL, {
+    const html = date === firstDate ? first : await ctx.get(AMMAN_URL, {
       method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         __EVENTTARGET: 'ctl00$ContentPlaceHolder1$btnSearch', __EVENTARGUMENT: '', __LASTFOCUS: '', __VIEWSTATEENCRYPTED: '', ...state,

@@ -294,6 +294,27 @@ jobs:
             echo "SKIP_SIGNING=true" >> $GITHUB_ENV
           fi
 
+      # The bundler downloads its AppImage tools from GitHub with no retry, so
+      # one 504 fails the leg (Desktop Canary run 42567226797). Restore them
+      # from cache and fetch any missing one with retries before building; the
+      # bundler skips tools that already exist. The key rotates monthly so the
+      # tools served from moving `master`/`continuous` URLs are refreshed.
+      - name: AppImage tool cache month
+        id: appimage-tools-month
+        if: contains(matrix.platform, 'ubuntu')
+        run: echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Tauri AppImage tools
+        if: contains(matrix.platform, 'ubuntu')
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/tauri
+          key: tauri-appimage-tools-${{ matrix.label == 'Linux-ARM64' && 'aarch64' || 'x86_64' }}-${{ steps.appimage-tools-month.outputs.month }}-${{ hashFiles('scripts/prefetch-appimage-tools.sh') }}
+
+      - name: Prefetch Tauri AppImage tools
+        if: contains(matrix.platform, 'ubuntu')
+        run: bash scripts/prefetch-appimage-tools.sh ${{ matrix.label == 'Linux-ARM64' && 'aarch64' || 'x86_64' }}
+
       # ── Build with tauri-action ──
       # Signed builds: only when Apple signing secrets are valid and imported
       # Unsigned builds: fallback when no signing (Windows always uses this path)
@@ -314,6 +335,7 @@ jobs:
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
           VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
           VITE_ENABLE_CYBER_LAYER: 'true'
+          VITE_ENABLE_ORBITAL_WATCH: 'true'
           VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
           VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
@@ -353,6 +375,7 @@ jobs:
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
           VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
           VITE_ENABLE_CYBER_LAYER: 'true'
+          VITE_ENABLE_ORBITAL_WATCH: 'true'
           VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
           VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
@@ -406,8 +429,15 @@ jobs:
           APPIMAGE="${IMAGES[0]}"
           TOOL_ARCH=${{ matrix.label == 'Linux-ARM64' && 'aarch64' || 'x86_64' }}
           bash scripts/repack-linux-appimage.sh "$APPIMAGE" "$TOOL_ARCH"
+          # The repack writes the delta-update file (#5757) next to the AppImage,
+          # under the name GitHub gives the uploaded AppImage (spaces → dots).
+          ZSYNC="$(dirname "$APPIMAGE")/$(basename "$APPIMAGE" | tr ' ' '.').zsync"
+          if [ ! -s "$ZSYNC" ]; then
+            echo "::error::Repack did not produce $ZSYNC"
+            exit 1
+          fi
 
-          # --- Re-upload stripped AppImage to GitHub Release ---
+          # --- Re-upload stripped AppImage and its .zsync to GitHub Release ---
           # Single release line (#5908): this must stay the same tag the build
           # legs publish (`v__VERSION__`) and the same one update-release-notes
           # edits. The two halves of this workflow previously disagreed.
@@ -416,10 +446,16 @@ jobs:
           echo "Computed release tag: $TAG_NAME"
           if gh release view "$TAG_NAME" &>/dev/null; then
             echo "Re-uploading stripped AppImage to release $TAG_NAME"
-            gh release upload "$TAG_NAME" "$APPIMAGE" --clobber
-            echo "Replaced release asset: $(basename "$APPIMAGE")"
+            gh release upload "$TAG_NAME" "$APPIMAGE" "$ZSYNC" --clobber
+            echo "Replaced release asset: $(basename "$APPIMAGE"), uploaded $(basename "$ZSYNC")"
           else
-            echo "::warning::Release $TAG_NAME not found — skipping re-upload"
+            # tauri-action has just created or reused this release, so its
+            # absence is a lookup failure, not a normal state. Skipping would
+            # leave tauri-action's unstripped AppImage, and any .zsync from an
+            # earlier run of this tag, on the release; the gate checks names only,
+            # so it would publish a .zsync that no longer matches the AppImage.
+            echo "::error::Release $TAG_NAME not found — cannot replace the AppImage and its .zsync"
+            exit 1
           fi
 
       - name: Smoke-test AppImage (Linux)
@@ -582,6 +618,17 @@ jobs:
             exit 1
           fi
 
+          # Each AppImage embeds update information that names its .zsync on the
+          # latest release (#5757). Publishing without it would leave every
+          # AppImageUpdate client looking for a file that is not there.
+          for suffix in '_amd64\.AppImage\.zsync$' '_aarch64\.AppImage\.zsync$'; do
+            printf '%s\n' "$SERVABLE" | grep -qE "$suffix" || MISSING="$MISSING $suffix"
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error::Refusing to publish $TAG — no delta-update file matches:$MISSING. The release stays a draft."
+            exit 1
+          fi
+
           if [ "$KEEP_DRAFT" = "true" ]; then
             echo "::notice::$TAG left as a draft by request. It is NOT served by /api/version or /api/download until published."
             exit 0
@@ -610,3 +657,18 @@ jobs:
           set -euo pipefail
           gh workflow run docker-publish.yml --ref "$TAG"
           echo "Dispatched docker-publish.yml on $TAG"
+
+      - name: Publish the self-hosted Docker images
+        # Same GITHUB_TOKEN rule as above, for the images docker-compose.yml
+        # pulls (worldmonitor-selfhosted, -ais-relay, -redis-rest).
+        # !cancelled() so a failed docker-publish.yml dispatch above does not
+        # skip this one through the implicit success() check.
+        if: ${{ !cancelled() && steps.publish.outputs.published == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.publish.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run docker-publish-self-hosted.yml --ref "$TAG"
+          echo "Dispatched docker-publish-self-hosted.yml on $TAG"

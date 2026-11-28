@@ -53,7 +53,6 @@ test("every renderer-callable UX and log command requires a trusted window", () 
     "open_sidecar_log_file",
     "open_settings_window_command",
     "close_settings_window",
-    "close_live_channels_window",
   ];
 
   for (const command of commands) {

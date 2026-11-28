@@ -54,6 +54,14 @@ await check('auth.md', '/auth.md', {}, authMarkdown);
 for (const ua of policy.userAgents) {
   await check(`${ua} homepage`, '/', { 'User-Agent': `${ua}/1.0`, Accept: 'text/html' }, markdown);
 }
+for (const ua of policy.userFetchers) {
+  await check(`${ua} homepage, any format`, '/', { 'User-Agent': `${ua}/1.0`, Accept: '*/*' }, markdown);
+  await check(`${ua} homepage, HTML`, '/', { 'User-Agent': `${ua}/1.0`, Accept: 'text/html' }, (response, body) => {
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type') ?? '', /text\/html/);
+    assert.match(body, /<!doctype html|<html/i);
+  });
+}
 await check('browser homepage', '/', { 'User-Agent': 'Mozilla/5.0', Accept: 'text/html' }, (response, body) => {
   assert.equal(response.status, 200);
   assert.match(response.headers.get('content-type') ?? '', /text\/html/);

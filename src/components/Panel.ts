@@ -3,13 +3,14 @@ import { invokeTauri } from '../services/tauri-bridge';
 import { t } from '../services/i18n';
 import { type DomChild, h, replaceChildren, safeHtml as sanitizeHtmlFragment, setTrustedHtml, trustedHtml, type TrustedHtml } from '../utils/dom-utils';
 import { safeHtmlToString, type SafeHtml } from '@/utils/sanitize';
-import { trackLayoutCustomized } from '@/services/analytics';
+import { trackGateHit, trackLayoutCustomized, trackPanelGateClick } from '@/services/analytics';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { getSecretState } from '@/services/runtime-config';
 import { PanelGateReason } from '@/services/panel-gating';
 import { lockSvg, upgradeSvg } from '@/components/gate-icons';
 import { dataFreshness, type PanelFreshnessSummary } from '@/services/data-freshness';
 import { formatPanelFreshnessDisplay } from '@/services/panel-freshness-display';
+import type { ResolvedScope } from '@/services/tab-focus';
 import {
   clearPanelColSpan,
   clearPanelSpan,
@@ -33,8 +34,6 @@ import {
   setColSpanClass,
   syncColResizeAria,
 } from '@/utils/panel-grid';
-
-export type PanelSeverity = 'critical' | 'high' | 'medium' | 'low' | 'none';
 
 export interface PanelOptions {
   id: string;
@@ -86,8 +85,8 @@ function getRowSpan(element: HTMLElement): number {
   const spanClass = getSpanClass(element);
   if (spanClass !== null && element.classList.contains('resized')) return spanClass;
 
-  // Otherwise the rendered span is the resize baseline the user sees. Natural
-  // wide video panels take three rows (#8276), and the CLS-pinned span-2
+  // Otherwise the rendered span is the resize baseline the user sees. The
+  // natural webcam wall takes three rows (#8276), and the CLS-pinned span-2
   // defaults take four on desktop, so their classes understate it.
   if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
     const match = /^span\s+([1-4])(?:\s|$)/.exec(window.getComputedStyle(element).gridRowStart);
@@ -142,7 +141,7 @@ export class Panel {
   private freshnessUnsubscribe: (() => void) | null = null;
   private freshnessRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private severityDotEl: HTMLElement | null = null;
-  private currentSeverity: PanelSeverity = 'none';
+  private scopeChipEl: HTMLElement | null = null;
   protected panelId: string;
   private abortController: AbortController = new AbortController();
   private tooltipCloseHandler: (() => void) | null = null;
@@ -192,7 +191,6 @@ export class Panel {
   private retryCallback: (() => void) | null = null;
   private retryCountdownTimer: ReturnType<typeof setInterval> | null = null;
   private retryAttempt = 0;
-  private _fetching = false;
   private _locked = false;
   // Lock-awareness for subclasses that write positionally (insertBefore /
   // appendChild into this.content) instead of through the setContent* helpers.
@@ -206,6 +204,8 @@ export class Panel {
   // unchanged verdict skip the DOM teardown/rebuild (#4771 re-runs gating on
   // every subscription-row change, including fields irrelevant to gating).
   private _lastGateReason: PanelGateReason | null = null;
+  private static readonly viewedGatedPanels = new Set<string>();
+  private gateViewObserver: IntersectionObserver | null = null;
   // Snapshot of this.content's children at the moment showLocked /
   // showGatedCta replaces them with a lock CTA. unlockPanel re-attaches
   // these nodes so subclasses whose UI is constructed once (typically in
@@ -227,6 +227,9 @@ export class Panel {
   private connectedCallbacks: Array<() => void> = [];
   private connectedFallbackTimer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
+
+  /** The built-in row span from PanelOptions, kept for applySharedSize. */
+  private readonly defaultRowSpan: number | null;
 
   constructor(options: PanelOptions) {
     this.panelId = options.id;
@@ -345,7 +348,7 @@ export class Panel {
 
     this.content.addEventListener('click', (e) => {
       const target = (e.target as HTMLElement).closest('[data-panel-retry]');
-      if (!target || this._fetching) return;
+      if (!target) return;
       this.retryCallback?.();
     });
 
@@ -364,6 +367,7 @@ export class Panel {
     this.setupColResizeHandlers();
 
     // Apply default row span (before restore, so saved preferences win)
+    this.defaultRowSpan = options.defaultRowSpan && options.defaultRowSpan > 1 ? options.defaultRowSpan : null;
     if (options.defaultRowSpan && options.defaultRowSpan > 1) {
       this.element.classList.add(`span-${options.defaultRowSpan}`);
     }
@@ -1206,6 +1210,8 @@ export class Panel {
   }
 
   public showLocked(features: string[] = []): void {
+    this.stopGateViewObserver();
+    this._lastGateReason = null;
     this._locked = true;
     this.clearRetryCountdown();
     this._snapshotContentForRestore();
@@ -1234,6 +1240,7 @@ export class Panel {
     // The CTA opens the /pro plan picker, which shows the Terms above every
     // plan button (#6976), so no assent line is needed here.
     const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, 'Upgrade to Pro');
+    ctaBtn.dataset.dashboardInteraction = 'upgrade';
     ctaBtn.addEventListener('click', () => {
       import('@/services/upgrade-flow').then((m) => m.openUpgradePlans()).catch(() => {
         window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
@@ -1306,6 +1313,7 @@ export class Panel {
     // Gating re-runs on every subscription-row change (#4771), including
     // Convex updates to fields irrelevant to the gate verdict.
     if (this._locked && this._lastGateReason === reason) return;
+    this.stopGateViewObserver();
     this._lastGateReason = reason;
 
     // Bail-out done — now commit to the locked state. Doing this AFTER the
@@ -1328,12 +1336,38 @@ export class Panel {
     const descEl = h('div', { className: 'panel-locked-desc' }, entry.desc);
 
     const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, entry.cta);
-    ctaBtn.addEventListener('click', onAction);
+    if (reason === PanelGateReason.ANONYMOUS) ctaBtn.dataset.dashboardInteraction = 'signin';
+    else if (reason === PanelGateReason.FREE_TIER || reason === PanelGateReason.LAPSED) {
+      ctaBtn.dataset.dashboardInteraction = 'upgrade';
+    }
+    const tracksAcquisition = reason === PanelGateReason.ANONYMOUS || reason === PanelGateReason.FREE_TIER;
+    ctaBtn.addEventListener('click', () => {
+      if (tracksAcquisition) trackPanelGateClick(this.panelId, reason);
+      onAction();
+    });
 
     this.replaceContent(h('div', { className: 'panel-locked-state' }, iconEl, descEl, ctaBtn));
+    if (tracksAcquisition && !Panel.viewedGatedPanels.has(this.panelId)
+      && !this.destroyed && typeof IntersectionObserver !== 'undefined') {
+      const observer = new IntersectionObserver((entries) => {
+        if (this.gateViewObserver !== observer || !entries.some(entry => entry.isIntersecting && entry.intersectionRatio > 0)) return;
+        this.stopGateViewObserver();
+        if (Panel.viewedGatedPanels.has(this.panelId)) return;
+        Panel.viewedGatedPanels.add(this.panelId);
+        trackGateHit(`panel:${this.panelId}`);
+      }, { threshold: 0.001 });
+      this.gateViewObserver = observer;
+      observer.observe(this.element);
+    }
+  }
+
+  private stopGateViewObserver(): void {
+    this.gateViewObserver?.disconnect();
+    this.gateViewObserver = null;
   }
 
   public unlockPanel(): void {
+    this.stopGateViewObserver();
     if (!this._locked) return;
     this._locked = false;
     this._lastGateReason = null;
@@ -1459,16 +1493,6 @@ export class Panel {
     this.retryCallback = fn;
   }
 
-  protected setFetching(v: boolean): void {
-    this._fetching = v;
-    const btn = this.content.querySelector<HTMLButtonElement>('[data-panel-retry]');
-    if (btn) btn.disabled = v;
-  }
-
-  protected get isFetching(): boolean {
-    return this._fetching;
-  }
-
   public showConfigError(message: string): void {
     const msgEl = h('div', { className: 'config-error-message' }, message);
     if (isDesktopRuntime()) {
@@ -1493,6 +1517,16 @@ export class Panel {
         this.countEl.classList.add('bump');
       }
     }
+  }
+
+  /**
+   * True while the panel shows a load failure (set by showError/showRetrying,
+   * cleared by the next successful content write). A focus change must not
+   * redraw over it: that would erase the failure and make a stale panel look
+   * healthy.
+   */
+  protected get showingLoadFailure(): boolean {
+    return this.header.classList.contains('panel-header-error');
   }
 
   public setErrorState(hasError: boolean, tooltip?: string): void {
@@ -1671,6 +1705,92 @@ export class Panel {
   }
 
   /**
+   * Dashboard focus (#10453). The layout calls this with the active tab's
+   * resolved scope (null when the tab is unfocused) on every focus change and
+   * when the panel mounts. The default does nothing: a panel that filters by
+   * country overrides it and narrows in memory, without refetching. A panel
+   * that does not override it is labelled "Not filtered" while a focus is
+   * active (see `setScopeNotice`), so it never silently ignores the focus.
+   */
+  public applyScope(_scope: ResolvedScope | null): void {}
+
+  /**
+   * True when this panel's class overrides `applyScope`. Asked here rather
+   * than by comparing against `Panel.prototype` from outside, so the layout
+   * (in the App chunk) needs only a type import of Panel and the class stays
+   * in its lazily loaded chunk.
+   */
+  public filtersByScope(): boolean {
+    return this.applyScope !== Panel.prototype.applyScope;
+  }
+
+  private filterChoiceListener: ((value: string | null) => void) | null = null;
+
+  /**
+   * A panel's own filter choice (forecast region, webcam region; #10453
+   * phase 2). A panel that owns one overrides `getFilterChoice` (null while
+   * unfiltered) and `setFilterChoice`, and calls `reportFilterChoice` when
+   * the user changes it. The layout saves the value with the tab, so it
+   * reaches a teammate who opens the shared dashboard.
+   *
+   * `setFilterChoice` is how the tab or a shared dashboard hands a value in
+   * (null resets the panel to its default). It must ignore a value the panel
+   * does not recognise, and it must not call `reportFilterChoice`: only the
+   * user's own change is saved back.
+   */
+  public getFilterChoice(): string | null {
+    return null;
+  }
+
+  public setFilterChoice(_value: string | null): void {}
+
+  /** True when this panel's class owns a filter choice. */
+  public hasFilterChoice(): boolean {
+    return this.setFilterChoice !== Panel.prototype.setFilterChoice;
+  }
+
+  /** The layout's hook: called with the new choice when the user changes it. */
+  public onFilterChoiceChange(listener: ((value: string | null) => void) | null): void {
+    this.filterChoiceListener = listener;
+  }
+
+  /**
+   * Report the user's own change. `value` is what the user chose, INCLUDING the
+   * panel's "all" option (never null): a tab that chose All must be told apart
+   * from one that never chose, or a shared dashboard could not override the
+   * region saved in a teammate's browser. Null is only for a reset.
+   */
+  protected reportFilterChoice(value: string | null = this.getFilterChoice()): void {
+    this.filterChoiceListener?.(value);
+  }
+
+  /**
+   * Show or hide the header chip that says this panel is not following the
+   * tab's focus. 'global': the data has no country to filter by (markets,
+   * prices). 'unsupported': it could, but does not yet. null: no chip, either
+   * because there is no focus or because the panel filters.
+   */
+  public setScopeNotice(notice: 'global' | 'unsupported' | null): void {
+    if (!notice) {
+      this.scopeChipEl?.remove();
+      this.scopeChipEl = null;
+      return;
+    }
+    if (!this.scopeChipEl) {
+      this.scopeChipEl = document.createElement('span');
+      this.scopeChipEl.className = 'panel-scope-chip';
+      this.scopeChipEl.textContent = t('focus.notFiltered');
+      this.header.querySelector('.panel-header-left')?.appendChild(this.scopeChipEl);
+    }
+    const why = t(notice === 'global' ? 'focus.notFilteredGlobal' : 'focus.notFilteredYet');
+    this.scopeChipEl.dataset.scopeNotice = notice;
+    this.scopeChipEl.title = why;
+    // The chip text alone ("Not filtered") does not say why; screen readers get both.
+    this.scopeChipEl.setAttribute('aria-label', `${t('focus.notFiltered')}: ${why}`);
+    this.scopeChipEl.setAttribute('role', 'note');
+  }
+
+  /**
    * Update the "new items" badge
    * @param count Number of new items (0 hides badge)
    * @param pulse Whether to pulse the badge (for important updates)
@@ -1704,36 +1824,6 @@ export class Panel {
   }
 
   /**
-   * Set the panel's severity level, controlling the header pulse dot speed.
-   * critical = 0.6s, high = 1s, medium = 1.8s, low = 2.5s, none = hidden.
-   */
-  public setSeverity(level: PanelSeverity): void {
-    if (level === this.currentSeverity) return;
-    this.currentSeverity = level;
-    if (!this.severityDotEl) return;
-    this.severityDotEl.className = 'panel-severity-dot';
-    if (level !== 'none') {
-      this.severityDotEl.classList.add(`severity-${level}`);
-      // Severity was color+animation only (and aria-hidden), i.e. absent from
-      // the accessibility tree entirely; expose it as a named image.
-      this.severityDotEl.removeAttribute('aria-hidden');
-      this.severityDotEl.setAttribute('role', 'img');
-      this.severityDotEl.setAttribute('aria-label', `${level} severity`);
-    } else {
-      this.severityDotEl.setAttribute('aria-hidden', 'true');
-      this.severityDotEl.removeAttribute('role');
-      this.severityDotEl.removeAttribute('aria-label');
-    }
-  }
-
-  /**
-   * Get the panel ID
-   */
-  public getId(): string {
-    return this.panelId;
-  }
-
-  /**
    * Reset panel height to default
    */
   public resetHeight(): void {
@@ -1748,6 +1838,29 @@ export class Panel {
     this.syncKeyboardColResizeAria();
   }
 
+  /**
+   * Take the size a shared layout gives this panel: a span sets it the way a
+   * resize would, and no span puts the panel back to its built-in size.
+   */
+  public applySharedSize(rows: number | undefined, cols: number | undefined): void {
+    if (rows === undefined) {
+      this.resetHeight();
+      if (this.defaultRowSpan) this.element.classList.add(`span-${this.defaultRowSpan}`);
+      this.syncKeyboardRowResizeAria();
+    } else {
+      setSpanClass(this.element, rows);
+      savePanelSpan(this.panelId, rows);
+      this.syncKeyboardRowResizeAria();
+    }
+    if (cols === undefined) {
+      this.resetWidth();
+    } else {
+      setColSpanClass(this.element, clampColSpan(cols, MAX_PANEL_COL_SPAN));
+      savePanelColSpan(this.panelId, clampColSpan(cols, MAX_PANEL_COL_SPAN));
+      this.syncKeyboardColResizeAria();
+    }
+  }
+
   protected get signal(): AbortSignal {
     return this.abortController.signal;
   }
@@ -1758,6 +1871,7 @@ export class Panel {
 
   public destroy(): void {
     this.destroyed = true;
+    this.stopGateViewObserver();
     this.abortController.abort();
     this.clearRetryCountdown();
     this.unobserveViewport();

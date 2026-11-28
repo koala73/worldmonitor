@@ -36,7 +36,7 @@ export const config = { runtime: 'edge' };
 // the deployed route (api/mcp.ts) that docs/usage-quickstart.mdx publishes. The
 // MCP SDK accepts an advertised resource only when the requested path starts
 // with it, so each path needs its own document — `/api/mcp` is not under `/mcp`.
-const RESOURCE_PATHS = new Set(['mcp', 'api/mcp']);
+const RESOURCE_PATHS = new Set(['mcp', 'api/mcp', 'api']);
 
 function resolveResourcePath(req: Request): string | null {
   const url = new URL(req.url);
@@ -71,7 +71,17 @@ export default function handler(req: Request): Response {
 
   const origin = resolveMetadataOrigin(req);
 
-  const body = JSON.stringify({
+  // REST's machine credential is an API key, not a token issued by MCP OAuth.
+  // Keep origin-wide and MCP metadata unchanged for existing OAuth clients.
+  // api_key_* are WorldMonitor extensions described in usage-auth.
+  const body = JSON.stringify(resourcePath === '/api' ? {
+    resource: `${origin}/api`,
+    authorization_servers: [],
+    scopes_supported: [],
+    resource_documentation: 'https://www.worldmonitor.app/docs/usage-auth#api-key-mode',
+    api_key_header: 'X-WorldMonitor-Key',
+    api_key_registration_uri: 'https://www.worldmonitor.app/pro',
+  } : {
     resource: `${origin}${resourcePath}`,
     authorization_servers: [origin],
     bearer_methods_supported: ['header'],

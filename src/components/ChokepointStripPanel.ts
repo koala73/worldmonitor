@@ -3,6 +3,7 @@ import { t } from '@/services/i18n';
 import { joinSafeHtml, safeHtml, unsafeRawHtml, type SafeHtml } from '@/utils/sanitize';
 import { fetchChokepointStatus, refreshChokepointStatusAfterHydration } from '@/services/supply-chain';
 import { chokepointCoverageWarning } from '@/services/supply-chain/chokepoint-coverage';
+import { chokepointStatusColor } from '@/services/supply-chain/chokepoint-status-color';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 import type { GetChokepointStatusResponse, ChokepointInfo } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 
@@ -34,13 +35,6 @@ function shortName(id: string): string {
   }
 }
 
-function statusColor(status: string): string {
-  const s = (status || '').toLowerCase();
-  if (s.includes('closed') || s.includes('critical')) return '#e74c3c';
-  if (s.includes('disrupted') || s.includes('high')) return '#e67e22';
-  if (s.includes('restricted') || s.includes('elevated') || s.includes('medium')) return '#f39c12';
-  return '#2ecc71';
-}
 
 function formatFlow(cp: ChokepointInfo): string {
   const est = cp.flowEstimate;
@@ -100,7 +94,7 @@ export class ChokepointStripPanel extends Panel {
       .filter((cp): cp is ChokepointInfo => !!cp);
 
     const chips = joinSafeHtml(ordered.map(cp => {
-      const color = statusColor(cp.status);
+      const color = chokepointStatusColor(cp.status);
       const short = shortName(cp.id) || cp.name;
       const flow = formatFlow(cp);
       const warnings = cp.navigationalWarningsAvailable === true && cp.activeWarnings > 0

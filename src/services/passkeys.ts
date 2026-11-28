@@ -230,16 +230,6 @@ export function readPasskeySessionFacts(): PasskeySessionFacts {
   };
 }
 
-/** Whether the live session is usable for a passkey ceremony. */
-export function isLivePasskeySessionReady(): boolean {
-  return isPasskeySessionReady(readPasskeySessionFacts());
-}
-
-/** How many passkeys the currently signed-in Clerk account has. */
-export function getLivePasskeyCount(): number {
-  return countPasskeys(getClerk()?.user as PasskeyBearingUser);
-}
-
 /** Probe this device for a platform authenticator. */
 export function hasPlatformAuthenticator(): Promise<boolean> {
   const pkc = typeof window !== 'undefined'

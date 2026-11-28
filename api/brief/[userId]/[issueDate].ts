@@ -24,10 +24,13 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders, isDisallowedOrigin } from '../../_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../_sentry-edge.js';
-import { renderBriefMagazine } from '../../../server/_shared/brief-render.js';
+import { assertBriefEnvelope, renderBriefMagazine, selectBriefEnvelope } from '../../../server/_shared/brief-render.js';
+import { briefLocalizedKey } from '../../../shared/brief-envelope.js';
 import { briefFontPlatform } from '../../../server/_shared/brief-font-platform.js';
 import { readRawJsonFromUpstash, redisPipeline } from '../../_upstash-json.js';
 import { verifyBriefToken, BriefUrlError } from '../../../server/_shared/brief-url';
+// @ts-expect-error — JS module, no declaration file
+import { checkRateLimit } from '../../_rate-limit.js';
 import {
   BRIEF_PUBLIC_POINTER_PREFIX,
   buildPublicBriefUrl,
@@ -211,6 +214,16 @@ export default async function handler(
     return htmlResponse(req, 403, FORBIDDEN_PAGE);
   }
 
+  // The token never expires within the envelope's week and the page is not
+  // cached, so bound the renders per issue, as the carousel does.
+  const limited = await checkRateLimit(req, {}, {
+    scope: 'brief-magazine', identifier: `${userId}:${issueDate}`, limit: 60, window: '10 m',
+  });
+  if (limited) {
+    const retryAfter = limited.headers.get('Retry-After');
+    return htmlResponse(req, limited.status, UNAVAILABLE_PAGE, { 'Cache-Control': 'no-store', ...(retryAfter ? { 'Retry-After': retryAfter } : {}) });
+  }
+
   // U11: start the telemetry-only watchlist lookup before the Redis
   // envelope read so relay latency overlaps the required brief fetch.
   // The promise never rejects and is bounded by FOLLOWED_COUNTRIES_TIMEOUT_MS.
@@ -221,6 +234,10 @@ export default async function handler(
   // distinguish those two — a reader with a valid brief deserves a
   // "service unavailable" state during outages, not a misleading
   // "expired" page.
+  // The localized sibling is optional: a failed or empty read falls back
+  // to the canonical English envelope and never fails the request.
+  const siblingPromise = readRawJsonFromUpstash(briefLocalizedKey(userId, issueDate), 3_000, true)
+    .catch(() => null);
   let envelope: unknown;
   try {
     // Seeder-owned envelope (#7674): the Railway digest composer writes the
@@ -283,14 +300,19 @@ export default async function handler(
   // empty watchlist yields an empty list, so all stories stamp
   // `followed=false`. Visible content and story order are unchanged.
   const followedCountries = await followedCountriesPromise;
+  const sibling = await siblingPromise;
 
   // Cast to BriefEnvelope; renderBriefMagazine runs its own
   // assertBriefEnvelope at the top and will throw on any shape
   // mismatch, which we catch below.
   let html: string;
   try {
+    // Validate canonical first so a malformed canonical stays a 404 even
+    // when a matching sibling would render.
+    assertBriefEnvelope(envelope);
+    const selectedEnvelope = selectBriefEnvelope(envelope, sibling);
     html = renderBriefMagazine(
-      envelope as Parameters<typeof renderBriefMagazine>[0],
+      selectedEnvelope as Parameters<typeof renderBriefMagazine>[0],
       { shareUrl, followedCountries, fontPlatform: briefFontPlatform(req.headers.get('user-agent') ?? '') },
     );
   } catch (err) {

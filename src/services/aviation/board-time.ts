@@ -10,12 +10,24 @@ import type { FlightInstance } from './index';
  * hours earlier — makes the list read as though it were sorted wrong.
  *
  * Falls back to the other end of the leg when the relevant time is missing, and
- * to null when neither is known.
+ * to null when neither is known. The time zone is that of the airport where
+ * the returned time happens.
  *
  * Lives outside AirlineIntelPanel so it is reachable from a test: the panel
  * module pulls in i18n, whose `import.meta.glob` only resolves under Vite.
  */
-export function flightBoardTime(f: FlightInstance, airport: string): Date | null {
-    if (airport && f.destination.iata === airport) return f.scheduledArrival ?? f.scheduledDeparture;
-    return f.scheduledDeparture ?? f.scheduledArrival;
+export function flightBoardClock(f: FlightInstance, airport: string): { at: Date; timeZone: string } | null {
+    const departure = f.scheduledDeparture && { at: f.scheduledDeparture, timeZone: f.origin.timezone };
+    const arrival = f.scheduledArrival && { at: f.scheduledArrival, timeZone: f.destination.timezone };
+    if (airport && f.destination.iata === airport) return arrival || departure || null;
+    return departure || arrival || null;
+}
+
+/** `08:15 GMT+3`: the board time on the clock of the airport it happens at. */
+export function formatFlightBoardTime(f: FlightInstance, airport: string): string {
+    const clock = flightBoardClock(f, airport);
+    if (!clock) return '—';
+    return clock.at.toLocaleTimeString([], {
+        timeZone: clock.timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short',
+    });
 }

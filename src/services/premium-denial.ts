@@ -105,6 +105,9 @@ const ENTITLEMENT_DENIAL_CODES = new Set([
  * so `clientBelievesPro` would still say "Pro" from a row whose validUntil has
  * not yet passed. Routing it through the desync branch would retry a lapsed
  * subscriber forever instead of giving them a way back.
+ *
+ * `payment_failed` is left out: checkout is blocked while the hold lasts, so
+ * an upsell would be a dead end. Its 403 takes the bounded unknown-code path.
  */
 const BILLING_TERMINAL_CODES = new Set(['subscription lapsed']);
 

@@ -13,7 +13,7 @@ test('license-key help documents the real creation and recovery flow', () => {
   const guide = read('docs/api-keys.mdx');
 
   assert.match(guide, /Select \*\*Settings\*\*/);
-  assert.match(guide, /Open the \*\*API Keys\*\* tab/);
+  assert.match(guide, /Open \*\*API keys\*\*\./);
   assert.match(guide, /API Starter[^\n]+API Business/);
   assert.match(guide, /Dashboard Pro and Pro Business do not include API keys/);
   assert.match(guide, /select \*\*Create desktop key\*\*/);

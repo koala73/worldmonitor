@@ -39,6 +39,10 @@ const PRODUCT_ID_EXCLUDE_PATTERNS = [
   // mirrors the Pro-family ids as literals; its drift-guard test asserts them
   // against the generated catalog, giving the same catalog-sync this guard wants.
   'src/services/pro-activation-state',
+  // Zero-import leaf shared by Convex, the dashboard Pro strip and /pro, so it
+  // names its one product as a literal; tests/promo-campaign.test.mts asserts
+  // it against the catalog's pro_annual product.
+  'shared/promo-campaign.ts',
   'scripts/generate-product-config',
   'scripts/generate-public-product-facts',
 ];
@@ -491,7 +495,8 @@ describe('Product catalog freshness', () => {
     const catalogSrc = readFileSync(join(ROOT, 'convex/config/productCatalog.ts'), 'utf8');
     const checkoutBlocks = catalogSrc.split(/\n\s*\w+:\s*\{/).slice(1);
     for (const block of checkoutBlocks) {
-      const hasCheckout = block.includes('currentForCheckout: true');
+      // Channel-only plans (publicVisible: false) ship in mcp-offer-plans.generated.json instead.
+      const hasCheckout = block.includes('currentForCheckout: true') && !block.includes('publicVisible: false');
       const idMatch = block.match(/dodoProductId:\s*["']([^"']+)["']/);
       if (hasCheckout && idMatch) {
         assert.ok(
@@ -528,6 +533,27 @@ describe('Product catalog freshness', () => {
     }
   });
 
+  it('MCP-only plans ship in the MCP offer file and in no public or client file', () => {
+    const offers = JSON.parse(readFileSync(join(ROOT, 'shared/mcp-offer-plans.generated.json'), 'utf8')).plans;
+    const catalogSrc = readFileSync(join(ROOT, 'convex/config/productCatalog.ts'), 'utf8');
+    const hidden = catalogSrc.split(/\n\s*\w+:\s*\{/).slice(1)
+      .filter((block) => block.includes('offerChannel: "mcp"'))
+      .map((block) => block.match(/dodoProductId:\s*["']([^"']+)["']/)?.[1]);
+    assert.ok(hidden.length > 0, 'expected at least one MCP-only plan in the catalog');
+    const publicFiles = [
+      'shared/product-catalog.generated.json',
+      'shared/product-facts.generated.json',
+      'src/config/products.generated.ts',
+      'src/config/product-ids.generated.ts',
+      'pro-test/src/generated/tiers.json',
+    ].map((path) => [path, readFileSync(join(ROOT, path), 'utf8')]);
+    for (const id of hidden) {
+      assert.ok(id, 'an MCP-only plan needs a dodoProductId');
+      assert.ok(offers.some((plan) => plan.dodoProductId === id), `${id} missing from mcp-offer-plans.generated.json`);
+      for (const [path, text] of publicFiles) assert.ok(!text.includes(id), `${id} leaked into ${path}`);
+    }
+  });
+
   it('generated fallback prices have entries for all self-serve products', () => {
     const fallbackIds = Object.keys(generatedCatalog.fallbackPrices);
 
@@ -535,7 +561,7 @@ describe('Product catalog freshness', () => {
     const catalogSrc = readFileSync(join(ROOT, 'convex/config/productCatalog.ts'), 'utf8');
     const blocks = catalogSrc.split(/\n\s*\w+:\s*\{/).slice(1);
     for (const block of blocks) {
-      const isSelfServe = block.includes('selfServe: true');
+      const isSelfServe = block.includes('selfServe: true') && !block.includes('publicVisible: false');
       const idMatch = block.match(/dodoProductId:\s*["']([^"']+)["']/);
       const priceMatch = block.match(/priceCents:\s*(\d+)/);
       if (isSelfServe && idMatch && priceMatch && Number(priceMatch[1]) > 0) {

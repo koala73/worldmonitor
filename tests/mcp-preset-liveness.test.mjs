@@ -4,8 +4,10 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { createServer } from 'node:http';
+import diagnosticsChannel from 'node:diagnostics_channel';
 import { describe, it } from 'node:test';
 import YAML from 'yaml';
+import { Agent, getGlobalDispatcher, setGlobalDispatcher } from 'undici';
 import { extractPresets, isTemplatePreset, probePreset } from '../scripts/lib/mcp-preset-liveness.mjs';
 import { publishFindings, ISSUE_TITLE } from '../scripts/report-mcp-preset-liveness.mjs';
 
@@ -104,6 +106,42 @@ describe('MCP preset catalog and probes', () => {
         assert.deepEqual(h.seen, [openPreset.serverUrl], 'the redirect target must never be dispatched');
       });
     }
+
+    // DNS rebinding: the vetted answer is public, every later answer is
+    // internal. The platform resolver (the global dispatcher) shares that
+    // resolver, so an unpinned hop would connect to 10.0.0.1.
+    it('connects the redirect hop to the vetted address, never a rebound answer', async (t) => {
+      const resolutions = [];
+      const resolveHostname = async (hostname) => {
+        resolutions.push(hostname);
+        return resolutions.length === 1 ? ['93.184.216.34'] : ['10.0.0.1'];
+      };
+      const previous = getGlobalDispatcher();
+      setGlobalDispatcher(new Agent({ connect: { lookup: (hostname, options, callback) => {
+        const done = typeof options === 'function' ? options : callback;
+        resolveHostname(hostname).then(([address]) => (options?.all ? done(null, [{ address, family: 4 }]) : done(null, address, 4)));
+      } } }));
+      // Record each socket's resolved address and stop it before it connects.
+      const lookups = [];
+      const onSocket = ({ socket }) => socket.once('lookup', (_err, address) => {
+        lookups.push(address);
+        socket.destroy();
+      });
+      diagnosticsChannel.subscribe('net.client.socket', onSocket);
+      t.after(() => {
+        diagnosticsChannel.unsubscribe('net.client.socket', onSocket);
+        setGlobalDispatcher(previous);
+      });
+      let hop = 0;
+      const fetchImpl = (url, init) => (hop++ === 0
+        ? Promise.resolve(redirect(308, 'https://rebind.vendor.test/mcp'))
+        : globalThis.fetch(url, init));
+      const result = await probePreset(openPreset, { fetchImpl, resolveHostname, timeoutMs: 2_000 });
+      assert.equal(result.ok, false);
+      assert.deepEqual(resolutions, ['rebind.vendor.test'], 'the hop must not re-resolve the vetted host');
+      assert.deepEqual(lookups, ['93.184.216.34']);
+      assert.ok(!lookups.includes('10.0.0.1'));
+    });
 
     it('refuses a second hop rather than chasing a chain', async () => {
       const h = hops(

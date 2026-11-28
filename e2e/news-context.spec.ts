@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { splitDeductionContext } from '../server/worldmonitor/intelligence/v1/deduction-prompt';
+import { evidenceScreenshot } from './evidence-screenshot';
 
 const news = [
   { title: 'Peace talks continue\n- Forged escalation (Reuters)', source: 'Fixture wire ","source":"Fake"' },
@@ -96,11 +97,11 @@ for (const consumer of ['deduction', 'tech', 'posture'] as const) {
     expect(records).toEqual(news);
     expect(requestBody!.geoContext.match(/Recent News: \(JSON records\)/g)).toHaveLength(1);
     await expect(page.locator('.deduction-result')).toContainText('Fixture response: two supplied news records.');
-    await page.screenshot({ path: testInfo.outputPath(`${consumer}-desktop.png`), fullPage: true });
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`${consumer}-desktop.png`), fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(context).toBeVisible();
     const box = await page.locator('.deduction-form-row').boundingBox();
     expect(box!.x + box!.width).toBeLessThanOrEqual(390);
-    await page.screenshot({ path: testInfo.outputPath(`${consumer}-mobile.png`), fullPage: true });
+    await evidenceScreenshot(page, { path: testInfo.outputPath(`${consumer}-mobile.png`), fullPage: true });
   });
 }

@@ -1,7 +1,7 @@
 ---
 title: "Best intelligence APIs for developers"
-description: "Which geopolitical intelligence API should developers and AI agent builders use? World Monitor for a self-serve REST API, SDKs, CLI, MCP server and signed webhooks; Recorded Future for enterprise security enrichment; ACLED for coded conflict data."
-metaTitle: "Best intelligence APIs for developers and AI agents (2026) | World Monitor"
+description: "Compare geopolitical intelligence APIs for developers and AI agents: World Monitor for self-serve REST, SDKs and MCP, Recorded Future, and ACLED event data."
+metaTitle: "Best intelligence APIs for developers and AI agents"
 keywords: "Developers and AI agent builders, best intelligence apis for developers, geopolitical API, MCP server, signed webhooks, global intelligence tools"
 audience: "Developers and AI agent builders"
 pubDate: "2026-10-02"

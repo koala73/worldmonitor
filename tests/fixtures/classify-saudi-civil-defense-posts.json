@@ -1,0 +1,165 @@
+{
+ "note": "Real posts from t.me/s/SaudiDCD (read 2026-11-27), each labelled alone through the relay prompt at MAX_POST_CHARS, the shape publishSaudiCivilDefenseAlerts sends. judge is author-judged, not blind. relay-current-batched sends all six in one completion, shuffled per pass. Re-capture both after any relay prompt or model change: node --env-file=.env.local scripts/eval-classify-saudi-posts.mjs --capture relay-current --force, then the same with --batched --capture relay-current-batched --force",
+ "rows": [
+  {
+   "text": "\u200fتم إطلاق إنذار من المنصة الوطنية للإنذار المبكر في حالات الطوارئ في منطقة جازان للتحذير من خطر، اتبع الآتي:\n\n\u200fA warning has been issued by the National Early Warning Platform in Jazan Province to alert of a potential danger. Please follow the instructions below:",
+   "judge": "high",
+   "note": "early warning (National Early Warning Platform), Jazan"
+  },
+  {
+   "text": "\u200fتم إطلاق إنذار من المنصة الوطنية للإنذار المبكر في حالات الطوارئ في منطقة الرياض للتحذير من خطر، اتبع الآتي:\n\n\u200fA warning has been issued by the National Early Warning Platform in Riyadh Province to alert of a potential danger. Please follow the instructions below:",
+   "judge": "high",
+   "note": "early warning, Riyadh"
+  },
+  {
+   "text": "\u200fتنبيه زال الخطر عن منطقة جازان، لسلامتك الاستمرار في اتباع تعليمات \u2067 #الدفاع_المدني \u2069 وتجنب التجمهر والتصوير نهائيًا. في حالة الطوارئ اتصل بالرقم (998).\n\n\u200fAlert: The danger has passed in Jazan Province. For your safety, continue following \u2066 #CivilDefense \u2069 instructions and avoid gathering and filming. In case of emergency, call (998).",
+   "judge": "info",
+   "note": "all-clear, Jazan"
+  },
+  {
+   "text": "\u200f\u2067 #الدفاع_المدني \u2069: تعرض أحد أبراج المركز المالي بمدينة الرياض لهجوم إرهابي من قبل الميليشيا الحوثية الإرهابية، نتج عنه (11) إصابة.",
+   "judge": "critical",
+   "note": "Houthi attack on a Riyadh financial-centre tower, 11 injured; critical in production"
+  },
+  {
+   "text": "\u200f#الدفاع_المدني بمحافظة خباش يخمد حريقًا في منزل.",
+   "judge": "info",
+   "note": "house fire put out"
+  },
+  {
+   "text": "\u200fعدم صيانة أنظمة الوقاية والحماية من الحريق مخالفة توجب العقوبة.\n\n\u200f \u2067 #مخالفة_سلامة \u2069 \n\u200f \u2067 #الدفاع_المدني",
+   "judge": "info",
+   "note": "fire-safety violation notice"
+  }
+ ],
+ "captures": {
+  "relay-current": {
+   "model": "deepseek/deepseek-v4.1-flash",
+   "promptSha": "9b13ab92056bf3ca",
+   "passes": 40,
+   "batched": false,
+   "maxChars": 4096,
+   "usd": 0.014,
+   "capturedAt": "2026-11-27T04:01:07.820Z",
+   "labels": {
+    "early warning (National Early Warning Platform), Jazan": {
+     "info": 40
+    },
+    "early warning, Riyadh": {
+     "info": 40
+    },
+    "all-clear, Jazan": {
+     "info": 40
+    },
+    "Houthi attack on a Riyadh financial-centre tower, 11 injured; critical in production": {
+     "critical": 40
+    },
+    "house fire put out": {
+     "info": 40
+    },
+    "fire-safety violation notice": {
+     "info": 40
+    }
+   }
+  },
+  "relay-before": {
+   "model": "deepseek/deepseek-v4.1-flash",
+   "promptSha": "b610d9e51327d5e3",
+   "passes": 40,
+   "batched": false,
+   "maxChars": 4096,
+   "usd": 0.0135,
+   "capturedAt": "2026-11-27T04:01:27.525Z",
+   "labels": {
+    "early warning (National Early Warning Platform), Jazan": {
+     "info": 40
+    },
+    "early warning, Riyadh": {
+     "info": 31,
+     "medium": 9
+    },
+    "all-clear, Jazan": {
+     "info": 40
+    },
+    "Houthi attack on a Riyadh financial-centre tower, 11 injured; critical in production": {
+     "critical": 39,
+     "high": 1
+    },
+    "house fire put out": {
+     "info": 40
+    },
+    "fire-safety violation notice": {
+     "info": 40
+    }
+   }
+  },
+  "relay-rule-only": {
+   "model": "deepseek/deepseek-v4.1-flash",
+   "promptSha": "379b9d78e43e70cf",
+   "passes": 40,
+   "batched": false,
+   "maxChars": 4096,
+   "usd": 0.0111,
+   "capturedAt": "2026-11-27T04:01:43.272Z",
+   "labels": {
+    "early warning (National Early Warning Platform), Jazan": {
+     "info": 40
+    },
+    "early warning, Riyadh": {
+     "info": 40
+    },
+    "all-clear, Jazan": {
+     "info": 40
+    },
+    "Houthi attack on a Riyadh financial-centre tower, 11 injured; critical in production": {
+     "high": 33,
+     "critical": 7
+    },
+    "house fire put out": {
+     "info": 40
+    },
+    "fire-safety violation notice": {
+     "info": 40
+    }
+   }
+  },
+  "relay-current-batched": {
+   "model": "deepseek/deepseek-v4.1-flash",
+   "promptSha": "9b13ab92056bf3ca",
+   "passes": 40,
+   "batched": true,
+   "maxChars": 4096,
+   "usd": 0.0059,
+   "capturedAt": "2026-11-27T04:01:11.349Z",
+   "labels": {
+    "early warning (National Early Warning Platform), Jazan": {
+     "info": 8,
+     "high": 10,
+     "medium": 17,
+     "low": 5
+    },
+    "early warning, Riyadh": {
+     "info": 8,
+     "high": 10,
+     "medium": 17,
+     "low": 5
+    },
+    "all-clear, Jazan": {
+     "info": 25,
+     "low": 14,
+     "medium": 1
+    },
+    "Houthi attack on a Riyadh financial-centre tower, 11 injured; critical in production": {
+     "critical": 40
+    },
+    "house fire put out": {
+     "info": 28,
+     "low": 12
+    },
+    "fire-safety violation notice": {
+     "info": 40
+    }
+   }
+  }
+ }
+}

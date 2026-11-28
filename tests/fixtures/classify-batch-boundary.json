@@ -1,0 +1,4218 @@
+{
+ "note": "Relay labels at 5 titles per completion: each judged boundary headline (classify-judged-statements.json, classify-judged-shipping-energy.json) among four tuning headlines (classify-judged-headlines.json), shuffled per pass. labels counts each level per title over all passes; asked minus the levels is unlabelled. relay-baseline is the registered baseline and is never re-captured. Re-capture relay-current after any relay prompt or model change: node --env-file=.env.local scripts/eval-classify-labels.mjs --batch-boundary --capture relay-current --force",
+ "captures": {
+  "relay-baseline": {
+   "path": "relay",
+   "model": "deepseek/deepseek-v4.1-flash",
+   "promptSha": "b610d9e51327d5e3",
+   "chunk": 5,
+   "passes": 40,
+   "seed": 1,
+   "rowsSha": "7674c400365bdfd0",
+   "completions": 1880,
+   "usd": 0.2318,
+   "note": "registered baseline, production prompt at registration (e0e31e1692) (captured 2026-11-26)",
+   "capturedAt": "2026-11-26T16:39:45.112Z",
+   "clearFalseCriticalByPass": [
+    0,
+    1,
+    0,
+    1,
+    1,
+    1,
+    1,
+    0,
+    1,
+    0,
+    1,
+    0,
+    1,
+    1,
+    0,
+    0,
+    0,
+    1,
+    0,
+    1,
+    1,
+    1,
+    0,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    1,
+    0,
+    1
+   ],
+   "labels": {
+    "Iran’s seven conditions basis for reopening Strait of Hormuz, negotiations: Araghchi": {
+     "asked": 40,
+     "high": 40
+    },
+    "Iran says it will close Strait of Hormuz if attacked": {
+     "asked": 40,
+     "high": 40
+    },
+    "Araghchi: Hormuz will stay closed to US-linked ships until sanctions are lifted": {
+     "asked": 40,
+     "high": 40
+    },
+    "Russia warns NATO of nuclear response if Ukraine strikes deep inside Russia": {
+     "asked": 40,
+     "high": 40
+    },
+    "Hamas lists conditions for a ceasefire deal with Israel": {
+     "asked": 40,
+     "high": 39,
+     "medium": 1
+    },
+    "Israel says ceasefire with Hezbollah could collapse within days": {
+     "asked": 40,
+     "high": 17,
+     "critical": 23
+    },
+    "North Korea threatens to conduct seventh nuclear test": {
+     "asked": 40,
+     "high": 40
+    },
+    "Houthi leader vows to block Bab el-Mandeb to US ships": {
+     "asked": 40,
+     "high": 40
+    },
+    "China warns it will blockade Taiwan if independence is declared": {
+     "asked": 40,
+     "high": 40
+    },
+    "Iran threatens to mine Strait of Hormuz": {
+     "asked": 40,
+     "high": 40
+    },
+    "Russia sets conditions for Black Sea shipping corridor to reopen": {
+     "asked": 40,
+     "high": 40
+    },
+    "Iran closes Strait of Hormuz to all tanker traffic": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Israel and Hamas agree ceasefire, hostages to be freed": {
+     "asked": 40,
+     "critical": 40
+    },
+    "US strikes Iranian nuclear sites at Fordow and Natanz": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Military seizes power in Niger, president detained": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Houthis sink tanker in Red Sea, 20 crew killed": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Russia-Ukraine ceasefire collapses as Moscow resumes offensive": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Pentagon says US jets struck militia bases in Iraq and Syria": {
+     "asked": 40,
+     "critical": 29,
+     "high": 11
+    },
+    "Ukraine says its drones hit Russian nuclear power plant": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Israel says it killed Hezbollah chief in Beirut strike": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Houthis say they fired missiles at US carrier in Red Sea": {
+     "asked": 40,
+     "high": 30,
+     "critical": 10
+    },
+    "UN says 50 killed in RSF attack on Darfur displacement camp": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Egypt says Suez Canal closed to traffic after attack on convoy": {
+     "asked": 40,
+     "critical": 40
+    },
+    "UAE's ADNOC L&S says one crew member missing after attack on its vessel in Hormuz - Reuters": {
+     "asked": 40,
+     "high": 39,
+     "critical": 1
+    },
+    "ADNOC Says One of Its Vessels Attacked in Strait of Hormuz - - WANA News Agency": {
+     "asked": 40,
+     "critical": 28,
+     "high": 12
+    },
+    "ADNOC Ship Attacked in Hormuz as Maritime Security Risks Rise": {
+     "asked": 40,
+     "high": 36,
+     "critical": 4
+    },
+    "Middle East War: Iran attacks Bahrain, ADNOC vessel hit in Hormuz, Kuwait drone threats keep Gulf on high alert as US hits Iran’s Qeshm": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Iran says two oil tankers hit by mines in Strait of Hormuz": {
+     "asked": 40,
+     "critical": 38,
+     "high": 2
+    },
+    "Two oil tankers 'disabled' by explosions in Strait of Hormuz, IRGC says - Reuters": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Four tankers struck by explosions in Strait of Hormuz, Iran says - Reuters": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Iran says tanker carrying LNG hit mine, suffered explosion in Hormuz - Reuters": {
+     "asked": 40,
+     "critical": 36,
+     "high": 4
+    },
+    "Crew abandons gas tanker after being hit by projectile while sailing through Strait of Hormuz - New York Post": {
+     "asked": 40,
+     "critical": 36,
+     "high": 4
+    },
+    "Gas tanker in Strait of Hormuz set ablaze - NBC News": {
+     "asked": 40,
+     "critical": 39,
+     "high": 1
+    },
+    "Tanker struck by unknown projectile in Strait of Hormuz: UK agency - Anadolu Ajansı": {
+     "asked": 40,
+     "high": 15,
+     "critical": 25
+    },
+    "Oil Prices Jump 6% as Iran Sets UAE Oil Port Ablaze, Strikes Vessels in Strait of Hormuz - EnergyNow.com": {
+     "asked": 40,
+     "critical": 40
+    },
+    "U.S. Strikes Iranian Launchers Near Strait of Hormuz, Sending Oil Prices Higher - EnergyNow.com": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Iran Targets Maritime Navigation Systems on Omani Island in Strait of Hormuz - IranWire": {
+     "asked": 40,
+     "critical": 8,
+     "high": 32
+    },
+    "UN says 25 seafarers killed in, around Hormuz since US-Israel war on Iran": {
+     "asked": 40,
+     "critical": 26,
+     "high": 14
+    },
+    "Three Tankers Attacked in Two Days in Strait of Hormuz Crisis - The Maritime Executive": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Strait of Hormuz Watch: Negotiations Uncertain as Vessel Attacks Continue - IndustryWeek": {
+     "asked": 40,
+     "high": 32,
+     "medium": 8
+    },
+    "Barnea: Blockade in Strait of Hormuz best current option to stop nuclear weapons - The Jerusalem Post": {
+     "asked": 40,
+     "medium": 5,
+     "high": 34,
+     "info": 1
+    },
+    "Trump faces escalating oil crisis over Iran blocking Strait of Hormuz - ABC News - Breaking News, Latest News and Videos": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Iran Warns Strait of Hormuz Will ‘Never Return’ to Pre-War Status After US-Israel War, Insists There Are - Benzinga": {
+     "asked": 40,
+     "high": 40
+    },
+    "Mohsen Rezaei Says Iran Won’t Reopen Strait of Hormuz Until US Meets Seven Conditions: 22 outlets compared - NewsCord": {
+     "asked": 40,
+     "high": 40
+    },
+    "Iran Says Deal on Strait of Hormuz is Close But Will Not Open the Waterway by Itself - EnergyNow.com": {
+     "asked": 40,
+     "high": 40
+    },
+    "Dramatic moment oil tanker erupts into huge inferno in Strait of Hormuz": {
+     "asked": 40,
+     "critical": 31,
+     "high": 9
+    },
+    "IAEA raises alarm over Iran's nuclear program as tanker hits mine in Strait of Hormuz - Ynetnews": {
+     "asked": 40,
+     "high": 19,
+     "critical": 21
+    },
+    "India vows to protect energy security after new US tariffs over Russian oil": {
+     "asked": 18,
+     "high": 18
+    },
+    "India's Tata Group firms shed $3.2 billion in market value amid holding company rift - Reuters": {
+     "asked": 12,
+     "medium": 12
+    },
+    "Iran says it struck oil tanker in Strait of Hormuz": {
+     "asked": 17,
+     "critical": 17
+    },
+    "After fallout with Chinese parent, chipmaker Nexperia partners with India's Tata - Reuters": {
+     "asked": 14,
+     "medium": 8,
+     "low": 6
+    },
+    "Why Is Thailand Not Prosecuting Members of the Mauerberger Network?": {
+     "asked": 16,
+     "info": 11,
+     "medium": 5
+    },
+    "Shark kills swimmer off beach in Western Australia: Police": {
+     "asked": 16,
+     "info": 15,
+     "high": 1
+    },
+    "Applied Materials to invest $5 billion in India as Modi's flagship chip event kicks off - Reuters": {
+     "asked": 18,
+     "low": 17,
+     "medium": 1
+    },
+    "India's Tata reappoints chairman, backs listing in rift with controlling charity - Reuters": {
+     "asked": 15,
+     "low": 12,
+     "info": 3
+    },
+    "Erdogan to sidestep Turkey’s constitutional term limits in early 2028 vote, adviser says": {
+     "asked": 17,
+     "low": 3,
+     "medium": 14
+    },
+    "Apple Pay eyes India rollout with Axis Bank, sources say - Reuters": {
+     "asked": 19,
+     "info": 10,
+     "low": 9
+    },
+    "EV maker BYD recalls more than 180,000 cars in China over brake pedal risk": {
+     "asked": 13,
+     "info": 5,
+     "low": 7,
+     "medium": 1
+    },
+    "Three dead and eight injured in Philippines school shooting": {
+     "asked": 18,
+     "high": 18
+    },
+    "Public servants need to shift from doing things ‘for’ Singaporeans to ‘with’ them: Chan Chun Sing": {
+     "asked": 16,
+     "info": 16
+    },
+    "Singapore brothers behind William’s Auto get jail for tax evasion and money laundering": {
+     "asked": 19,
+     "low": 3,
+     "info": 16
+    },
+    "Russians begin 3 days of voting in a parliamentary election set to cement the Kremlin's power - AP News": {
+     "asked": 20,
+     "low": 20
+    },
+    "As Iran war grinds on, Trump to face skeptical world leaders at UN - Reuters": {
+     "asked": 22,
+     "medium": 22
+    },
+    "UN experts say grounds to believe US committed war crimes in Iran strikes": {
+     "asked": 20,
+     "high": 20
+    },
+    "Empty podiums, prizes for e-voting, no opposition: Russians head to the polls amid intensifying war in Ukraine - CNN": {
+     "asked": 13,
+     "medium": 12,
+     "low": 1
+    },
+    "Three dead, eight injured in Philippines school shooting": {
+     "asked": 19,
+     "high": 19
+    },
+    "Carney embraces EU associate membership proposal as Trump pushes Canada closer to Europe - AP News": {
+     "asked": 16,
+     "low": 11,
+     "medium": 5
+    },
+    "US stocks rally to their best day in 6 weeks after oil prices and bond yields ease - AP News": {
+     "asked": 20,
+     "low": 4,
+     "medium": 15,
+     "info": 1
+    },
+    "US approves potential $24 billion sale of F-35 jets to Saudi Arabia - CNN": {
+     "asked": 17,
+     "high": 17
+    },
+    "Almost 50 dead in Nigeria after drinking alcohol suspected to contain methanol": {
+     "asked": 18,
+     "high": 18
+    },
+    "Ninth woman's body found as South African police investigate string of deaths": {
+     "asked": 18,
+     "medium": 10,
+     "high": 6,
+     "info": 2
+    },
+    "‘We demand the truth’: Olga Tokarczuk and JM Coetzee lead calls for proof of life of disappeared Eritrean writers": {
+     "asked": 19,
+     "low": 19
+    },
+    "Flights briefly paused at DC airport as unauthorized drone appears over runway - CNN": {
+     "asked": 15,
+     "medium": 15
+    },
+    "Canada welcomes EU proposal to become 'associate member'": {
+     "asked": 18,
+     "low": 18
+    },
+    "OpenAI flags concerning new AI behavior and vows to track it more closely - AP News": {
+     "asked": 14,
+     "info": 13,
+     "medium": 1
+    },
+    "Congress has failed to regulate AI for years – and there’s little sign that’s changing - CNN": {
+     "asked": 17,
+     "info": 17
+    },
+    "Why are world leaders at the UN next week and what will they talk about? - Reuters": {
+     "asked": 19,
+     "info": 11,
+     "low": 8
+    },
+    "The lost Corsair: The search for a Korean War legend and its missing pilot - CNN": {
+     "asked": 17,
+     "info": 17
+    },
+    "U.N. experts say U.S. may have committed war crimes with 2 Iran strikes": {
+     "asked": 18,
+     "high": 18
+    },
+    "Iran live updates: US rejects UN report on possible war crimes in Minab school strike": {
+     "asked": 20,
+     "high": 19,
+     "medium": 1
+    },
+    "Rubio takes behind-the-scenes role on Iran war while keeping his options open for the future": {
+     "asked": 17,
+     "info": 11,
+     "medium": 6
+    },
+    "Hyundai Motor CEO warns of Chinese vehicle surge in the US without guardrails - Reuters": {
+     "asked": 20,
+     "info": 6,
+     "medium": 7,
+     "low": 7
+    },
+    "US government website used AI search tool from China that FBI said copied Anthropic - Reuters": {
+     "asked": 18,
+     "medium": 13,
+     "info": 5
+    },
+    "White House withdraws Trump’s nominee to lead ICE": {
+     "asked": 17,
+     "low": 16,
+     "info": 1
+    },
+    "Red and Blue America Have Found Something to Agree On: Flock Cameras Must Go": {
+     "asked": 22,
+     "info": 20,
+     "low": 2
+    },
+    "A DHS email raises new questions about the Trump administration's election plans": {
+     "asked": 16,
+     "medium": 9,
+     "info": 7
+    },
+    "The FAA’s $875 Million Plan to Use AI to Ease Air-Traffic Woes": {
+     "asked": 14,
+     "info": 12,
+     "low": 2
+    },
+    "Farmer who voted for Trump says farmers are \"all just in survival mode\"": {
+     "asked": 14,
+     "info": 14
+    },
+    "Blanche warned of contempt risk in Epstein files case": {
+     "asked": 17,
+     "info": 16,
+     "medium": 1
+    },
+    "Exclusive: Scalise puts GOP high-water mark at 225 House seats": {
+     "asked": 19,
+     "info": 11,
+     "low": 8
+    },
+    "BYD, CATL, Xiaomi executives may join Xi's US visit, sources say - Reuters": {
+     "asked": 16,
+     "low": 16
+    },
+    "JD Vance faces test in White House meeting with Israel-backing radio host": {
+     "asked": 19,
+     "low": 19
+    },
+    "Shark kills swimmer off Western Australian city beach": {
+     "asked": 19,
+     "info": 13,
+     "low": 4,
+     "medium": 2
+    },
+    "SK Hynix's Solidigm unit is weighing NAND memory chip factory in US, sources say - Reuters": {
+     "asked": 13,
+     "low": 13
+    },
+    "Google is helping write AI chatbot safety laws — while pushing for loopholes": {
+     "asked": 20,
+     "info": 20
+    },
+    "How important is AI to the stock market? Warnings bring new scrutiny": {
+     "asked": 25,
+     "info": 25
+    },
+    "Oil's shrug emoji era": {
+     "asked": 15,
+     "info": 15
+    },
+    "True or false: Trump's name is now on the Kennedy Center. The quiz has the answer": {
+     "asked": 19,
+     "info": 19
+    },
+    "UN mission says grounds to believe US committed war crimes in Iran": {
+     "asked": 23,
+     "high": 23
+    },
+    "Philippines: At least 2 students killed in school shooting": {
+     "asked": 13,
+     "high": 11,
+     "medium": 1,
+     "info": 1
+    },
+    "Minst seks drept og mange såret i skoleskyting på Filippinene": {
+     "asked": 13,
+     "high": 13
+    },
+    "Trafikkulykke på Riksvei 4: En er kritisk skadet": {
+     "asked": 19,
+     "info": 19
+    },
+    "French deficit widens, PM Lecornu delays hopes to reach 5% of GDP in 2027": {
+     "asked": 22,
+     "medium": 22
+    },
+    "Citizens' initiative demanding restrictions on data centers reaches 50,000 signatures": {
+     "asked": 14,
+     "low": 13,
+     "info": 1
+    },
+    "Varsler endringer i EØS-arbeidet": {
+     "asked": 18,
+     "low": 18
+    },
+    "Økning i minstepensjonen i dag": {
+     "asked": 19,
+     "info": 19
+    },
+    "Det Hvide Hus trækker nomineringen af ny ICE-chef tilbage": {
+     "asked": 18,
+     "low": 18
+    },
+    "Fire nye byer skal være værter for Royal Run": {
+     "asked": 15,
+     "info": 15
+    },
+    "Oprah Winfrey packs out business event on first ever visit to Finland": {
+     "asked": 15,
+     "info": 15
+    },
+    "Slut med Pisa-test hvert tredje år": {
+     "asked": 21,
+     "info": 21
+    },
+    "Politiet ophæver afspærring på Dag Hammarskjölds Allé i København": {
+     "asked": 16,
+     "info": 15,
+     "low": 1
+    },
+    "Minst tre drept i skoleskyting på Filippinene": {
+     "asked": 20,
+     "high": 20
+    },
+    "Finland set for weekend of sunny spells and scattered showers": {
+     "asked": 23,
+     "info": 23
+    },
+    "37 mistænkte for ulovlig minearbejde dør i Nigeria": {
+     "asked": 16,
+     "high": 16
+    },
+    "Finland has second-highest rate of work-related stress, depression in EU": {
+     "asked": 19,
+     "info": 19
+    },
+    "Frykter valgkaos i USA": {
+     "asked": 14,
+     "info": 9,
+     "medium": 5
+    },
+    "South Korea will not send military to support US war on Iran, defying Trump pressure": {
+     "asked": 20,
+     "high": 20
+    },
+    "Three dead in Philippines school shooting, including gunman": {
+     "asked": 18,
+     "high": 14,
+     "medium": 1,
+     "info": 3
+    },
+    "Philippines school shooting: At least three killed including gunman": {
+     "asked": 16,
+     "high": 16
+    },
+    "UN investigators allege US war crimes in Iran, gross rights violations by Tehran - Al Arabiya English": {
+     "asked": 26,
+     "high": 25,
+     "medium": 1
+    },
+    "‘I spend a bagful of money and don’t fill a bag’: the energy crisis hits Bangladesh": {
+     "asked": 16,
+     "medium": 16
+    },
+    "Manus on Markets: Yen drops after Japan raises interest rates to 31-year high": {
+     "asked": 19,
+     "medium": 19
+    },
+    "Trump administration again denies entry visas to Palestinian officials ahead of UN general assembly": {
+     "asked": 19,
+     "high": 12,
+     "medium": 7
+    },
+    "Verified video shows wreckage of Saudi fighter jet shot down over Yemen": {
+     "asked": 22,
+     "high": 22
+    },
+    "Video: Influencers accused of exploiting Nepal flood survivors": {
+     "asked": 17,
+     "info": 14,
+     "medium": 3
+    },
+    "News quiz of the week: September 18, 2026": {
+     "asked": 8,
+     "info": 8
+    },
+    "Israel would rather not watch NAZA": {
+     "asked": 12,
+     "info": 12
+    },
+    "‘Just ask Grok’: How ISIL is using Big Tech’s AI to build bombs": {
+     "asked": 24,
+     "medium": 6,
+     "high": 18
+    },
+    "Guggenheim Abu Dhabi tickets go on sale ahead of grand opening": {
+     "asked": 19,
+     "info": 19
+    },
+    "Dubai Parks and Resorts theme parks to reopen after six-month closure": {
+     "asked": 18,
+     "info": 18
+    },
+    "Indonesia acquires first aircraft carrier amid military upgrade": {
+     "asked": 22,
+     "high": 20,
+     "medium": 2
+    },
+    "Trump weighs renewed major attacks on Iran: Report - Al Arabiya English": {
+     "asked": 23,
+     "high": 23
+    },
+    "‘Run! Get away!’: witnesses recount Israeli ‘double tap’ strike that killed child and medic in Gaza": {
+     "asked": 17,
+     "high": 6,
+     "critical": 11
+    },
+    "Napster Is Back, and It Wants to Digitally Clone Teachers": {
+     "asked": 15,
+     "info": 15
+    },
+    "Waymo says Singapore will be its next international robotaxi city": {
+     "asked": 19,
+     "low": 13,
+     "info": 6
+    },
+    "Best Open Earbuds (2026): Shokz, Bose, Soundcore, and More": {
+     "asked": 16,
+     "info": 16
+    },
+    "Why AI Isn’t Likely to Wipe Out Humanity With Bioweapons": {
+     "asked": 24,
+     "info": 24
+    },
+    "Zoro Coupon Codes: 20% Off September 2026": {
+     "asked": 18,
+     "info": 18
+    },
+    "NordVPN Coupons: 75% Off, Plus 3 Months Free in September 2026": {
+     "asked": 18,
+     "info": 18
+    },
+    "The specter of AI-enabled bioweapons is a wake-up call for biotech": {
+     "asked": 15,
+     "info": 15
+    },
+    "Jemalloc 5.4.0": {
+     "asked": 19,
+     "info": 19
+    },
+    "The scourge of x86 emulation": {
+     "asked": 18,
+     "info": 18
+    },
+    "Pre-Greek: The lost language hidden within Ancient Greek": {
+     "asked": 20,
+     "info": 20
+    },
+    "Shapelearn Qwen 3.8 27B (13.1 GB VRAM)": {
+     "asked": 18,
+     "info": 18
+    },
+    "The Download: mice with part-human brains and climate tech innovators": {
+     "asked": 20,
+     "info": 20
+    },
+    "Meet the innovators under 35 shaping climate tech": {
+     "asked": 25,
+     "info": 25
+    },
+    "The AI Superintelligence Slowdown": {
+     "asked": 15,
+     "info": 15
+    },
+    "Google is helping write AI chatbot safety laws — while pushing for loopholes - NPR": {
+     "asked": 14,
+     "info": 14
+    },
+    "OpenAI breached by researchers using Anthropic models - Financial Times": {
+     "asked": 18,
+     "medium": 18
+    },
+    "Regularized Emphatic Temporal-Difference Learning: Stability under Constant Stepsizes": {
+     "asked": 16,
+     "info": 16
+    },
+    "BioPhys-Bridge: A Benchmark for Interdisciplinary Scientific Reasoning in Physics-Grounded Biological Research": {
+     "asked": 19,
+     "info": 19
+    },
+    "What Do We Expect from LLMs? Mapping the Design of LLM Benchmarks": {
+     "asked": 22,
+     "info": 22
+    },
+    "Position: It is Time to Virtualize Foundation Models with a Self-evolving Operating System Layer": {
+     "asked": 20,
+     "info": 20
+    },
+    "What Do Current Systematic Generalization Tasks Miss? A Reasoning-Centered Analysis": {
+     "asked": 17,
+     "info": 17
+    },
+    "Measurements for understanding the pace of AI development inside frontier labs - Anthropic": {
+     "asked": 18,
+     "info": 18
+    },
+    "Anthropic says Claude now leads a quarter of work building its next AI models - Reuters": {
+     "asked": 12,
+     "info": 12
+    },
+    "How Cooley is accelerating IPO work with ChatGPT - OpenAI": {
+     "asked": 20,
+     "info": 20
+    },
+    "Claude Code relaunches Projects to manage multiple AI agents in the cloud": {
+     "asked": 18,
+     "info": 18
+    },
+    "Microsoft AI CEO says AI threats are real, and Anthropic is making it worse": {
+     "asked": 25,
+     "info": 25
+    },
+    "AI is feared globally as the destroyer of jobs": {
+     "asked": 17,
+     "info": 17
+    },
+    "Inside the suddenly explosive world of AI safety": {
+     "asked": 15,
+     "info": 15
+    },
+    "Bank of Japan raises interest rates to 31-year high, flags concerns over inflation": {
+     "asked": 14,
+     "medium": 14
+    },
+    "Rising oil, rates and yields brew up stagflation cocktail for markets - Reuters": {
+     "asked": 20,
+     "medium": 19,
+     "info": 1
+    },
+    "Yen sinks after BoJ raises rates to highest level since 1995": {
+     "asked": 16,
+     "medium": 16
+    },
+    "Oil prices fall for third day on Saudi Arabia supply hopes; U.S. crude briefly dips below $100": {
+     "asked": 18,
+     "medium": 18
+    },
+    "Trump administration advances $24.3 billion fighter jet deal to Saudi Arabia as Houthis escalate attacks": {
+     "asked": 17,
+     "high": 17
+    },
+    "OpenAI breached by researchers using Anthropic models": {
+     "asked": 13,
+     "low": 1,
+     "medium": 9,
+     "info": 3
+    },
+    "Turkey steps in to support markets after fund liquidity crunch sparks selloff - Reuters": {
+     "asked": 24,
+     "medium": 23,
+     "high": 1
+    },
+    "Major airlines cut flights as higher jet fuel prices hit carriers": {
+     "asked": 20,
+     "medium": 20
+    },
+    "Tech power players land seat at table for high-stakes dinner with Trump, Xi": {
+     "asked": 18,
+     "low": 12,
+     "medium": 3,
+     "info": 3
+    },
+    "Tech leads Wall St to higher close as oil eases, Treasury yields dip - Reuters": {
+     "asked": 19,
+     "info": 5,
+     "low": 11,
+     "medium": 3
+    },
+    "Liechtenstein royals threaten lawsuit over dynasty reforms": {
+     "asked": 19,
+     "info": 18,
+     "low": 1
+    },
+    "The 10-year Treasury is having its worst run in over 100 years. Why investors are buying bonds anyway. - MarketWatch": {
+     "asked": 20,
+     "info": 18,
+     "medium": 2
+    },
+    "Anthropic and OpenAI hunt for smaller data center deals, sources tell CNBC, in race to deploy AI capacity": {
+     "asked": 20,
+     "low": 6,
+     "info": 14
+    },
+    "America's job and housing markets are stuck. What if that's the new normal?": {
+     "asked": 20,
+     "info": 20
+    },
+    "I always wanted grandchildren. AI and an uncertain future have complicated that dream.": {
+     "asked": 18,
+     "info": 18
+    },
+    "I'm job searching in my 50s after a 17-year career break. I feel like I'm sending my résumé into a black hole.": {
+     "asked": 16,
+     "info": 16
+    },
+    "I moved from Indiana to New Mexico for a sunnier life. My social life, mood, and physical activity level have gotten a major uplift.": {
+     "asked": 19,
+     "info": 19
+    },
+    "Why 'The Diary of a CEO' star Steven Bartlett says he can't do his job without X — and isn't a Mark Zuckerberg fan": {
+     "asked": 19,
+     "info": 19
+    },
+    "Joining the dots between big AI": {
+     "asked": 25,
+     "info": 25
+    },
+    "INSIGHT: Oil price pullback masks lingering physical crude scarcity - ICIS": {
+     "asked": 18,
+     "info": 13,
+     "medium": 5
+    },
+    "Oil prices fall as Saudi supply hopes outweigh fresh Houthi strikes - CNBC": {
+     "asked": 18,
+     "medium": 18
+    },
+    "Gold and Silver Price Forecast: Oil Pullback Eases Inflation Fears - FXEmpire": {
+     "asked": 13,
+     "info": 13
+    },
+    "Average heating oil price in Maine up 74% from a year ago, state agency says - WMTW": {
+     "asked": 19,
+     "info": 3,
+     "low": 16
+    },
+    "Silver price today, Thursday, September 17, 2026: Silver prices stay steady post Fed decision - finance.yahoo.com": {
+     "asked": 16,
+     "info": 15,
+     "low": 1
+    },
+    "Denouement to the Latest Oil Price Scare - Robin J Brooks | Substack": {
+     "asked": 15,
+     "info": 15
+    },
+    "NYMEX: Precious Metals Prices Up - 17-09-26 - Armenpress": {
+     "asked": 22,
+     "info": 21,
+     "low": 1
+    },
+    "Silver Price Forecast: Bulls threaten bearish setup after Fed hike - FXStreet": {
+     "asked": 16,
+     "info": 16
+    },
+    "Gold price rebounds above $4,340 as lower oil eases rate pressure - Kitco PM Report - KITCO": {
+     "asked": 18,
+     "info": 7,
+     "medium": 4,
+     "low": 7
+    },
+    "Interagency Effort Enables Airlift Support to Kauai Following Hurricane": {
+     "asked": 11,
+     "low": 11
+    },
+    "NORAD F-16s Deploy to High North Under Operation Arctic Vanguard": {
+     "asked": 19,
+     "high": 9,
+     "medium": 10
+    },
+    "Department Releases Guidance on Implementing Testosterone Deficiency Screenings for Male Service Members": {
+     "asked": 17,
+     "info": 17
+    },
+    "Federal Reserve issues FOMC statement": {
+     "asked": 15,
+     "medium": 13,
+     "low": 2
+    },
+    "Guterres calls for action as hate speech spreads across new platforms online": {
+     "asked": 24,
+     "low": 17,
+     "info": 7
+    },
+    "RESTORING AMERICAN SALTWATER ANGLING AND RECREATION": {
+     "asked": 19,
+     "info": 19
+    },
+    "Reinvigorating America’s Hunting Heritage": {
+     "asked": 22,
+     "info": 22
+    },
+    "SEC Issues “Innovation Exemption” to Facilitate the Trading of Tokenized NMS Stock and Request for Comment": {
+     "asked": 24,
+     "info": 6,
+     "low": 16,
+     "medium": 2
+    },
+    "Montenegro - U.S. Department of State (.gov)": {
+     "asked": 23,
+     "info": 23
+    },
+    "- webgels.state.gov": {
+     "asked": 22,
+     "info": 22
+    },
+    "Withdrawals Sent to the Senate": {
+     "asked": 17,
+     "info": 16,
+     "medium": 1
+    },
+    "Macau - U.S. Department of State (.gov)": {
+     "asked": 18,
+     "info": 18
+    },
+    "Presidential Message on National Hispanic Heritage Month": {
+     "asked": 13,
+     "info": 13
+    },
+    "Mitsubishi Electric CC-Link IE TSN Communication Protocol (Update A)": {
+     "asked": 19,
+     "info": 19
+    },
+    "Mitsubishi Electric GX Works3 and Motion Control Settings": {
+     "asked": 20,
+     "info": 20
+    },
+    "DRC: Opposition leaders condemn death of politician during 15 September protest": {
+     "asked": 13,
+     "medium": 13
+    },
+    "At least 37 suspected illegal miners die in custody in central Nigeria": {
+     "asked": 16,
+     "high": 16
+    },
+    "Serial killer suspicions in South Africa": {
+     "asked": 19,
+     "info": 19
+    },
+    "DR Congo says Ebola outbreak has passed its peak": {
+     "asked": 14,
+     "medium": 12,
+     "low": 2
+    },
+    "Tigray: 20,000 university students relocated by conflict": {
+     "asked": 18,
+     "medium": 17,
+     "high": 1
+    },
+    "Missile-shaped signs and Netanyahu masks as Israelis rally to protect October vote": {
+     "asked": 17,
+     "medium": 16,
+     "low": 1
+    },
+    "Protesters target OpenAI and Anthropic in San Francisco over AI safety fears": {
+     "asked": 20,
+     "medium": 17,
+     "low": 3
+    },
+    "US approves $414M uranium investment in Niger, two years after troops left - Al Jazeera": {
+     "asked": 15,
+     "medium": 8,
+     "high": 6,
+     "low": 1
+    },
+    "US seals big uranium investment in Niger, two years after troops left - Reuters": {
+     "asked": 17,
+     "medium": 15,
+     "low": 1,
+     "high": 1
+    },
+    "Zimbabwe farmers brace for El Niño by saving water": {
+     "asked": 14,
+     "low": 14
+    },
+    "South Africa's rand holds steady ahead of inflation data, expected rate hike - Reuters": {
+     "asked": 25,
+     "low": 24,
+     "medium": 1
+    },
+    "Au Maroc, l’héritage bénéfique de la crise de la BNDE": {
+     "asked": 22,
+     "info": 22
+    },
+    "Why Nigeria’s Soldiers Went to Libreville": {
+     "asked": 18,
+     "low": 4,
+     "medium": 12,
+     "info": 2
+    },
+    "Over 20 feared trapped in Taraba mining pit collapse": {
+     "asked": 20,
+     "high": 19,
+     "medium": 1
+    },
+    "Illegal Mining: Niger sets up panel to probe deaths of 37 detainees in NSCDC custody, commandant suspended": {
+     "asked": 15,
+     "high": 15
+    },
+    "Amnesty demands independent probe into deaths of miners in Niger": {
+     "asked": 14,
+     "medium": 14
+    },
+    "Police order probe as 37 suspected illegal miners die in NSCDC custody": {
+     "asked": 17,
+     "high": 17
+    },
+    "Under pressure from Trump on cartels, Sheinbaum turns spotlight on US drug use": {
+     "asked": 19,
+     "medium": 17,
+     "low": 2
+    },
+    "UN Mission: Venezuela’s Repressive Apparatus Remains Intact": {
+     "asked": 20,
+     "medium": 18,
+     "low": 2
+    },
+    "Abinader announces the end of the blockade of Dominican products at the border; Haiti remains silent": {
+     "asked": 22,
+     "medium": 19,
+     "high": 3
+    },
+    "Early voting begins in US midterms that could see Republicans lose control of Congress": {
+     "asked": 19,
+     "low": 19
+    },
+    "Fire damages 108 stalls in Acapulco’s Central Market": {
+     "asked": 14,
+     "high": 3,
+     "medium": 11
+    },
+    "As Puerto Vallarta grows, officials weigh crocodile relocation plan": {
+     "asked": 21,
+     "info": 20,
+     "low": 1
+    },
+    "CFE’s ‘Project Oasis’ aims to bring solar power to an energy-challenged region of Baja California Sur": {
+     "asked": 19,
+     "info": 8,
+     "low": 11
+    },
+    "The Canada-EU partnership 'a classic win-win situation', economist says": {
+     "asked": 15,
+     "low": 14,
+     "info": 1
+    },
+    "Canada’s Carney embraces EU associate membership proposal": {
+     "asked": 20,
+     "low": 20
+    },
+    "Fear and broken families: Inside a Texas ICE detention centre": {
+     "asked": 19,
+     "medium": 19
+    },
+    "A dog dressed as a taco stand wins Morelia’s pre-Grito Patriotic Pup Contest": {
+     "asked": 20,
+     "info": 20
+    },
+    "Los Mirlos – Song of the Day": {
+     "asked": 23,
+     "info": 23
+    },
+    "Rare Aztec manuscript returns to Mexico on loan after nearly two centuries in France": {
+     "asked": 20,
+     "info": 20
+    },
+    "Latin America: The Dangerous Revision of Historical Memory": {
+     "asked": 16,
+     "info": 16
+    },
+    "International News Briefs for Thursday, September 17, 2026": {
+     "asked": 17,
+     "info": 17
+    },
+    "Haiti - Leisure : Did you know ? #60": {
+     "asked": 24,
+     "info": 24
+    },
+    "Zapping Haiti of September 17, 2026": {
+     "asked": 18,
+     "info": 18
+    },
+    "Cuba: When an Everyday Activity Is No Longer Normal": {
+     "asked": 16,
+     "info": 16
+    },
+    "Haiti - Honduras : An ONI delegation presents DELIDOC's progress.": {
+     "asked": 21,
+     "info": 1,
+     "low": 20
+    },
+    "Exxon raises 2050 global emissions forecast, sees slower coal decline - Reuters": {
+     "asked": 20,
+     "info": 15,
+     "low": 4,
+     "medium": 1
+    },
+    "Energy disruption hits Bangladesh and Pakistan as Gulf crisis worsens - Reuters": {
+     "asked": 18,
+     "high": 18
+    },
+    "ISU ‘powering Idaho’s energy future’ with second nuclear reactor - East Idaho News": {
+     "asked": 20,
+     "info": 13,
+     "low": 7
+    },
+    "2026 Update: Who in Africa is Ready for Nuclear Power? - Energy for Growth Hub": {
+     "asked": 20,
+     "info": 20
+    },
+    "SOAR event connects Knott County residents with nuclear energy jobs - WYMT": {
+     "asked": 15,
+     "info": 15
+    },
+    "Oops - Nuclear Energy Agency (NEA)": {
+     "asked": 13,
+     "info": 13
+    },
+    "Russian Offensive Campaign Assessment, September 17, 2026 - Institute for the Study of War": {
+     "asked": 23,
+     "medium": 15,
+     "info": 8
+    },
+    "By Nearly Every Metric, the U.S. Is Losing the Iran War": {
+     "asked": 16,
+     "info": 13,
+     "medium": 3
+    },
+    "Why Eurasia, Not the Indo-Pacific, Matters Most in Next Phase of Taiwan Deterrence": {
+     "asked": 19,
+     "info": 19
+    },
+    "Latin America’s Balancing Act: Washington, Beijing, and the Post-Maduro Environment": {
+     "asked": 18,
+     "info": 18
+    },
+    "Trump’s Risky Hack-Back Plan": {
+     "asked": 12,
+     "info": 12
+    },
+    "Ukraine can do more to counter Russia’s illicit finance threat": {
+     "asked": 25,
+     "medium": 13,
+     "info": 12
+    },
+    "Putin is escalating against NATO but a Baltic incursion remains unlikely": {
+     "asked": 17,
+     "medium": 17
+    },
+    "The Lives Built on Colombia’s Peace Deal Are at Risk": {
+     "asked": 13,
+     "medium": 6,
+     "info": 7
+    },
+    "Macron won the argument over European strategic autonomy. Will better European defense come of it?": {
+     "asked": 20,
+     "info": 20
+    },
+    "Fortifying USMCA through US–Mexico investment screening coordination": {
+     "asked": 15,
+     "low": 15
+    },
+    "What von der Leyen’s SOTU speech got right about energy—and where the EU still needs to pivot": {
+     "asked": 17,
+     "info": 17
+    },
+    "A Body Blow? The War on Iran and U.S. Military Readiness": {
+     "asked": 22,
+     "info": 21,
+     "medium": 1
+    },
+    "America's Attrition Trap": {
+     "asked": 18,
+     "info": 18
+    },
+    "Ebola Is Only the Beginning": {
+     "asked": 19,
+     "info": 19
+    },
+    "Uber plans more than 250 layoffs at San Francisco headquarters - San Francisco Chronicle": {
+     "asked": 17,
+     "low": 5,
+     "info": 12
+    },
+    "Layoffs continue at Wells Fargo Jordan Creek campus amid AI shakeup - The Des Moines Register": {
+     "asked": 16,
+     "info": 10,
+     "low": 6
+    },
+    "UMaine weighs staff layoffs amid $19 million budget shortfall - WMTW": {
+     "asked": 16,
+     "info": 11,
+     "low": 5
+    },
+    "Coast Guard boards US-bound vessels apparently compromised by hackers, officials say": {
+     "asked": 20,
+     "high": 18,
+     "medium": 2
+    },
+    "Navy Wants Containerized, Low-cost Interceptors to Defeat Cruise Missiles, Drones - USNI News": {
+     "asked": 21,
+     "medium": 20,
+     "info": 1
+    },
+    "F-16 Crashes In Michigan": {
+     "asked": 19,
+     "medium": 18,
+     "high": 1
+    },
+    "US clears $24B F-35 sale for Saudi Arabia": {
+     "asked": 24,
+     "high": 24
+    },
+    "Finland Practices Ship Boardings at Sea to Stop Undersea Sabotage": {
+     "asked": 21,
+     "medium": 21
+    },
+    "US Navy should target carriers in fight with China, report says": {
+     "asked": 14,
+     "medium": 14
+    },
+    "Pentagon Cuts New AIM-260 Air-To-Air Missile Production Deal, Testing Accelerating": {
+     "asked": 23,
+     "medium": 17,
+     "high": 6
+    },
+    "US Air Force to extend service of B-1, B-2 bombers, official says": {
+     "asked": 17,
+     "medium": 15,
+     "low": 2
+    },
+    "The US Army is looking for new drones to ferry blood supplies": {
+     "asked": 20,
+     "info": 9,
+     "low": 11
+    },
+    "Lockheed Martin gets first batch of Patriot interceptor parts from General Motors": {
+     "asked": 24,
+     "medium": 11,
+     "low": 13
+    },
+    "Newport News Navy barracks to receive $1.7 billion upgrade": {
+     "asked": 17,
+     "low": 17
+    },
+    "The Air Force wants a cannon to shoot down drones": {
+     "asked": 16,
+     "info": 8,
+     "medium": 6,
+     "low": 2
+    },
+    "‘They overreached’: Amid industry worry, new Feinberg memo tweaks accounting regime": {
+     "asked": 20,
+     "info": 20
+    },
+    "More LNG Getting Through Hormuz as Producers Push for Transits": {
+     "asked": 15,
+     "medium": 15
+    },
+    "Chinese Scientists Develop New Oil Refining Method That Cuts Energy Use by 90%": {
+     "asked": 21,
+     "info": 21
+    },
+    "New Cat Species Identified for the First Time in Over 100 Years–Meet the Tilcayo": {
+     "asked": 19,
+     "info": 19
+    },
+    "In Remote Alaska, the Promise and Limits of Vertical Farming": {
+     "asked": 17,
+     "info": 17
+    },
+    "Good News in History, September 18": {
+     "asked": 22,
+     "info": 22
+    },
+    "What went right this week: the good news that matters": {
+     "asked": 22,
+     "info": 22
+    },
+    "Berlin’s REWE supermarket: the grocery store with a working rooftop farm": {
+     "asked": 16,
+     "info": 16
+    },
+    "Team Sequesters Plastic and Makes New Products Before it Breaks Down in Environment": {
+     "asked": 16,
+     "info": 16
+    },
+    "Scientists Solve Mystery Behind Snowfall That Dropped 695 Billion Tons of Ice on Antarctica": {
+     "asked": 14,
+     "info": 14
+    },
+    "The World Is Getting Noisier — But We Can Change That": {
+     "asked": 14,
+     "info": 14
+    },
+    "Chinese companies doubled down on science after US tech restrictions": {
+     "asked": 21,
+     "medium": 18,
+     "info": 3
+    },
+    "Chile First in South America to Eliminate Dog-Transmitted Rabies": {
+     "asked": 21,
+     "info": 21
+    },
+    "Cognitive resilience helps to predict Alzheimer’s dementia": {
+     "asked": 20,
+     "info": 20
+    },
+    "The Next Frontier Is Not Artificial Intelligence—It’s Artificial Societies": {
+     "asked": 21,
+     "info": 21
+    },
+    "US Solar Capacity Can Now Power More Than 50 Million Homes": {
+     "asked": 21,
+     "info": 20,
+     "low": 1
+    },
+    "First Brain Implant Translates Speech and Gestures at Once": {
+     "asked": 17,
+     "info": 17
+    },
+    "This popular fermented food may help flush nanoplastics from the body": {
+     "asked": 19,
+     "info": 19
+    },
+    "Scientists discover a mysterious new frog hiding in the Amazon": {
+     "asked": 22,
+     "info": 22
+    },
+    "A $100 detector can see invisible particles raining down from space": {
+     "asked": 22,
+     "info": 22
+    },
+    "Astronomers just found the youngest known planet ever": {
+     "asked": 24,
+     "info": 24
+    },
+    "JWST’s mysterious little red dots may be black holes growing at incredible speeds": {
+     "asked": 18,
+     "info": 18
+    },
+    "Tapanuli orangutans face mining, landslides, and fire threats — with no recovery plan": {
+     "asked": 22,
+     "info": 16,
+     "medium": 5,
+     "low": 1
+    },
+    "Heavy rain and floods in northern Vietnam submerge homes and disrupt economy": {
+     "asked": 25,
+     "high": 25
+    },
+    "Now exempt from EU deforestation rules, leather industry moves to repair reputation": {
+     "asked": 14,
+     "low": 13,
+     "info": 1
+    },
+    "India’s tiger success brings a new challenge: Living alongside the big cats": {
+     "asked": 14,
+     "info": 14
+    },
+    "Mekong’s Irrawaddy dolphins find cautious hope amid a river in crisis": {
+     "asked": 10,
+     "info": 10
+    },
+    "Lawyers' body announces boycott of court proceedings in Islamabad on Saturday to protest Imaan, Hadi's rearrest": {
+     "asked": 20,
+     "medium": 20
+    },
+    "US Congress Passes Sweeping Russia Sanctions Bill, Sends It To Trump - Radio Free Europe/Radio Liberty": {
+     "asked": 25,
+     "high": 25
+    },
+    "'Petrol so expensive' that PTI lawmakers arrive at Sindh Assembly on donkey carts in protest": {
+     "asked": 20,
+     "medium": 10,
+     "low": 10
+    },
+    "Turkish intelligence chief visits Pakistan after Taliban talks": {
+     "asked": 15,
+     "low": 14,
+     "medium": 1
+    },
+    "US sanctions boost China’s science-driven innovation by over 70%, study finds - South China Morning Post": {
+     "asked": 21,
+     "medium": 21
+    },
+    "India finds Nestle baby food sample substandard, takes legal action - Reuters": {
+     "asked": 18,
+     "low": 13,
+     "info": 4,
+     "medium": 1
+    },
+    "Tata Group's boardroom clash rocks India's most storied conglomerate - Reuters": {
+     "asked": 21,
+     "info": 18,
+     "medium": 1,
+     "low": 2
+    },
+    "Third malaria death in Germany from outbreak tied to Frankfurt airport - Bangkok Post": {
+     "asked": 21,
+     "high": 15,
+     "medium": 6
+    },
+    "State-led food estate blamed for wildfire in Papua - The Jakarta Post": {
+     "asked": 22,
+     "medium": 22
+    },
+    "US Fed raises rates to tackle 'too high' inflation, irking Trump - The Jakarta Post": {
+     "asked": 18,
+     "medium": 18
+    },
+    "At least 16 killed after vehicle loaded with explosives rams into Pakistan mosque": {
+     "asked": 16,
+     "high": 16
+    },
+    "US pharmacy chain Walgreens plans tech centre in India's Chennai, expected to create 250 jobs - Reuters": {
+     "asked": 20,
+     "info": 18,
+     "low": 2
+    },
+    "Dr Reddy's signs India distribution deal for Takeda's Qdenga dengue vaccine - Reuters": {
+     "asked": 21,
+     "low": 21
+    },
+    "How watchdogs got sidelined again in 2027 House budget talks": {
+     "asked": 22,
+     "info": 21,
+     "low": 1
+    },
+    "BOJ lifts rates to 31-year high, pivots towards preemptive inflation fight - Reuters": {
+     "asked": 20,
+     "medium": 20
+    },
+    "Household debt-to-GDP ratio forecast to decline - Bangkok Post": {
+     "asked": 11,
+     "info": 4,
+     "low": 7
+    },
+    "Police begin operation to move migrants from Ceuta beaches": {
+     "asked": 14,
+     "medium": 13,
+     "low": 1
+    },
+    "Lindsay Clancy holdout juror had no doubt she deliberately killed her children": {
+     "asked": 18,
+     "info": 18
+    },
+    "Why Trump’s new rule for green card applicants is sparking controversy - cnn.com": {
+     "asked": 20,
+     "info": 14,
+     "medium": 2,
+     "low": 4
+    },
+    "Exclusive: US military moving drones to South America ahead of anticipated counternarcotics operations - cnn.com": {
+     "asked": 20,
+     "high": 20
+    },
+    "Two students killed in Philippine school shooting and teen suspect dead, officials say - cnn.com": {
+     "asked": 18,
+     "high": 18
+    },
+    "British woman who was kidnapped in Malawi rescued by police after shootout": {
+     "asked": 13,
+     "high": 6,
+     "medium": 7
+    },
+    "Warren Buffett steps down as chairman of Berkshire Hathaway - cnn.com": {
+     "asked": 15,
+     "info": 15
+    },
+    "One lawmaker had a plan to tackle AI. House GOP leaders said no - cnn.com": {
+     "asked": 20,
+     "info": 19,
+     "low": 1
+    },
+    "Canada will decide on its own partnerships, Carney says - Reuters": {
+     "asked": 22,
+     "low": 22
+    },
+    "Louisiana firefighters find feline native to sub-Saharan Africa while responding to house fire": {
+     "asked": 20,
+     "info": 20
+    },
+    "Poland warns Russia is planning drone or rocket strikes on NATO territory - AP News": {
+     "asked": 20,
+     "high": 20
+    },
+    "Italy readies navy to protect its shipping amid Bab el-Mandeb tensions - Reuters": {
+     "asked": 19,
+     "high": 19
+    },
+    "At least 16 killed in Pakistan mosque bombing near police station": {
+     "asked": 14,
+     "high": 14
+    },
+    "Diesel prices at record highs amid Strait of Hormuz disruption, Russia-Ukraine war": {
+     "asked": 16,
+     "medium": 9,
+     "high": 7
+    },
+    "Trade war with U.S. putting 30,000 Quebec jobs at risk, Fréchette says - Montreal Gazette": {
+     "asked": 17,
+     "medium": 17
+    },
+    "Philippines school shooting leaves 2 students, gunman dead": {
+     "asked": 13,
+     "info": 6,
+     "high": 5,
+     "medium": 2
+    },
+    "Can Carney’s Trade War Stop Trump For Good?": {
+     "asked": 20,
+     "info": 20
+    },
+    "Warren Buffett steps down as chairman of Berkshire Hathaway": {
+     "asked": 16,
+     "info": 15,
+     "low": 1
+    },
+    "Premier Eby will speak to local politicians amid snap election speculation": {
+     "asked": 20,
+     "low": 19,
+     "info": 1
+    },
+    "Few signs an election is underway in Quebec’s Far North": {
+     "asked": 22,
+     "low": 12,
+     "info": 10
+    },
+    "B.C. Premier Eby to address local politicians amid snap election speculation": {
+     "asked": 18,
+     "info": 2,
+     "low": 16
+    },
+    "Red and Blue America Have Found Something to Agree on: Flock Cameras Must Go": {
+     "asked": 17,
+     "info": 12,
+     "low": 4,
+     "medium": 1
+    },
+    "Buffett replaced by son Howard as Berkshire Hathaway chairman": {
+     "asked": 15,
+     "info": 13,
+     "low": 2
+    },
+    "Warren Buffett, 96, steps down as Berkshire Hathaway chairman": {
+     "asked": 19,
+     "info": 19
+    },
+    "Warren Buffett steps down as Berkshire Hathaway chairman": {
+     "asked": 15,
+     "low": 1,
+     "info": 12,
+     "medium": 2
+    },
+    "New cat species identified for the 1st time in a century": {
+     "asked": 22,
+     "info": 22
+    },
+    "Here are the 908 candidates and 20 parties running in the Quebec election - Montreal Gazette": {
+     "asked": 20,
+     "low": 11,
+     "info": 9
+    },
+    "As Congress passes Russia sanctions, Trump weighs business deals with Moscow before the war ends": {
+     "asked": 17,
+     "high": 16,
+     "medium": 1
+    },
+    "WHO sees gains against Ebola outbreak, but warns crisis far from over": {
+     "asked": 18,
+     "medium": 18
+    },
+    "Nepal flood survivors return to town that no longer exists": {
+     "asked": 19,
+     "medium": 3,
+     "high": 16
+    },
+    "No missiles intercepted again: Russia strikes Kyiv water infrastructure amid warnings of harsher winter attacks - Euromaidan Press": {
+     "asked": 15,
+     "critical": 13,
+     "high": 2
+    },
+    "In Russia, anti-war activists seek to resist Putin's electoral machine": {
+     "asked": 18,
+     "medium": 18
+    },
+    "Kypros-siktet knyttes til uløst Oslo-skyting": {
+     "asked": 22,
+     "info": 17,
+     "medium": 5
+    },
+    "Ukrainian collaborator involved in Russia's sham 'referendums' killed in Ukrainian drone strike, Russian media claims - kyivindependent.com": {
+     "asked": 14,
+     "high": 14
+    },
+    "'Triumph for democracy' — US House passes Graham's Russia sanctions bill - kyivindependent.com": {
+     "asked": 21,
+     "high": 21
+    },
+    "Ukraine remembers Georgiy Gongadze and journalists killed during Russia’s war - Hromadske": {
+     "asked": 15,
+     "info": 15
+    },
+    "EU Should Not Turn a Blind Eye to Montenegro’s Bloody Clan War": {
+     "asked": 25,
+     "info": 16,
+     "medium": 9
+    },
+    "Turkish Cypriot leader warns of trust erosion after Cyprus talks": {
+     "asked": 18,
+     "low": 17,
+     "medium": 1
+    },
+    "Russians vote in elections with no party opposing Putin or war in Ukraine": {
+     "asked": 18,
+     "low": 16,
+     "medium": 2
+    },
+    "Government survives agricultural policy confidence vote by narrow margin": {
+     "asked": 22,
+     "medium": 9,
+     "low": 13
+    },
+    "Daghestani public service employees claim pressure to vote for United Russia": {
+     "asked": 21,
+     "medium": 6,
+     "low": 15
+    },
+    "Sweden's Social Democrat leader Andersson says she's 'ready' to form new government after election win": {
+     "asked": 20,
+     "low": 20
+    },
+    "Putin calls on Russians to vote in elections, make considered, responsible decision - Interfax": {
+     "asked": 17,
+     "low": 17
+    },
+    "Fining Bosnia’s Parties for Campaign Violations Won’t Deter Them, Expert Warns": {
+     "asked": 20,
+     "low": 12,
+     "info": 8
+    },
+    "Zara Larsson kritiserer Det Hvide Hus for at bruge hendes sang": {
+     "asked": 17,
+     "info": 17
+    },
+    "Trump says ‘hopefully we are towards end’ of Iran war, to hold talks with Gulf leaders - Al Arabiya English": {
+     "asked": 23,
+     "medium": 7,
+     "high": 16
+    },
+    "Trump weighs major Iran escalation as China steps up diplomatic push - Iran International": {
+     "asked": 19,
+     "high": 19
+    },
+    "Trump's new tariff threat risks cutting off Asia’s Russian oil lifeline as Gulf supply falls": {
+     "asked": 22,
+     "high": 19,
+     "medium": 3
+    },
+    "Terrorist colonists attack homes and set fire to land in village, east of Ramallah - WAFA Agency": {
+     "asked": 19,
+     "high": 19
+    },
+    "Human Rights Watch: Recent Houthi Attacks on Commercial Ships Likely Amount to War Crimes - Yemen Online": {
+     "asked": 18,
+     "medium": 14,
+     "high": 4
+    },
+    "Iran’s Araghchi, Pakistan army chief discuss regional developments as US-Iran talks stall - Al Arabiya English": {
+     "asked": 15,
+     "medium": 3,
+     "low": 12
+    },
+    "US House votes for a third time to end the Iran war as conflict drags on - Arab News": {
+     "asked": 17,
+     "medium": 6,
+     "high": 11
+    },
+    "Spain reveal Nations League squad in Ceuta in support of migration crisis": {
+     "asked": 19,
+     "low": 17,
+     "info": 2
+    },
+    "Issa reaffirms US support for Lebanon sovereignty, framework agreement": {
+     "asked": 20,
+     "low": 20
+    },
+    "Extra patrols at London St Pancras station after crime gang arrested": {
+     "asked": 18,
+     "low": 18
+    },
+    "State of Palestine rejects extension of US sanctions against its officials and PLO members - WAFA Agency": {
+     "asked": 17,
+     "high": 13,
+     "medium": 4
+    },
+    "‘Our commitment to Saudi security is unconditional’: Pakistan military spokesman - Arab News": {
+     "asked": 11,
+     "medium": 3,
+     "low": 8
+    },
+    "EXCLUSIVE: Pakistan military vows to defend Saudi Arabia ‘to any extent’ amid Houthi attacks - Arab News": {
+     "asked": 18,
+     "high": 18
+    },
+    "In Paris, Aoun calls on Lebanon’s friends, says 'the opportunity may not come again' - L'Orient Today": {
+     "asked": 15,
+     "low": 15
+    },
+    "Zawia Oil Refining Company’s Oil Blending & Packaging Plant Upgrade Project enters implementation phase": {
+     "asked": 17,
+     "low": 17
+    },
+    "ZCode, the GLM coding agent, silently uploads your Git history": {
+     "asked": 14,
+     "info": 13,
+     "medium": 1
+    },
+    "AI bots \"Timmy,\" \"Ren,\" and \"Jackie\" are flooding social media with slop": {
+     "asked": 16,
+     "info": 16
+    },
+    "Flash floods can strike without warning — this new technology could change that": {
+     "asked": 17,
+     "info": 17
+    },
+    "Warren Buffett Steps Down as Berkshire Chairman, Names Son to Replace Him": {
+     "asked": 20,
+     "info": 19,
+     "low": 1
+    },
+    "Best Gifts for Mom (2026): E-Readers, Digital Wall Calendar, Smart Bird Feeders": {
+     "asked": 18,
+     "info": 18
+    },
+    "Submit Your Questions: Why Is Silicon Valley Still a Boy's Club?": {
+     "asked": 22,
+     "info": 22
+    },
+    "He Won the Nobel Prize for Protein Design. Now He Uses AI to Create Molecules Not Found in Nature": {
+     "asked": 23,
+     "info": 23
+    },
+    "The Leftist Split Over AI Doom": {
+     "asked": 16,
+     "info": 16
+    },
+    "Mophie’s Extendable MagSafe 3-in-1 Charging Stand Is 50 Percent Off": {
+     "asked": 17,
+     "info": 17
+    },
+    "The Download: AI’s extinction risk and bioweapons threat": {
+     "asked": 18,
+     "info": 18
+    },
+    "Could AI really kill us all? Your questions, answered.": {
+     "asked": 22,
+     "info": 22
+    },
+    "I don't like passkeys": {
+     "asked": 22,
+     "info": 22
+    },
+    "Bend 2 and the Vibe-Coding Trap": {
+     "asked": 17,
+     "info": 17
+    },
+    "Cekura (YC F24) Is Hiring": {
+     "asked": 21,
+     "info": 21
+    },
+    "LLMs respond differently to harmful prompts when AI watermarking is used": {
+     "asked": 8,
+     "info": 8
+    },
+    "Nonprofit that tracks meteors taken down by \"critical blow\" from a cyberattack": {
+     "asked": 22,
+     "medium": 22
+    },
+    "Google is helping write AI chatbot safety laws — while pushing for loopholes - npr.org": {
+     "asked": 16,
+     "info": 16
+    },
+    "Exclusive | Hackers Used Anthropic’s Claude to Break Into OpenAI - WSJ": {
+     "asked": 16,
+     "medium": 7,
+     "high": 9
+    },
+    "EXCLUSIVE: Anthropic quietly sets up biology lab as it ramps AI drug program - Reuters": {
+     "asked": 18,
+     "info": 17,
+     "low": 1
+    },
+    "OpenAI ‘ethically hacked’ with help of Anthropic’s Claude chatbot - theguardian.com": {
+     "asked": 19,
+     "info": 19
+    },
+    "Building the materials foundation for AI": {
+     "asked": 20,
+     "info": 20
+    },
+    "Roundtables: Could AI really kill us all?": {
+     "asked": 23,
+     "info": 23
+    },
+    "What’s at stake in AI’s trillion-dollar gamble": {
+     "asked": 18,
+     "info": 18
+    },
+    "The AI industry has taken a doomer turn. What now?": {
+     "asked": 16,
+     "info": 16
+    },
+    "Putin targets Nestle's Russian business as Kremlin tightens grip on Western assets": {
+     "asked": 15,
+     "medium": 9,
+     "high": 6
+    },
+    "The US Army doesn't want its soldiers trying to figure out new tech right before heading into combat training": {
+     "asked": 25,
+     "info": 24,
+     "low": 1
+    },
+    "Warren Buffett steps down as chairman of Berkshire Hathaway: 'Father Time always wins'": {
+     "asked": 15,
+     "info": 15
+    },
+    "Howard Buffett to succeed father Warren as Berkshire Hathaway chair": {
+     "asked": 22,
+     "info": 15,
+     "low": 7
+    },
+    "Meta's personal AI agent Muse soars to the top of the App Store": {
+     "asked": 21,
+     "info": 21
+    },
+    "We're told Gen Z is redefining adulthood. Sometimes I think we just can't afford the old definition.": {
+     "asked": 18,
+     "info": 18
+    },
+    "IRS tax debt agreements have plummeted: 'I've never seen a number that low,' taxpayer advocate says": {
+     "asked": 23,
+     "info": 23
+    },
+    "The 20 best airlines in the world, ranked by passengers": {
+     "asked": 16,
+     "info": 16
+    },
+    "Wall Street is betting Trump backs down on Iran — but what if the ‘TACO’ trade fails this time? - MarketWatch": {
+     "asked": 16,
+     "info": 15,
+     "medium": 1
+    },
+    "Wear the bright outfit. This shoe founder says standing out helped her succeed.": {
+     "asked": 18,
+     "info": 18
+    },
+    "Russian ESPO oil price exceeds $120 per barrel, traders say and data shows - Reuters": {
+     "asked": 17,
+     "medium": 17
+    },
+    "Saudi Arabia Has Another Option to Get Its Oil Out - WSJ": {
+     "asked": 18,
+     "info": 13,
+     "medium": 5
+    },
+    "Gold scales one-week high as crude prices ease - Reuters": {
+     "asked": 19,
+     "info": 6,
+     "low": 12,
+     "medium": 1
+    },
+    "Current price of oil as of Sept. 18, 2026 - Fortune": {
+     "asked": 17,
+     "info": 17
+    },
+    "Is Freeport McMoRan (FCX) Still Undervalued After Copper Price Swings? - simplywall.st": {
+     "asked": 14,
+     "info": 14
+    },
+    "Silver price today, Friday, September 18, 2026: Silver prices recover quickly, hitting weekly high today - Yahoo Finance": {
+     "asked": 19,
+     "info": 19
+    },
+    "Delta Resources to Attend 2026 Precious Metals Summit, Beaver Creek, Colorado - TMX Newsfile": {
+     "asked": 22,
+     "info": 22
+    },
+    "Oil prices fall for third day on Saudi Arabia supply hopes; U.S. crude briefly dips below $100 - CNBC": {
+     "asked": 20,
+     "medium": 20
+    },
+    "Iran-related Designations; Cuba Designations; Belarus-related Designations Removals - Office of Foreign Assets Control (.gov)": {
+     "asked": 15,
+     "high": 15
+    },
+    "Operation Economic Outcast Disrupts Digital Asset Exchange Enabling the Iranian Regime - U.S. Department of the Treasury (.gov)": {
+     "asked": 14,
+     "high": 14
+    },
+    "- caia.treasury.gov": {
+     "asked": 20,
+     "info": 20
+    },
+    "New UN system platform puts millions of data points at users’ fingertips, says Guterres": {
+     "asked": 13,
+     "info": 12,
+     "low": 1
+    },
+    "World News in Brief: Winter aid for Gaza, West Bank; Haiti food production; migrant deaths at sea; human rights funding": {
+     "asked": 19,
+     "low": 19
+    },
+    "Gender equality woefully off track, new UN report reveals": {
+     "asked": 22,
+     "info": 18,
+     "low": 4
+    },
+    "UN fact-finding mission on Iran focuses on plight of civilians": {
+     "asked": 15,
+     "low": 14,
+     "medium": 1
+    },
+    "Troops foil attacks in Borno, kill four terrorists": {
+     "asked": 22,
+     "high": 22
+    },
+    "Protests Rock Minna Over Deaths Of 37 Suspected Illegal Miners In NSCDC Custody": {
+     "asked": 14,
+     "high": 14
+    },
+    "As Iran war grinds on, Trump to face skeptical world leaders at UN": {
+     "asked": 21,
+     "medium": 21
+    },
+    "Stray bullet hits vendor as police disperse protest on Miner’s death": {
+     "asked": 18,
+     "medium": 18
+    },
+    "Nigeria forces open fire at protest over deaths of detained miners - Reuters": {
+     "asked": 22,
+     "high": 22
+    },
+    "Gov Bago declares 24-hour curfew following unrest over miners’ deaths": {
+     "asked": 19,
+     "high": 17,
+     "medium": 2
+    },
+    "Niger Detention Deaths: Gov Bago Declares 24-Hour Curfew In Minna Following Unrest": {
+     "asked": 20,
+     "high": 20
+    },
+    "UN chief calls for accountability for states fuelling Sudan’s war": {
+     "asked": 16,
+     "medium": 14,
+     "low": 2
+    },
+    "DRC opposition condemns violence at protests over constitutional changes": {
+     "asked": 17,
+     "medium": 17
+    },
+    "Ebola outbreak slows in parts of DR Congo but crisis remains severe": {
+     "asked": 21,
+     "high": 21
+    },
+    "Dozens of suspected illegal miners die in Nigerian custody": {
+     "asked": 13,
+     "high": 13
+    },
+    "Russia holds nationwide Duma elections as war in Ukraine reshapes vote": {
+     "asked": 16,
+     "medium": 13,
+     "low": 3
+    },
+    "Fighting Chavismo’s New “Fact-Checking” Sites": {
+     "asked": 21,
+     "info": 21
+    },
+    "India says new US tariffs over Russian oil could hit ties, vows to protect energy security - Reuters": {
+     "asked": 19,
+     "high": 19
+    },
+    "Exxon advances talks to return to Venezuela's Orinoco Belt, sources say - Reuters": {
+     "asked": 19,
+     "medium": 11,
+     "low": 8
+    },
+    "ISU, NuCube Energy announce site for new campus nuclear reactor - Idaho State Journal": {
+     "asked": 15,
+     "info": 7,
+     "low": 8
+    },
+    "IEA chief says electrification remains the way forward despite AI investment jitters - Reuters": {
+     "asked": 17,
+     "info": 17
+    },
+    "Russian Occupation Update, September 17, 2026 - Institute for the Study of War": {
+     "asked": 13,
+     "medium": 12,
+     "info": 1
+    },
+    "Iran Update, September 16, 2026 - Institute for the Study of War": {
+     "asked": 19,
+     "info": 10,
+     "medium": 9
+    },
+    "Russian Offensive Campaign Assessment, September 16, 2026 - Institute for the Study of War": {
+     "asked": 20,
+     "info": 8,
+     "medium": 12
+    },
+    "The Russian Military Campaign Against Europe: Defining the Threat - Institute for the Study of War": {
+     "asked": 20,
+     "info": 15,
+     "medium": 5
+    },
+    "What the BRICS Summit Meant for Brazil": {
+     "asked": 24,
+     "info": 22,
+     "low": 2
+    },
+    "An Army General Talks Fusing Sensors and Shooters on the Eastern Flank": {
+     "asked": 18,
+     "medium": 10,
+     "info": 6,
+     "low": 2
+    },
+    "Bilfinger Shares Fall 20% on Lowered Outlook, Job Cuts - WSJ": {
+     "asked": 17,
+     "low": 7,
+     "medium": 9,
+     "info": 1
+    },
+    "Tech Companies That Have Made Layoffs from 2022 to 2026 (Updated List) - tech.co": {
+     "asked": 18,
+     "info": 18
+    },
+    "Oracle to lay off 359 Washington workers, totaling 834 in 2026 - king5.com": {
+     "asked": 21,
+     "info": 15,
+     "low": 6
+    },
+    "Fierce Healthcare Layoff Tracker—Dartmouth Health cuts 124; University of Vermont Health restructures 199 - Fierce Healthcare": {
+     "asked": 16,
+     "info": 14,
+     "low": 2
+    },
+    "National Bank Regulator Begins Round of Layoffs, Union Says (1) - Bloomberg Law News": {
+     "asked": 17,
+     "low": 16,
+     "info": 1
+    },
+    "The next Iran strike: How legal, economic, and diplomatic pressures are priming the region for war - Bulletin of the Atomic Scientists": {
+     "asked": 14,
+     "medium": 7,
+     "info": 7
+    },
+    "Navy Awards $200M for Blackbeard Hypersonic Missile for Carrier Fighters - USNI News": {
+     "asked": 15,
+     "medium": 7,
+     "high": 8
+    },
+    "Here’s why China acknowledged its new missile silos in a documentary - Bulletin of the Atomic Scientists": {
+     "asked": 17,
+     "info": 12,
+     "medium": 5
+    },
+    "Air Force to create new career field to defend bases from drones and missiles": {
+     "asked": 18,
+     "medium": 18
+    },
+    "US munition stockpile ‘especially problematic’ in a war with China, report warns": {
+     "asked": 17,
+     "medium": 17
+    }
+   }
+  },
+  "relay-current": {
+   "path": "relay",
+   "model": "deepseek/deepseek-v4.1-flash",
+   "promptSha": "9b13ab92056bf3ca",
+   "chunk": 5,
+   "passes": 40,
+   "seed": 1,
+   "rowsSha": "7674c400365bdfd0",
+   "completions": 1880,
+   "usd": 0.2288,
+   "note": "#11432: critical needs the event to have happened; warnings, threats, vows and predictions are high (captured 2026-11-27)",
+   "capturedAt": "2026-11-27T03:24:53.236Z",
+   "falseCriticalByPass": [
+    3,
+    4,
+    3,
+    3,
+    3,
+    3,
+    4,
+    5,
+    3,
+    4,
+    3,
+    4,
+    5,
+    3,
+    2,
+    4,
+    3,
+    4,
+    3,
+    4,
+    4,
+    4,
+    5,
+    5,
+    3,
+    3,
+    5,
+    5,
+    4,
+    2,
+    4,
+    3,
+    4,
+    2,
+    5,
+    3,
+    3,
+    4,
+    4,
+    3
+   ],
+   "labels": {
+    "Iran’s seven conditions basis for reopening Strait of Hormuz, negotiations: Araghchi": {
+     "asked": 40,
+     "high": 40
+    },
+    "Iran says it will close Strait of Hormuz if attacked": {
+     "asked": 40,
+     "high": 40
+    },
+    "Araghchi: Hormuz will stay closed to US-linked ships until sanctions are lifted": {
+     "asked": 40,
+     "high": 40
+    },
+    "Russia warns NATO of nuclear response if Ukraine strikes deep inside Russia": {
+     "asked": 40,
+     "high": 40
+    },
+    "Hamas lists conditions for a ceasefire deal with Israel": {
+     "asked": 40,
+     "high": 40
+    },
+    "Israel says ceasefire with Hezbollah could collapse within days": {
+     "asked": 40,
+     "high": 40
+    },
+    "North Korea threatens to conduct seventh nuclear test": {
+     "asked": 40,
+     "high": 40
+    },
+    "Houthi leader vows to block Bab el-Mandeb to US ships": {
+     "asked": 40,
+     "high": 40
+    },
+    "China warns it will blockade Taiwan if independence is declared": {
+     "asked": 40,
+     "high": 40
+    },
+    "Iran threatens to mine Strait of Hormuz": {
+     "asked": 40,
+     "high": 40
+    },
+    "Russia sets conditions for Black Sea shipping corridor to reopen": {
+     "asked": 40,
+     "high": 40
+    },
+    "Iran closes Strait of Hormuz to all tanker traffic": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Israel and Hamas agree ceasefire, hostages to be freed": {
+     "asked": 40,
+     "critical": 40
+    },
+    "US strikes Iranian nuclear sites at Fordow and Natanz": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Military seizes power in Niger, president detained": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Houthis sink tanker in Red Sea, 20 crew killed": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Russia-Ukraine ceasefire collapses as Moscow resumes offensive": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Pentagon says US jets struck militia bases in Iraq and Syria": {
+     "asked": 40,
+     "critical": 39,
+     "high": 1
+    },
+    "Ukraine says its drones hit Russian nuclear power plant": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Israel says it killed Hezbollah chief in Beirut strike": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Houthis say they fired missiles at US carrier in Red Sea": {
+     "asked": 40,
+     "high": 13,
+     "critical": 27
+    },
+    "UN says 50 killed in RSF attack on Darfur displacement camp": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Egypt says Suez Canal closed to traffic after attack on convoy": {
+     "asked": 40,
+     "critical": 40
+    },
+    "UAE's ADNOC L&S says one crew member missing after attack on its vessel in Hormuz - Reuters": {
+     "asked": 40,
+     "critical": 28,
+     "high": 12
+    },
+    "ADNOC Says One of Its Vessels Attacked in Strait of Hormuz - - WANA News Agency": {
+     "asked": 40,
+     "critical": 40
+    },
+    "ADNOC Ship Attacked in Hormuz as Maritime Security Risks Rise": {
+     "asked": 40,
+     "critical": 27,
+     "high": 13
+    },
+    "Middle East War: Iran attacks Bahrain, ADNOC vessel hit in Hormuz, Kuwait drone threats keep Gulf on high alert as US hits Iran’s Qeshm": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Iran says two oil tankers hit by mines in Strait of Hormuz": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Two oil tankers 'disabled' by explosions in Strait of Hormuz, IRGC says - Reuters": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Four tankers struck by explosions in Strait of Hormuz, Iran says - Reuters": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Iran says tanker carrying LNG hit mine, suffered explosion in Hormuz - Reuters": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Crew abandons gas tanker after being hit by projectile while sailing through Strait of Hormuz - New York Post": {
+     "asked": 40,
+     "critical": 39,
+     "high": 1
+    },
+    "Gas tanker in Strait of Hormuz set ablaze - NBC News": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Tanker struck by unknown projectile in Strait of Hormuz: UK agency - Anadolu Ajansı": {
+     "asked": 40,
+     "critical": 39,
+     "high": 1
+    },
+    "Oil Prices Jump 6% as Iran Sets UAE Oil Port Ablaze, Strikes Vessels in Strait of Hormuz - EnergyNow.com": {
+     "asked": 40,
+     "critical": 40
+    },
+    "U.S. Strikes Iranian Launchers Near Strait of Hormuz, Sending Oil Prices Higher - EnergyNow.com": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Iran Targets Maritime Navigation Systems on Omani Island in Strait of Hormuz - IranWire": {
+     "asked": 40,
+     "critical": 6,
+     "high": 34
+    },
+    "UN says 25 seafarers killed in, around Hormuz since US-Israel war on Iran": {
+     "asked": 40,
+     "critical": 36,
+     "high": 4
+    },
+    "Three Tankers Attacked in Two Days in Strait of Hormuz Crisis - The Maritime Executive": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Strait of Hormuz Watch: Negotiations Uncertain as Vessel Attacks Continue - IndustryWeek": {
+     "asked": 40,
+     "medium": 20,
+     "high": 20
+    },
+    "Barnea: Blockade in Strait of Hormuz best current option to stop nuclear weapons - The Jerusalem Post": {
+     "asked": 40,
+     "high": 37,
+     "info": 2,
+     "medium": 1
+    },
+    "Trump faces escalating oil crisis over Iran blocking Strait of Hormuz - ABC News - Breaking News, Latest News and Videos": {
+     "asked": 40,
+     "critical": 40
+    },
+    "Iran Warns Strait of Hormuz Will ‘Never Return’ to Pre-War Status After US-Israel War, Insists There Are - Benzinga": {
+     "asked": 40,
+     "high": 40
+    },
+    "Mohsen Rezaei Says Iran Won’t Reopen Strait of Hormuz Until US Meets Seven Conditions: 22 outlets compared - NewsCord": {
+     "asked": 40,
+     "high": 40
+    },
+    "Iran Says Deal on Strait of Hormuz is Close But Will Not Open the Waterway by Itself - EnergyNow.com": {
+     "asked": 40,
+     "high": 40
+    },
+    "Dramatic moment oil tanker erupts into huge inferno in Strait of Hormuz": {
+     "asked": 40,
+     "critical": 32,
+     "high": 8
+    },
+    "IAEA raises alarm over Iran's nuclear program as tanker hits mine in Strait of Hormuz - Ynetnews": {
+     "asked": 40,
+     "high": 31,
+     "critical": 9
+    },
+    "India vows to protect energy security after new US tariffs over Russian oil": {
+     "asked": 18,
+     "high": 18
+    },
+    "India's Tata Group firms shed $3.2 billion in market value amid holding company rift - Reuters": {
+     "asked": 12,
+     "medium": 11,
+     "low": 1
+    },
+    "Iran says it struck oil tanker in Strait of Hormuz": {
+     "asked": 17,
+     "critical": 17
+    },
+    "After fallout with Chinese parent, chipmaker Nexperia partners with India's Tata - Reuters": {
+     "asked": 14,
+     "medium": 5,
+     "low": 9
+    },
+    "Why Is Thailand Not Prosecuting Members of the Mauerberger Network?": {
+     "asked": 16,
+     "info": 12,
+     "medium": 4
+    },
+    "Shark kills swimmer off beach in Western Australia: Police": {
+     "asked": 16,
+     "info": 14,
+     "high": 1,
+     "low": 1
+    },
+    "Applied Materials to invest $5 billion in India as Modi's flagship chip event kicks off - Reuters": {
+     "asked": 18,
+     "low": 18
+    },
+    "India's Tata reappoints chairman, backs listing in rift with controlling charity - Reuters": {
+     "asked": 15,
+     "low": 12,
+     "info": 3
+    },
+    "Erdogan to sidestep Turkey’s constitutional term limits in early 2028 vote, adviser says": {
+     "asked": 17,
+     "low": 8,
+     "medium": 9
+    },
+    "Apple Pay eyes India rollout with Axis Bank, sources say - Reuters": {
+     "asked": 19,
+     "info": 14,
+     "low": 5
+    },
+    "EV maker BYD recalls more than 180,000 cars in China over brake pedal risk": {
+     "asked": 13,
+     "info": 3,
+     "low": 10
+    },
+    "Three dead and eight injured in Philippines school shooting": {
+     "asked": 18,
+     "high": 18
+    },
+    "Public servants need to shift from doing things ‘for’ Singaporeans to ‘with’ them: Chan Chun Sing": {
+     "asked": 16,
+     "info": 16
+    },
+    "Singapore brothers behind William’s Auto get jail for tax evasion and money laundering": {
+     "asked": 19,
+     "low": 5,
+     "info": 14
+    },
+    "Russians begin 3 days of voting in a parliamentary election set to cement the Kremlin's power - AP News": {
+     "asked": 20,
+     "low": 20
+    },
+    "As Iran war grinds on, Trump to face skeptical world leaders at UN - Reuters": {
+     "asked": 22,
+     "medium": 22
+    },
+    "UN experts say grounds to believe US committed war crimes in Iran strikes": {
+     "asked": 20,
+     "high": 20
+    },
+    "Empty podiums, prizes for e-voting, no opposition: Russians head to the polls amid intensifying war in Ukraine - CNN": {
+     "asked": 13,
+     "medium": 9,
+     "low": 4
+    },
+    "Three dead, eight injured in Philippines school shooting": {
+     "asked": 19,
+     "high": 19
+    },
+    "Carney embraces EU associate membership proposal as Trump pushes Canada closer to Europe - AP News": {
+     "asked": 16,
+     "low": 15,
+     "medium": 1
+    },
+    "US stocks rally to their best day in 6 weeks after oil prices and bond yields ease - AP News": {
+     "asked": 20,
+     "low": 4,
+     "medium": 13,
+     "info": 3
+    },
+    "US approves potential $24 billion sale of F-35 jets to Saudi Arabia - CNN": {
+     "asked": 17,
+     "high": 17
+    },
+    "Almost 50 dead in Nigeria after drinking alcohol suspected to contain methanol": {
+     "asked": 18,
+     "high": 18
+    },
+    "Ninth woman's body found as South African police investigate string of deaths": {
+     "asked": 18,
+     "medium": 8,
+     "high": 9,
+     "info": 1
+    },
+    "‘We demand the truth’: Olga Tokarczuk and JM Coetzee lead calls for proof of life of disappeared Eritrean writers": {
+     "asked": 19,
+     "low": 19
+    },
+    "Flights briefly paused at DC airport as unauthorized drone appears over runway - CNN": {
+     "asked": 15,
+     "medium": 15
+    },
+    "Canada welcomes EU proposal to become 'associate member'": {
+     "asked": 18,
+     "low": 18
+    },
+    "OpenAI flags concerning new AI behavior and vows to track it more closely - AP News": {
+     "asked": 14,
+     "info": 13,
+     "medium": 1
+    },
+    "Congress has failed to regulate AI for years – and there’s little sign that’s changing - CNN": {
+     "asked": 17,
+     "info": 17
+    },
+    "Why are world leaders at the UN next week and what will they talk about? - Reuters": {
+     "asked": 19,
+     "info": 14,
+     "low": 5
+    },
+    "The lost Corsair: The search for a Korean War legend and its missing pilot - CNN": {
+     "asked": 17,
+     "info": 17
+    },
+    "U.N. experts say U.S. may have committed war crimes with 2 Iran strikes": {
+     "asked": 18,
+     "high": 18
+    },
+    "Iran live updates: US rejects UN report on possible war crimes in Minab school strike": {
+     "asked": 20,
+     "high": 19,
+     "medium": 1
+    },
+    "Rubio takes behind-the-scenes role on Iran war while keeping his options open for the future": {
+     "asked": 17,
+     "info": 16,
+     "medium": 1
+    },
+    "Hyundai Motor CEO warns of Chinese vehicle surge in the US without guardrails - Reuters": {
+     "asked": 20,
+     "info": 9,
+     "medium": 7,
+     "low": 4
+    },
+    "US government website used AI search tool from China that FBI said copied Anthropic - Reuters": {
+     "asked": 18,
+     "medium": 12,
+     "info": 5,
+     "low": 1
+    },
+    "White House withdraws Trump’s nominee to lead ICE": {
+     "asked": 17,
+     "low": 17
+    },
+    "Red and Blue America Have Found Something to Agree On: Flock Cameras Must Go": {
+     "asked": 22,
+     "info": 20,
+     "low": 2
+    },
+    "A DHS email raises new questions about the Trump administration's election plans": {
+     "asked": 16,
+     "medium": 6,
+     "info": 10
+    },
+    "The FAA’s $875 Million Plan to Use AI to Ease Air-Traffic Woes": {
+     "asked": 14,
+     "info": 12,
+     "low": 2
+    },
+    "Farmer who voted for Trump says farmers are \"all just in survival mode\"": {
+     "asked": 14,
+     "info": 14
+    },
+    "Blanche warned of contempt risk in Epstein files case": {
+     "asked": 17,
+     "info": 16,
+     "medium": 1
+    },
+    "Exclusive: Scalise puts GOP high-water mark at 225 House seats": {
+     "asked": 19,
+     "info": 13,
+     "low": 6
+    },
+    "BYD, CATL, Xiaomi executives may join Xi's US visit, sources say - Reuters": {
+     "asked": 16,
+     "low": 16
+    },
+    "JD Vance faces test in White House meeting with Israel-backing radio host": {
+     "asked": 19,
+     "low": 18,
+     "info": 1
+    },
+    "Shark kills swimmer off Western Australian city beach": {
+     "asked": 19,
+     "info": 12,
+     "low": 6,
+     "medium": 1
+    },
+    "SK Hynix's Solidigm unit is weighing NAND memory chip factory in US, sources say - Reuters": {
+     "asked": 13,
+     "low": 13
+    },
+    "Google is helping write AI chatbot safety laws — while pushing for loopholes": {
+     "asked": 20,
+     "info": 20
+    },
+    "How important is AI to the stock market? Warnings bring new scrutiny": {
+     "asked": 25,
+     "info": 25
+    },
+    "Oil's shrug emoji era": {
+     "asked": 15,
+     "info": 15
+    },
+    "True or false: Trump's name is now on the Kennedy Center. The quiz has the answer": {
+     "asked": 19,
+     "info": 19
+    },
+    "UN mission says grounds to believe US committed war crimes in Iran": {
+     "asked": 23,
+     "high": 21,
+     "medium": 2
+    },
+    "Philippines: At least 2 students killed in school shooting": {
+     "asked": 13,
+     "high": 13
+    },
+    "Minst seks drept og mange såret i skoleskyting på Filippinene": {
+     "asked": 13,
+     "high": 13
+    },
+    "Trafikkulykke på Riksvei 4: En er kritisk skadet": {
+     "asked": 19,
+     "info": 18,
+     "low": 1
+    },
+    "French deficit widens, PM Lecornu delays hopes to reach 5% of GDP in 2027": {
+     "asked": 22,
+     "medium": 22
+    },
+    "Citizens' initiative demanding restrictions on data centers reaches 50,000 signatures": {
+     "asked": 14,
+     "low": 13,
+     "info": 1
+    },
+    "Varsler endringer i EØS-arbeidet": {
+     "asked": 18,
+     "low": 18
+    },
+    "Økning i minstepensjonen i dag": {
+     "asked": 19,
+     "info": 19
+    },
+    "Det Hvide Hus trækker nomineringen af ny ICE-chef tilbage": {
+     "asked": 18,
+     "low": 18
+    },
+    "Fire nye byer skal være værter for Royal Run": {
+     "asked": 15,
+     "info": 15
+    },
+    "Oprah Winfrey packs out business event on first ever visit to Finland": {
+     "asked": 15,
+     "info": 15
+    },
+    "Slut med Pisa-test hvert tredje år": {
+     "asked": 21,
+     "info": 21
+    },
+    "Politiet ophæver afspærring på Dag Hammarskjölds Allé i København": {
+     "asked": 16,
+     "info": 14,
+     "low": 2
+    },
+    "Minst tre drept i skoleskyting på Filippinene": {
+     "asked": 20,
+     "high": 20
+    },
+    "Finland set for weekend of sunny spells and scattered showers": {
+     "asked": 23,
+     "info": 23
+    },
+    "37 mistænkte for ulovlig minearbejde dør i Nigeria": {
+     "asked": 16,
+     "high": 16
+    },
+    "Finland has second-highest rate of work-related stress, depression in EU": {
+     "asked": 19,
+     "info": 19
+    },
+    "Frykter valgkaos i USA": {
+     "asked": 14,
+     "info": 12,
+     "medium": 2
+    },
+    "South Korea will not send military to support US war on Iran, defying Trump pressure": {
+     "asked": 20,
+     "high": 16,
+     "medium": 4
+    },
+    "Three dead in Philippines school shooting, including gunman": {
+     "asked": 18,
+     "high": 18
+    },
+    "Philippines school shooting: At least three killed including gunman": {
+     "asked": 16,
+     "high": 16
+    },
+    "UN investigators allege US war crimes in Iran, gross rights violations by Tehran - Al Arabiya English": {
+     "asked": 26,
+     "high": 16,
+     "medium": 10
+    },
+    "‘I spend a bagful of money and don’t fill a bag’: the energy crisis hits Bangladesh": {
+     "asked": 16,
+     "medium": 15,
+     "info": 1
+    },
+    "Manus on Markets: Yen drops after Japan raises interest rates to 31-year high": {
+     "asked": 19,
+     "medium": 19
+    },
+    "Trump administration again denies entry visas to Palestinian officials ahead of UN general assembly": {
+     "asked": 19,
+     "medium": 16,
+     "high": 3
+    },
+    "Verified video shows wreckage of Saudi fighter jet shot down over Yemen": {
+     "asked": 22,
+     "high": 19,
+     "critical": 3
+    },
+    "Video: Influencers accused of exploiting Nepal flood survivors": {
+     "asked": 17,
+     "low": 1,
+     "info": 14,
+     "medium": 2
+    },
+    "News quiz of the week: September 18, 2026": {
+     "asked": 8,
+     "info": 8
+    },
+    "Israel would rather not watch NAZA": {
+     "asked": 12,
+     "info": 12
+    },
+    "‘Just ask Grok’: How ISIL is using Big Tech’s AI to build bombs": {
+     "asked": 24,
+     "medium": 17,
+     "high": 7
+    },
+    "Guggenheim Abu Dhabi tickets go on sale ahead of grand opening": {
+     "asked": 19,
+     "info": 19
+    },
+    "Dubai Parks and Resorts theme parks to reopen after six-month closure": {
+     "asked": 18,
+     "info": 18
+    },
+    "Indonesia acquires first aircraft carrier amid military upgrade": {
+     "asked": 22,
+     "medium": 4,
+     "high": 18
+    },
+    "Trump weighs renewed major attacks on Iran: Report - Al Arabiya English": {
+     "asked": 23,
+     "high": 23
+    },
+    "‘Run! Get away!’: witnesses recount Israeli ‘double tap’ strike that killed child and medic in Gaza": {
+     "asked": 17,
+     "critical": 17
+    },
+    "Napster Is Back, and It Wants to Digitally Clone Teachers": {
+     "asked": 15,
+     "info": 15
+    },
+    "Waymo says Singapore will be its next international robotaxi city": {
+     "asked": 19,
+     "info": 8,
+     "low": 11
+    },
+    "Best Open Earbuds (2026): Shokz, Bose, Soundcore, and More": {
+     "asked": 16,
+     "info": 16
+    },
+    "Why AI Isn’t Likely to Wipe Out Humanity With Bioweapons": {
+     "asked": 24,
+     "info": 24
+    },
+    "Zoro Coupon Codes: 20% Off September 2026": {
+     "asked": 18,
+     "info": 18
+    },
+    "NordVPN Coupons: 75% Off, Plus 3 Months Free in September 2026": {
+     "asked": 18,
+     "info": 18
+    },
+    "The specter of AI-enabled bioweapons is a wake-up call for biotech": {
+     "asked": 15,
+     "info": 15
+    },
+    "Jemalloc 5.4.0": {
+     "asked": 19,
+     "info": 19
+    },
+    "The scourge of x86 emulation": {
+     "asked": 18,
+     "info": 18
+    },
+    "Pre-Greek: The lost language hidden within Ancient Greek": {
+     "asked": 20,
+     "info": 20
+    },
+    "Shapelearn Qwen 3.8 27B (13.1 GB VRAM)": {
+     "asked": 18,
+     "info": 18
+    },
+    "The Download: mice with part-human brains and climate tech innovators": {
+     "asked": 20,
+     "info": 20
+    },
+    "Meet the innovators under 35 shaping climate tech": {
+     "asked": 25,
+     "info": 25
+    },
+    "The AI Superintelligence Slowdown": {
+     "asked": 15,
+     "info": 15
+    },
+    "Google is helping write AI chatbot safety laws — while pushing for loopholes - NPR": {
+     "asked": 14,
+     "info": 14
+    },
+    "OpenAI breached by researchers using Anthropic models - Financial Times": {
+     "asked": 18,
+     "medium": 18
+    },
+    "Regularized Emphatic Temporal-Difference Learning: Stability under Constant Stepsizes": {
+     "asked": 16,
+     "info": 16
+    },
+    "BioPhys-Bridge: A Benchmark for Interdisciplinary Scientific Reasoning in Physics-Grounded Biological Research": {
+     "asked": 19,
+     "info": 19
+    },
+    "What Do We Expect from LLMs? Mapping the Design of LLM Benchmarks": {
+     "asked": 22,
+     "info": 22
+    },
+    "Position: It is Time to Virtualize Foundation Models with a Self-evolving Operating System Layer": {
+     "asked": 20,
+     "info": 20
+    },
+    "What Do Current Systematic Generalization Tasks Miss? A Reasoning-Centered Analysis": {
+     "asked": 17,
+     "info": 17
+    },
+    "Measurements for understanding the pace of AI development inside frontier labs - Anthropic": {
+     "asked": 18,
+     "info": 18
+    },
+    "Anthropic says Claude now leads a quarter of work building its next AI models - Reuters": {
+     "asked": 12,
+     "info": 12
+    },
+    "How Cooley is accelerating IPO work with ChatGPT - OpenAI": {
+     "asked": 20,
+     "info": 20
+    },
+    "Claude Code relaunches Projects to manage multiple AI agents in the cloud": {
+     "asked": 18,
+     "info": 18
+    },
+    "Microsoft AI CEO says AI threats are real, and Anthropic is making it worse": {
+     "asked": 25,
+     "info": 25
+    },
+    "AI is feared globally as the destroyer of jobs": {
+     "asked": 17,
+     "info": 17
+    },
+    "Inside the suddenly explosive world of AI safety": {
+     "asked": 15,
+     "info": 15
+    },
+    "Bank of Japan raises interest rates to 31-year high, flags concerns over inflation": {
+     "asked": 14,
+     "medium": 14
+    },
+    "Rising oil, rates and yields brew up stagflation cocktail for markets - Reuters": {
+     "asked": 20,
+     "medium": 19,
+     "info": 1
+    },
+    "Yen sinks after BoJ raises rates to highest level since 1995": {
+     "asked": 16,
+     "medium": 16
+    },
+    "Oil prices fall for third day on Saudi Arabia supply hopes; U.S. crude briefly dips below $100": {
+     "asked": 18,
+     "medium": 18
+    },
+    "Trump administration advances $24.3 billion fighter jet deal to Saudi Arabia as Houthis escalate attacks": {
+     "asked": 17,
+     "high": 17
+    },
+    "OpenAI breached by researchers using Anthropic models": {
+     "asked": 13,
+     "low": 2,
+     "medium": 9,
+     "info": 2
+    },
+    "Turkey steps in to support markets after fund liquidity crunch sparks selloff - Reuters": {
+     "asked": 24,
+     "high": 1,
+     "medium": 23
+    },
+    "Major airlines cut flights as higher jet fuel prices hit carriers": {
+     "asked": 20,
+     "medium": 20
+    },
+    "Tech power players land seat at table for high-stakes dinner with Trump, Xi": {
+     "asked": 18,
+     "low": 15,
+     "medium": 1,
+     "info": 2
+    },
+    "Tech leads Wall St to higher close as oil eases, Treasury yields dip - Reuters": {
+     "asked": 19,
+     "info": 7,
+     "low": 10,
+     "medium": 2
+    },
+    "Liechtenstein royals threaten lawsuit over dynasty reforms": {
+     "asked": 19,
+     "info": 16,
+     "low": 3
+    },
+    "The 10-year Treasury is having its worst run in over 100 years. Why investors are buying bonds anyway. - MarketWatch": {
+     "asked": 20,
+     "info": 19,
+     "medium": 1
+    },
+    "Anthropic and OpenAI hunt for smaller data center deals, sources tell CNBC, in race to deploy AI capacity": {
+     "asked": 20,
+     "info": 17,
+     "low": 3
+    },
+    "America's job and housing markets are stuck. What if that's the new normal?": {
+     "asked": 20,
+     "info": 20
+    },
+    "I always wanted grandchildren. AI and an uncertain future have complicated that dream.": {
+     "asked": 18,
+     "info": 18
+    },
+    "I'm job searching in my 50s after a 17-year career break. I feel like I'm sending my résumé into a black hole.": {
+     "asked": 16,
+     "info": 16
+    },
+    "I moved from Indiana to New Mexico for a sunnier life. My social life, mood, and physical activity level have gotten a major uplift.": {
+     "asked": 19,
+     "info": 19
+    },
+    "Why 'The Diary of a CEO' star Steven Bartlett says he can't do his job without X — and isn't a Mark Zuckerberg fan": {
+     "asked": 19,
+     "info": 19
+    },
+    "Joining the dots between big AI": {
+     "asked": 25,
+     "info": 25
+    },
+    "INSIGHT: Oil price pullback masks lingering physical crude scarcity - ICIS": {
+     "asked": 18,
+     "info": 15,
+     "medium": 3
+    },
+    "Oil prices fall as Saudi supply hopes outweigh fresh Houthi strikes - CNBC": {
+     "asked": 18,
+     "medium": 18
+    },
+    "Gold and Silver Price Forecast: Oil Pullback Eases Inflation Fears - FXEmpire": {
+     "asked": 13,
+     "info": 13
+    },
+    "Average heating oil price in Maine up 74% from a year ago, state agency says - WMTW": {
+     "asked": 19,
+     "low": 15,
+     "info": 4
+    },
+    "Silver price today, Thursday, September 17, 2026: Silver prices stay steady post Fed decision - finance.yahoo.com": {
+     "asked": 16,
+     "info": 15,
+     "low": 1
+    },
+    "Denouement to the Latest Oil Price Scare - Robin J Brooks | Substack": {
+     "asked": 15,
+     "info": 15
+    },
+    "NYMEX: Precious Metals Prices Up - 17-09-26 - Armenpress": {
+     "asked": 22,
+     "info": 22
+    },
+    "Silver Price Forecast: Bulls threaten bearish setup after Fed hike - FXStreet": {
+     "asked": 16,
+     "info": 16
+    },
+    "Gold price rebounds above $4,340 as lower oil eases rate pressure - Kitco PM Report - KITCO": {
+     "asked": 18,
+     "info": 8,
+     "medium": 6,
+     "low": 4
+    },
+    "Interagency Effort Enables Airlift Support to Kauai Following Hurricane": {
+     "asked": 11,
+     "medium": 3,
+     "low": 8
+    },
+    "NORAD F-16s Deploy to High North Under Operation Arctic Vanguard": {
+     "asked": 19,
+     "high": 7,
+     "medium": 12
+    },
+    "Department Releases Guidance on Implementing Testosterone Deficiency Screenings for Male Service Members": {
+     "asked": 17,
+     "info": 17
+    },
+    "Federal Reserve issues FOMC statement": {
+     "asked": 15,
+     "low": 7,
+     "info": 1,
+     "medium": 7
+    },
+    "Guterres calls for action as hate speech spreads across new platforms online": {
+     "asked": 24,
+     "low": 18,
+     "info": 6
+    },
+    "RESTORING AMERICAN SALTWATER ANGLING AND RECREATION": {
+     "asked": 19,
+     "info": 19
+    },
+    "Reinvigorating America’s Hunting Heritage": {
+     "asked": 22,
+     "info": 22
+    },
+    "SEC Issues “Innovation Exemption” to Facilitate the Trading of Tokenized NMS Stock and Request for Comment": {
+     "asked": 24,
+     "low": 15,
+     "info": 8,
+     "medium": 1
+    },
+    "Montenegro - U.S. Department of State (.gov)": {
+     "asked": 23,
+     "info": 23
+    },
+    "- webgels.state.gov": {
+     "asked": 22,
+     "info": 22
+    },
+    "Withdrawals Sent to the Senate": {
+     "asked": 17,
+     "info": 17
+    },
+    "Macau - U.S. Department of State (.gov)": {
+     "asked": 18,
+     "info": 18
+    },
+    "Presidential Message on National Hispanic Heritage Month": {
+     "asked": 13,
+     "info": 13
+    },
+    "Mitsubishi Electric CC-Link IE TSN Communication Protocol (Update A)": {
+     "asked": 19,
+     "info": 19
+    },
+    "Mitsubishi Electric GX Works3 and Motion Control Settings": {
+     "asked": 20,
+     "info": 20
+    },
+    "DRC: Opposition leaders condemn death of politician during 15 September protest": {
+     "asked": 13,
+     "medium": 12,
+     "high": 1
+    },
+    "At least 37 suspected illegal miners die in custody in central Nigeria": {
+     "asked": 16,
+     "high": 16
+    },
+    "Serial killer suspicions in South Africa": {
+     "asked": 19,
+     "info": 19
+    },
+    "DR Congo says Ebola outbreak has passed its peak": {
+     "asked": 14,
+     "medium": 12,
+     "low": 2
+    },
+    "Tigray: 20,000 university students relocated by conflict": {
+     "asked": 18,
+     "medium": 18
+    },
+    "Missile-shaped signs and Netanyahu masks as Israelis rally to protect October vote": {
+     "asked": 17,
+     "medium": 16,
+     "low": 1
+    },
+    "Protesters target OpenAI and Anthropic in San Francisco over AI safety fears": {
+     "asked": 20,
+     "medium": 15,
+     "low": 5
+    },
+    "US approves $414M uranium investment in Niger, two years after troops left - Al Jazeera": {
+     "asked": 15,
+     "medium": 5,
+     "high": 6,
+     "low": 4
+    },
+    "US seals big uranium investment in Niger, two years after troops left - Reuters": {
+     "asked": 17,
+     "medium": 14,
+     "low": 2,
+     "high": 1
+    },
+    "Zimbabwe farmers brace for El Niño by saving water": {
+     "asked": 14,
+     "low": 14
+    },
+    "South Africa's rand holds steady ahead of inflation data, expected rate hike - Reuters": {
+     "asked": 25,
+     "low": 24,
+     "medium": 1
+    },
+    "Au Maroc, l’héritage bénéfique de la crise de la BNDE": {
+     "asked": 22,
+     "info": 22
+    },
+    "Why Nigeria’s Soldiers Went to Libreville": {
+     "asked": 18,
+     "low": 6,
+     "medium": 5,
+     "info": 7
+    },
+    "Over 20 feared trapped in Taraba mining pit collapse": {
+     "asked": 20,
+     "high": 20
+    },
+    "Illegal Mining: Niger sets up panel to probe deaths of 37 detainees in NSCDC custody, commandant suspended": {
+     "asked": 15,
+     "high": 15
+    },
+    "Amnesty demands independent probe into deaths of miners in Niger": {
+     "asked": 14,
+     "medium": 13,
+     "high": 1
+    },
+    "Police order probe as 37 suspected illegal miners die in NSCDC custody": {
+     "asked": 17,
+     "high": 17
+    },
+    "Under pressure from Trump on cartels, Sheinbaum turns spotlight on US drug use": {
+     "asked": 19,
+     "medium": 11,
+     "low": 8
+    },
+    "UN Mission: Venezuela’s Repressive Apparatus Remains Intact": {
+     "asked": 20,
+     "medium": 18,
+     "low": 2
+    },
+    "Abinader announces the end of the blockade of Dominican products at the border; Haiti remains silent": {
+     "asked": 22,
+     "medium": 18,
+     "high": 2,
+     "low": 2
+    },
+    "Early voting begins in US midterms that could see Republicans lose control of Congress": {
+     "asked": 19,
+     "low": 19
+    },
+    "Fire damages 108 stalls in Acapulco’s Central Market": {
+     "asked": 14,
+     "high": 3,
+     "medium": 11
+    },
+    "As Puerto Vallarta grows, officials weigh crocodile relocation plan": {
+     "asked": 21,
+     "info": 21
+    },
+    "CFE’s ‘Project Oasis’ aims to bring solar power to an energy-challenged region of Baja California Sur": {
+     "asked": 19,
+     "info": 11,
+     "low": 8
+    },
+    "The Canada-EU partnership 'a classic win-win situation', economist says": {
+     "asked": 15,
+     "low": 14,
+     "info": 1
+    },
+    "Canada’s Carney embraces EU associate membership proposal": {
+     "asked": 20,
+     "low": 20
+    },
+    "Fear and broken families: Inside a Texas ICE detention centre": {
+     "asked": 19,
+     "medium": 12,
+     "info": 7
+    },
+    "A dog dressed as a taco stand wins Morelia’s pre-Grito Patriotic Pup Contest": {
+     "asked": 20,
+     "info": 20
+    },
+    "Los Mirlos – Song of the Day": {
+     "asked": 23,
+     "info": 23
+    },
+    "Rare Aztec manuscript returns to Mexico on loan after nearly two centuries in France": {
+     "asked": 20,
+     "info": 20
+    },
+    "Latin America: The Dangerous Revision of Historical Memory": {
+     "asked": 16,
+     "info": 16
+    },
+    "International News Briefs for Thursday, September 17, 2026": {
+     "asked": 17,
+     "info": 17
+    },
+    "Haiti - Leisure : Did you know ? #60": {
+     "asked": 24,
+     "info": 24
+    },
+    "Zapping Haiti of September 17, 2026": {
+     "asked": 18,
+     "info": 18
+    },
+    "Cuba: When an Everyday Activity Is No Longer Normal": {
+     "asked": 16,
+     "info": 16
+    },
+    "Haiti - Honduras : An ONI delegation presents DELIDOC's progress.": {
+     "asked": 21,
+     "info": 3,
+     "low": 18
+    },
+    "Exxon raises 2050 global emissions forecast, sees slower coal decline - Reuters": {
+     "asked": 20,
+     "info": 17,
+     "medium": 1,
+     "low": 2
+    },
+    "Energy disruption hits Bangladesh and Pakistan as Gulf crisis worsens - Reuters": {
+     "asked": 18,
+     "high": 11,
+     "medium": 7
+    },
+    "ISU ‘powering Idaho’s energy future’ with second nuclear reactor - East Idaho News": {
+     "asked": 20,
+     "info": 12,
+     "low": 8
+    },
+    "2026 Update: Who in Africa is Ready for Nuclear Power? - Energy for Growth Hub": {
+     "asked": 20,
+     "info": 20
+    },
+    "SOAR event connects Knott County residents with nuclear energy jobs - WYMT": {
+     "asked": 15,
+     "info": 15
+    },
+    "Oops - Nuclear Energy Agency (NEA)": {
+     "asked": 13,
+     "info": 13
+    },
+    "Russian Offensive Campaign Assessment, September 17, 2026 - Institute for the Study of War": {
+     "asked": 23,
+     "medium": 13,
+     "info": 10
+    },
+    "By Nearly Every Metric, the U.S. Is Losing the Iran War": {
+     "asked": 16,
+     "info": 13,
+     "medium": 3
+    },
+    "Why Eurasia, Not the Indo-Pacific, Matters Most in Next Phase of Taiwan Deterrence": {
+     "asked": 19,
+     "info": 19
+    },
+    "Latin America’s Balancing Act: Washington, Beijing, and the Post-Maduro Environment": {
+     "asked": 18,
+     "info": 18
+    },
+    "Trump’s Risky Hack-Back Plan": {
+     "asked": 12,
+     "info": 12
+    },
+    "Ukraine can do more to counter Russia’s illicit finance threat": {
+     "asked": 25,
+     "info": 22,
+     "medium": 3
+    },
+    "Putin is escalating against NATO but a Baltic incursion remains unlikely": {
+     "asked": 17,
+     "medium": 15,
+     "info": 2
+    },
+    "The Lives Built on Colombia’s Peace Deal Are at Risk": {
+     "asked": 13,
+     "info": 10,
+     "medium": 3
+    },
+    "Macron won the argument over European strategic autonomy. Will better European defense come of it?": {
+     "asked": 20,
+     "info": 20
+    },
+    "Fortifying USMCA through US–Mexico investment screening coordination": {
+     "asked": 15,
+     "low": 15
+    },
+    "What von der Leyen’s SOTU speech got right about energy—and where the EU still needs to pivot": {
+     "asked": 17,
+     "info": 17
+    },
+    "A Body Blow? The War on Iran and U.S. Military Readiness": {
+     "asked": 22,
+     "info": 21,
+     "medium": 1
+    },
+    "America's Attrition Trap": {
+     "asked": 18,
+     "info": 18
+    },
+    "Ebola Is Only the Beginning": {
+     "asked": 19,
+     "info": 19
+    },
+    "Uber plans more than 250 layoffs at San Francisco headquarters - San Francisco Chronicle": {
+     "asked": 17,
+     "info": 13,
+     "low": 4
+    },
+    "Layoffs continue at Wells Fargo Jordan Creek campus amid AI shakeup - The Des Moines Register": {
+     "asked": 16,
+     "info": 15,
+     "low": 1
+    },
+    "UMaine weighs staff layoffs amid $19 million budget shortfall - WMTW": {
+     "asked": 16,
+     "info": 15,
+     "low": 1
+    },
+    "Coast Guard boards US-bound vessels apparently compromised by hackers, officials say": {
+     "asked": 20,
+     "high": 20
+    },
+    "Navy Wants Containerized, Low-cost Interceptors to Defeat Cruise Missiles, Drones - USNI News": {
+     "asked": 21,
+     "medium": 20,
+     "info": 1
+    },
+    "F-16 Crashes In Michigan": {
+     "asked": 19,
+     "medium": 16,
+     "high": 2,
+     "low": 1
+    },
+    "US clears $24B F-35 sale for Saudi Arabia": {
+     "asked": 24,
+     "high": 24
+    },
+    "Finland Practices Ship Boardings at Sea to Stop Undersea Sabotage": {
+     "asked": 21,
+     "medium": 21
+    },
+    "US Navy should target carriers in fight with China, report says": {
+     "asked": 14,
+     "info": 1,
+     "medium": 13
+    },
+    "Pentagon Cuts New AIM-260 Air-To-Air Missile Production Deal, Testing Accelerating": {
+     "asked": 23,
+     "medium": 19,
+     "high": 4
+    },
+    "US Air Force to extend service of B-1, B-2 bombers, official says": {
+     "asked": 17,
+     "medium": 13,
+     "low": 4
+    },
+    "The US Army is looking for new drones to ferry blood supplies": {
+     "asked": 20,
+     "info": 9,
+     "low": 11
+    },
+    "Lockheed Martin gets first batch of Patriot interceptor parts from General Motors": {
+     "asked": 24,
+     "low": 22,
+     "medium": 2
+    },
+    "Newport News Navy barracks to receive $1.7 billion upgrade": {
+     "asked": 17,
+     "low": 17
+    },
+    "The Air Force wants a cannon to shoot down drones": {
+     "asked": 16,
+     "info": 9,
+     "medium": 4,
+     "low": 3
+    },
+    "‘They overreached’: Amid industry worry, new Feinberg memo tweaks accounting regime": {
+     "asked": 20,
+     "info": 18,
+     "low": 1,
+     "medium": 1
+    },
+    "More LNG Getting Through Hormuz as Producers Push for Transits": {
+     "asked": 15,
+     "medium": 15
+    },
+    "Chinese Scientists Develop New Oil Refining Method That Cuts Energy Use by 90%": {
+     "asked": 21,
+     "info": 21
+    },
+    "New Cat Species Identified for the First Time in Over 100 Years–Meet the Tilcayo": {
+     "asked": 19,
+     "info": 19
+    },
+    "In Remote Alaska, the Promise and Limits of Vertical Farming": {
+     "asked": 17,
+     "info": 17
+    },
+    "Good News in History, September 18": {
+     "asked": 22,
+     "info": 22
+    },
+    "What went right this week: the good news that matters": {
+     "asked": 22,
+     "info": 22
+    },
+    "Berlin’s REWE supermarket: the grocery store with a working rooftop farm": {
+     "asked": 16,
+     "info": 16
+    },
+    "Team Sequesters Plastic and Makes New Products Before it Breaks Down in Environment": {
+     "asked": 16,
+     "info": 16
+    },
+    "Scientists Solve Mystery Behind Snowfall That Dropped 695 Billion Tons of Ice on Antarctica": {
+     "asked": 14,
+     "info": 14
+    },
+    "The World Is Getting Noisier — But We Can Change That": {
+     "asked": 14,
+     "info": 14
+    },
+    "Chinese companies doubled down on science after US tech restrictions": {
+     "asked": 21,
+     "info": 7,
+     "medium": 13,
+     "low": 1
+    },
+    "Chile First in South America to Eliminate Dog-Transmitted Rabies": {
+     "asked": 21,
+     "info": 21
+    },
+    "Cognitive resilience helps to predict Alzheimer’s dementia": {
+     "asked": 20,
+     "info": 20
+    },
+    "The Next Frontier Is Not Artificial Intelligence—It’s Artificial Societies": {
+     "asked": 21,
+     "info": 21
+    },
+    "US Solar Capacity Can Now Power More Than 50 Million Homes": {
+     "asked": 21,
+     "info": 21
+    },
+    "First Brain Implant Translates Speech and Gestures at Once": {
+     "asked": 17,
+     "info": 17
+    },
+    "This popular fermented food may help flush nanoplastics from the body": {
+     "asked": 19,
+     "info": 19
+    },
+    "Scientists discover a mysterious new frog hiding in the Amazon": {
+     "asked": 22,
+     "info": 22
+    },
+    "A $100 detector can see invisible particles raining down from space": {
+     "asked": 22,
+     "info": 22
+    },
+    "Astronomers just found the youngest known planet ever": {
+     "asked": 24,
+     "info": 24
+    },
+    "JWST’s mysterious little red dots may be black holes growing at incredible speeds": {
+     "asked": 18,
+     "info": 18
+    },
+    "Tapanuli orangutans face mining, landslides, and fire threats — with no recovery plan": {
+     "asked": 22,
+     "info": 18,
+     "medium": 3,
+     "low": 1
+    },
+    "Heavy rain and floods in northern Vietnam submerge homes and disrupt economy": {
+     "asked": 25,
+     "high": 25
+    },
+    "Now exempt from EU deforestation rules, leather industry moves to repair reputation": {
+     "asked": 14,
+     "low": 11,
+     "info": 3
+    },
+    "India’s tiger success brings a new challenge: Living alongside the big cats": {
+     "asked": 14,
+     "info": 14
+    },
+    "Mekong’s Irrawaddy dolphins find cautious hope amid a river in crisis": {
+     "asked": 10,
+     "info": 10
+    },
+    "Lawyers' body announces boycott of court proceedings in Islamabad on Saturday to protest Imaan, Hadi's rearrest": {
+     "asked": 20,
+     "medium": 20
+    },
+    "US Congress Passes Sweeping Russia Sanctions Bill, Sends It To Trump - Radio Free Europe/Radio Liberty": {
+     "asked": 25,
+     "high": 25
+    },
+    "'Petrol so expensive' that PTI lawmakers arrive at Sindh Assembly on donkey carts in protest": {
+     "asked": 20,
+     "medium": 10,
+     "low": 10
+    },
+    "Turkish intelligence chief visits Pakistan after Taliban talks": {
+     "asked": 15,
+     "low": 15
+    },
+    "US sanctions boost China’s science-driven innovation by over 70%, study finds - South China Morning Post": {
+     "asked": 21,
+     "medium": 20,
+     "info": 1
+    },
+    "India finds Nestle baby food sample substandard, takes legal action - Reuters": {
+     "asked": 18,
+     "low": 14,
+     "info": 3,
+     "medium": 1
+    },
+    "Tata Group's boardroom clash rocks India's most storied conglomerate - Reuters": {
+     "asked": 21,
+     "info": 19,
+     "low": 2
+    },
+    "Third malaria death in Germany from outbreak tied to Frankfurt airport - Bangkok Post": {
+     "asked": 21,
+     "high": 17,
+     "medium": 4
+    },
+    "State-led food estate blamed for wildfire in Papua - The Jakarta Post": {
+     "asked": 22,
+     "medium": 22
+    },
+    "US Fed raises rates to tackle 'too high' inflation, irking Trump - The Jakarta Post": {
+     "asked": 18,
+     "medium": 18
+    },
+    "At least 16 killed after vehicle loaded with explosives rams into Pakistan mosque": {
+     "asked": 16,
+     "high": 14,
+     "critical": 2
+    },
+    "US pharmacy chain Walgreens plans tech centre in India's Chennai, expected to create 250 jobs - Reuters": {
+     "asked": 20,
+     "info": 17,
+     "low": 3
+    },
+    "Dr Reddy's signs India distribution deal for Takeda's Qdenga dengue vaccine - Reuters": {
+     "asked": 21,
+     "low": 21
+    },
+    "How watchdogs got sidelined again in 2027 House budget talks": {
+     "asked": 22,
+     "info": 22
+    },
+    "BOJ lifts rates to 31-year high, pivots towards preemptive inflation fight - Reuters": {
+     "asked": 20,
+     "medium": 20
+    },
+    "Household debt-to-GDP ratio forecast to decline - Bangkok Post": {
+     "asked": 11,
+     "info": 5,
+     "low": 6
+    },
+    "Police begin operation to move migrants from Ceuta beaches": {
+     "asked": 14,
+     "medium": 13,
+     "low": 1
+    },
+    "Lindsay Clancy holdout juror had no doubt she deliberately killed her children": {
+     "asked": 18,
+     "info": 18
+    },
+    "Why Trump’s new rule for green card applicants is sparking controversy - cnn.com": {
+     "asked": 20,
+     "info": 18,
+     "low": 2
+    },
+    "Exclusive: US military moving drones to South America ahead of anticipated counternarcotics operations - cnn.com": {
+     "asked": 20,
+     "high": 20
+    },
+    "Two students killed in Philippine school shooting and teen suspect dead, officials say - cnn.com": {
+     "asked": 18,
+     "high": 18
+    },
+    "British woman who was kidnapped in Malawi rescued by police after shootout": {
+     "asked": 13,
+     "medium": 7,
+     "high": 6
+    },
+    "Warren Buffett steps down as chairman of Berkshire Hathaway - cnn.com": {
+     "asked": 15,
+     "info": 15
+    },
+    "One lawmaker had a plan to tackle AI. House GOP leaders said no - cnn.com": {
+     "asked": 20,
+     "info": 18,
+     "low": 2
+    },
+    "Canada will decide on its own partnerships, Carney says - Reuters": {
+     "asked": 22,
+     "low": 22
+    },
+    "Louisiana firefighters find feline native to sub-Saharan Africa while responding to house fire": {
+     "asked": 20,
+     "info": 20
+    },
+    "Poland warns Russia is planning drone or rocket strikes on NATO territory - AP News": {
+     "asked": 20,
+     "high": 20
+    },
+    "Italy readies navy to protect its shipping amid Bab el-Mandeb tensions - Reuters": {
+     "asked": 19,
+     "high": 19
+    },
+    "At least 16 killed in Pakistan mosque bombing near police station": {
+     "asked": 14,
+     "high": 14
+    },
+    "Diesel prices at record highs amid Strait of Hormuz disruption, Russia-Ukraine war": {
+     "asked": 16,
+     "medium": 13,
+     "high": 3
+    },
+    "Trade war with U.S. putting 30,000 Quebec jobs at risk, Fréchette says - Montreal Gazette": {
+     "asked": 17,
+     "medium": 17
+    },
+    "Philippines school shooting leaves 2 students, gunman dead": {
+     "asked": 13,
+     "info": 1,
+     "high": 11,
+     "medium": 1
+    },
+    "Can Carney’s Trade War Stop Trump For Good?": {
+     "asked": 20,
+     "info": 20
+    },
+    "Warren Buffett steps down as chairman of Berkshire Hathaway": {
+     "asked": 16,
+     "info": 15,
+     "low": 1
+    },
+    "Premier Eby will speak to local politicians amid snap election speculation": {
+     "asked": 20,
+     "low": 19,
+     "info": 1
+    },
+    "Few signs an election is underway in Quebec’s Far North": {
+     "asked": 22,
+     "low": 12,
+     "info": 10
+    },
+    "B.C. Premier Eby to address local politicians amid snap election speculation": {
+     "asked": 18,
+     "info": 2,
+     "low": 16
+    },
+    "Red and Blue America Have Found Something to Agree on: Flock Cameras Must Go": {
+     "asked": 17,
+     "info": 13,
+     "low": 3,
+     "medium": 1
+    },
+    "Buffett replaced by son Howard as Berkshire Hathaway chairman": {
+     "asked": 15,
+     "info": 12,
+     "low": 3
+    },
+    "Warren Buffett, 96, steps down as Berkshire Hathaway chairman": {
+     "asked": 19,
+     "info": 19
+    },
+    "Warren Buffett steps down as Berkshire Hathaway chairman": {
+     "asked": 15,
+     "info": 13,
+     "medium": 1,
+     "low": 1
+    },
+    "New cat species identified for the 1st time in a century": {
+     "asked": 22,
+     "info": 22
+    },
+    "Here are the 908 candidates and 20 parties running in the Quebec election - Montreal Gazette": {
+     "asked": 20,
+     "low": 8,
+     "info": 12
+    },
+    "As Congress passes Russia sanctions, Trump weighs business deals with Moscow before the war ends": {
+     "asked": 17,
+     "high": 16,
+     "medium": 1
+    },
+    "WHO sees gains against Ebola outbreak, but warns crisis far from over": {
+     "asked": 18,
+     "medium": 18
+    },
+    "Nepal flood survivors return to town that no longer exists": {
+     "asked": 19,
+     "high": 16,
+     "medium": 3
+    },
+    "No missiles intercepted again: Russia strikes Kyiv water infrastructure amid warnings of harsher winter attacks - Euromaidan Press": {
+     "asked": 15,
+     "critical": 14,
+     "high": 1
+    },
+    "In Russia, anti-war activists seek to resist Putin's electoral machine": {
+     "asked": 18,
+     "medium": 18
+    },
+    "Kypros-siktet knyttes til uløst Oslo-skyting": {
+     "asked": 22,
+     "info": 18,
+     "medium": 4
+    },
+    "Ukrainian collaborator involved in Russia's sham 'referendums' killed in Ukrainian drone strike, Russian media claims - kyivindependent.com": {
+     "asked": 14,
+     "high": 14
+    },
+    "'Triumph for democracy' — US House passes Graham's Russia sanctions bill - kyivindependent.com": {
+     "asked": 21,
+     "high": 21
+    },
+    "Ukraine remembers Georgiy Gongadze and journalists killed during Russia’s war - Hromadske": {
+     "asked": 15,
+     "info": 15
+    },
+    "EU Should Not Turn a Blind Eye to Montenegro’s Bloody Clan War": {
+     "asked": 25,
+     "info": 20,
+     "medium": 5
+    },
+    "Turkish Cypriot leader warns of trust erosion after Cyprus talks": {
+     "asked": 18,
+     "low": 18
+    },
+    "Russians vote in elections with no party opposing Putin or war in Ukraine": {
+     "asked": 18,
+     "low": 18
+    },
+    "Government survives agricultural policy confidence vote by narrow margin": {
+     "asked": 22,
+     "low": 17,
+     "medium": 5
+    },
+    "Daghestani public service employees claim pressure to vote for United Russia": {
+     "asked": 21,
+     "low": 20,
+     "medium": 1
+    },
+    "Sweden's Social Democrat leader Andersson says she's 'ready' to form new government after election win": {
+     "asked": 20,
+     "low": 20
+    },
+    "Putin calls on Russians to vote in elections, make considered, responsible decision - Interfax": {
+     "asked": 17,
+     "low": 17
+    },
+    "Fining Bosnia’s Parties for Campaign Violations Won’t Deter Them, Expert Warns": {
+     "asked": 20,
+     "info": 8,
+     "low": 12
+    },
+    "Zara Larsson kritiserer Det Hvide Hus for at bruge hendes sang": {
+     "asked": 17,
+     "info": 17
+    },
+    "Trump says ‘hopefully we are towards end’ of Iran war, to hold talks with Gulf leaders - Al Arabiya English": {
+     "asked": 23,
+     "medium": 11,
+     "high": 12
+    },
+    "Trump weighs major Iran escalation as China steps up diplomatic push - Iran International": {
+     "asked": 19,
+     "high": 17,
+     "medium": 2
+    },
+    "Trump's new tariff threat risks cutting off Asia’s Russian oil lifeline as Gulf supply falls": {
+     "asked": 22,
+     "high": 21,
+     "medium": 1
+    },
+    "Terrorist colonists attack homes and set fire to land in village, east of Ramallah - WAFA Agency": {
+     "asked": 19,
+     "high": 19
+    },
+    "Human Rights Watch: Recent Houthi Attacks on Commercial Ships Likely Amount to War Crimes - Yemen Online": {
+     "asked": 18,
+     "medium": 17,
+     "high": 1
+    },
+    "Iran’s Araghchi, Pakistan army chief discuss regional developments as US-Iran talks stall - Al Arabiya English": {
+     "asked": 15,
+     "low": 14,
+     "medium": 1
+    },
+    "US House votes for a third time to end the Iran war as conflict drags on - Arab News": {
+     "asked": 17,
+     "medium": 15,
+     "high": 2
+    },
+    "Spain reveal Nations League squad in Ceuta in support of migration crisis": {
+     "asked": 19,
+     "low": 15,
+     "info": 4
+    },
+    "Issa reaffirms US support for Lebanon sovereignty, framework agreement": {
+     "asked": 20,
+     "low": 20
+    },
+    "Extra patrols at London St Pancras station after crime gang arrested": {
+     "asked": 18,
+     "low": 17,
+     "info": 1
+    },
+    "State of Palestine rejects extension of US sanctions against its officials and PLO members - WAFA Agency": {
+     "asked": 17,
+     "medium": 12,
+     "high": 5
+    },
+    "‘Our commitment to Saudi security is unconditional’: Pakistan military spokesman - Arab News": {
+     "asked": 11,
+     "low": 11
+    },
+    "EXCLUSIVE: Pakistan military vows to defend Saudi Arabia ‘to any extent’ amid Houthi attacks - Arab News": {
+     "asked": 18,
+     "high": 18
+    },
+    "In Paris, Aoun calls on Lebanon’s friends, says 'the opportunity may not come again' - L'Orient Today": {
+     "asked": 15,
+     "low": 15
+    },
+    "Zawia Oil Refining Company’s Oil Blending & Packaging Plant Upgrade Project enters implementation phase": {
+     "asked": 17,
+     "low": 15,
+     "info": 2
+    },
+    "ZCode, the GLM coding agent, silently uploads your Git history": {
+     "asked": 14,
+     "info": 14
+    },
+    "AI bots \"Timmy,\" \"Ren,\" and \"Jackie\" are flooding social media with slop": {
+     "asked": 16,
+     "info": 16
+    },
+    "Flash floods can strike without warning — this new technology could change that": {
+     "asked": 17,
+     "info": 17
+    },
+    "Warren Buffett Steps Down as Berkshire Chairman, Names Son to Replace Him": {
+     "asked": 20,
+     "info": 18,
+     "low": 2
+    },
+    "Best Gifts for Mom (2026): E-Readers, Digital Wall Calendar, Smart Bird Feeders": {
+     "asked": 18,
+     "info": 18
+    },
+    "Submit Your Questions: Why Is Silicon Valley Still a Boy's Club?": {
+     "asked": 22,
+     "info": 22
+    },
+    "He Won the Nobel Prize for Protein Design. Now He Uses AI to Create Molecules Not Found in Nature": {
+     "asked": 23,
+     "info": 23
+    },
+    "The Leftist Split Over AI Doom": {
+     "asked": 16,
+     "info": 16
+    },
+    "Mophie’s Extendable MagSafe 3-in-1 Charging Stand Is 50 Percent Off": {
+     "asked": 17,
+     "info": 17
+    },
+    "The Download: AI’s extinction risk and bioweapons threat": {
+     "asked": 18,
+     "info": 18
+    },
+    "Could AI really kill us all? Your questions, answered.": {
+     "asked": 22,
+     "info": 22
+    },
+    "I don't like passkeys": {
+     "asked": 22,
+     "info": 22
+    },
+    "Bend 2 and the Vibe-Coding Trap": {
+     "asked": 17,
+     "info": 17
+    },
+    "Cekura (YC F24) Is Hiring": {
+     "asked": 21,
+     "info": 21
+    },
+    "LLMs respond differently to harmful prompts when AI watermarking is used": {
+     "asked": 8,
+     "info": 8
+    },
+    "Nonprofit that tracks meteors taken down by \"critical blow\" from a cyberattack": {
+     "asked": 22,
+     "medium": 22
+    },
+    "Google is helping write AI chatbot safety laws — while pushing for loopholes - npr.org": {
+     "asked": 16,
+     "info": 16
+    },
+    "Exclusive | Hackers Used Anthropic’s Claude to Break Into OpenAI - WSJ": {
+     "asked": 16,
+     "medium": 8,
+     "high": 8
+    },
+    "EXCLUSIVE: Anthropic quietly sets up biology lab as it ramps AI drug program - Reuters": {
+     "asked": 18,
+     "info": 18
+    },
+    "OpenAI ‘ethically hacked’ with help of Anthropic’s Claude chatbot - theguardian.com": {
+     "asked": 19,
+     "info": 19
+    },
+    "Building the materials foundation for AI": {
+     "asked": 20,
+     "info": 20
+    },
+    "Roundtables: Could AI really kill us all?": {
+     "asked": 23,
+     "info": 23
+    },
+    "What’s at stake in AI’s trillion-dollar gamble": {
+     "asked": 18,
+     "info": 18
+    },
+    "The AI industry has taken a doomer turn. What now?": {
+     "asked": 16,
+     "info": 16
+    },
+    "Putin targets Nestle's Russian business as Kremlin tightens grip on Western assets": {
+     "asked": 15,
+     "medium": 13,
+     "high": 2
+    },
+    "The US Army doesn't want its soldiers trying to figure out new tech right before heading into combat training": {
+     "asked": 25,
+     "info": 24,
+     "low": 1
+    },
+    "Warren Buffett steps down as chairman of Berkshire Hathaway: 'Father Time always wins'": {
+     "asked": 15,
+     "info": 15
+    },
+    "Howard Buffett to succeed father Warren as Berkshire Hathaway chair": {
+     "asked": 22,
+     "info": 17,
+     "low": 5
+    },
+    "Meta's personal AI agent Muse soars to the top of the App Store": {
+     "asked": 21,
+     "info": 21
+    },
+    "We're told Gen Z is redefining adulthood. Sometimes I think we just can't afford the old definition.": {
+     "asked": 18,
+     "info": 18
+    },
+    "IRS tax debt agreements have plummeted: 'I've never seen a number that low,' taxpayer advocate says": {
+     "asked": 23,
+     "info": 23
+    },
+    "The 20 best airlines in the world, ranked by passengers": {
+     "asked": 16,
+     "info": 16
+    },
+    "Wall Street is betting Trump backs down on Iran — but what if the ‘TACO’ trade fails this time? - MarketWatch": {
+     "asked": 16,
+     "info": 15,
+     "medium": 1
+    },
+    "Wear the bright outfit. This shoe founder says standing out helped her succeed.": {
+     "asked": 18,
+     "info": 18
+    },
+    "Russian ESPO oil price exceeds $120 per barrel, traders say and data shows - Reuters": {
+     "asked": 17,
+     "medium": 17
+    },
+    "Saudi Arabia Has Another Option to Get Its Oil Out - WSJ": {
+     "asked": 18,
+     "info": 16,
+     "medium": 2
+    },
+    "Gold scales one-week high as crude prices ease - Reuters": {
+     "asked": 19,
+     "info": 10,
+     "low": 7,
+     "medium": 2
+    },
+    "Current price of oil as of Sept. 18, 2026 - Fortune": {
+     "asked": 17,
+     "info": 17
+    },
+    "Is Freeport McMoRan (FCX) Still Undervalued After Copper Price Swings? - simplywall.st": {
+     "asked": 14,
+     "info": 14
+    },
+    "Silver price today, Friday, September 18, 2026: Silver prices recover quickly, hitting weekly high today - Yahoo Finance": {
+     "asked": 19,
+     "info": 19
+    },
+    "Delta Resources to Attend 2026 Precious Metals Summit, Beaver Creek, Colorado - TMX Newsfile": {
+     "asked": 22,
+     "info": 22
+    },
+    "Oil prices fall for third day on Saudi Arabia supply hopes; U.S. crude briefly dips below $100 - CNBC": {
+     "asked": 20,
+     "medium": 20
+    },
+    "Iran-related Designations; Cuba Designations; Belarus-related Designations Removals - Office of Foreign Assets Control (.gov)": {
+     "asked": 15,
+     "high": 15
+    },
+    "Operation Economic Outcast Disrupts Digital Asset Exchange Enabling the Iranian Regime - U.S. Department of the Treasury (.gov)": {
+     "asked": 14,
+     "high": 14
+    },
+    "- caia.treasury.gov": {
+     "asked": 20,
+     "info": 20
+    },
+    "New UN system platform puts millions of data points at users’ fingertips, says Guterres": {
+     "asked": 13,
+     "info": 12,
+     "low": 1
+    },
+    "World News in Brief: Winter aid for Gaza, West Bank; Haiti food production; migrant deaths at sea; human rights funding": {
+     "asked": 19,
+     "low": 19
+    },
+    "Gender equality woefully off track, new UN report reveals": {
+     "asked": 22,
+     "info": 20,
+     "low": 2
+    },
+    "UN fact-finding mission on Iran focuses on plight of civilians": {
+     "asked": 15,
+     "low": 15
+    },
+    "Troops foil attacks in Borno, kill four terrorists": {
+     "asked": 22,
+     "high": 22
+    },
+    "Protests Rock Minna Over Deaths Of 37 Suspected Illegal Miners In NSCDC Custody": {
+     "asked": 14,
+     "high": 14
+    },
+    "As Iran war grinds on, Trump to face skeptical world leaders at UN": {
+     "asked": 21,
+     "medium": 21
+    },
+    "Stray bullet hits vendor as police disperse protest on Miner’s death": {
+     "asked": 18,
+     "medium": 18
+    },
+    "Nigeria forces open fire at protest over deaths of detained miners - Reuters": {
+     "asked": 22,
+     "high": 22
+    },
+    "Gov Bago declares 24-hour curfew following unrest over miners’ deaths": {
+     "asked": 19,
+     "high": 19
+    },
+    "Niger Detention Deaths: Gov Bago Declares 24-Hour Curfew In Minna Following Unrest": {
+     "asked": 20,
+     "high": 20
+    },
+    "UN chief calls for accountability for states fuelling Sudan’s war": {
+     "asked": 16,
+     "medium": 13,
+     "low": 3
+    },
+    "DRC opposition condemns violence at protests over constitutional changes": {
+     "asked": 17,
+     "medium": 17
+    },
+    "Ebola outbreak slows in parts of DR Congo but crisis remains severe": {
+     "asked": 21,
+     "high": 18,
+     "medium": 3
+    },
+    "Dozens of suspected illegal miners die in Nigerian custody": {
+     "asked": 13,
+     "high": 13
+    },
+    "Russia holds nationwide Duma elections as war in Ukraine reshapes vote": {
+     "asked": 16,
+     "medium": 10,
+     "low": 6
+    },
+    "Fighting Chavismo’s New “Fact-Checking” Sites": {
+     "asked": 21,
+     "info": 21
+    },
+    "India says new US tariffs over Russian oil could hit ties, vows to protect energy security - Reuters": {
+     "asked": 19,
+     "high": 18,
+     "medium": 1
+    },
+    "Exxon advances talks to return to Venezuela's Orinoco Belt, sources say - Reuters": {
+     "asked": 19,
+     "medium": 5,
+     "low": 14
+    },
+    "ISU, NuCube Energy announce site for new campus nuclear reactor - Idaho State Journal": {
+     "asked": 15,
+     "info": 10,
+     "low": 5
+    },
+    "IEA chief says electrification remains the way forward despite AI investment jitters - Reuters": {
+     "asked": 17,
+     "info": 17
+    },
+    "Russian Occupation Update, September 17, 2026 - Institute for the Study of War": {
+     "asked": 13,
+     "medium": 13
+    },
+    "Iran Update, September 16, 2026 - Institute for the Study of War": {
+     "asked": 19,
+     "info": 11,
+     "medium": 8
+    },
+    "Russian Offensive Campaign Assessment, September 16, 2026 - Institute for the Study of War": {
+     "asked": 20,
+     "info": 10,
+     "medium": 10
+    },
+    "The Russian Military Campaign Against Europe: Defining the Threat - Institute for the Study of War": {
+     "asked": 20,
+     "info": 20
+    },
+    "What the BRICS Summit Meant for Brazil": {
+     "asked": 24,
+     "info": 23,
+     "low": 1
+    },
+    "An Army General Talks Fusing Sensors and Shooters on the Eastern Flank": {
+     "asked": 18,
+     "info": 9,
+     "medium": 9
+    },
+    "Bilfinger Shares Fall 20% on Lowered Outlook, Job Cuts - WSJ": {
+     "asked": 17,
+     "low": 7,
+     "medium": 9,
+     "info": 1
+    },
+    "Tech Companies That Have Made Layoffs from 2022 to 2026 (Updated List) - tech.co": {
+     "asked": 18,
+     "info": 18
+    },
+    "Oracle to lay off 359 Washington workers, totaling 834 in 2026 - king5.com": {
+     "asked": 21,
+     "info": 16,
+     "low": 5
+    },
+    "Fierce Healthcare Layoff Tracker—Dartmouth Health cuts 124; University of Vermont Health restructures 199 - Fierce Healthcare": {
+     "asked": 16,
+     "low": 4,
+     "info": 12
+    },
+    "National Bank Regulator Begins Round of Layoffs, Union Says (1) - Bloomberg Law News": {
+     "asked": 17,
+     "low": 14,
+     "info": 3
+    },
+    "The next Iran strike: How legal, economic, and diplomatic pressures are priming the region for war - Bulletin of the Atomic Scientists": {
+     "asked": 14,
+     "info": 13,
+     "medium": 1
+    },
+    "Navy Awards $200M for Blackbeard Hypersonic Missile for Carrier Fighters - USNI News": {
+     "asked": 15,
+     "medium": 8,
+     "high": 7
+    },
+    "Here’s why China acknowledged its new missile silos in a documentary - Bulletin of the Atomic Scientists": {
+     "asked": 17,
+     "info": 14,
+     "medium": 3
+    },
+    "Air Force to create new career field to defend bases from drones and missiles": {
+     "asked": 18,
+     "medium": 18
+    },
+    "US munition stockpile ‘especially problematic’ in a war with China, report warns": {
+     "asked": 17,
+     "medium": 17
+    }
+   }
+  }
+ }
+}

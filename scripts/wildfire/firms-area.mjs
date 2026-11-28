@@ -1,4 +1,5 @@
 import { CHROME_UA, sleep } from '../_seed-utils.mjs';
+import { fireRegionAt } from './fire-country.mjs';
 
 export const FIRMS_API_BASE_URL = 'https://firms.modaps.eosdis.nasa.gov';
 
@@ -190,18 +191,17 @@ export async function fetchAllFirmsRegions(apiKey, {
           seen.add(id);
           const brightness = parseFloat(row.bright_ti4 ?? '0') || 0;
           const frp = parseFloat(row.frp ?? '0') || 0;
+          const latitude = parseFloat(row.latitude ?? '0') || 0;
+          const longitude = parseFloat(row.longitude ?? '0') || 0;
           fireDetections.push({
             id,
-            location: {
-              latitude: parseFloat(row.latitude ?? '0') || 0,
-              longitude: parseFloat(row.longitude ?? '0') || 0,
-            },
+            location: { latitude, longitude },
             brightness,
             frp,
             confidence: mapConfidence(row.confidence || ''),
             satellite: row.satellite || '',
             detectedAt,
-            region: regionName,
+            region: fireRegionAt(latitude, longitude),
             dayNight: row.daynight || '',
             possibleExplosion: frp > 80 && brightness > 380,
             source: 'firms',

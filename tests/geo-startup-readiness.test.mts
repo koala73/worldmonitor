@@ -193,6 +193,34 @@ describe('geolocation off the readiness path (#7778)', () => {
     assert.equal(userLocation.initialRegionFromCache(true), 'global');
   });
 
+  it('cached coords on both Mediterranean shores resolve to their own continent', () => {
+    // The Africa and Europe boxes overlap across 35-40°N; neither shore may take the other's region.
+    const cases: Array<[string, number, number, string]> = [
+      ['Lisbon', 38.72, -9.14, 'eu'],
+      ['Seville', 37.39, -5.98, 'eu'],
+      ['Málaga', 36.72, -4.42, 'eu'],
+      ['Gibraltar', 36.14, -5.35, 'eu'],
+      ['Cagliari', 39.22, 9.11, 'eu'],
+      ['Palermo', 38.12, 13.36, 'eu'],
+      ['Valletta', 35.90, 14.51, 'eu'],
+      ['Athens', 37.98, 23.73, 'eu'],
+      ['Tangier', 35.77, -5.80, 'africa'],
+      ['Oran', 35.70, -0.63, 'africa'],
+      ['Algiers', 36.75, 3.06, 'africa'],
+      ['Tabarka', 36.95, 8.76, 'africa'],
+      ['Sidi Mechreg', 37.17, 9.13, 'africa'],
+      ['Cape Serrat', 37.22, 9.22, 'africa'],
+      ['La Galite', 37.53, 8.93, 'africa'],
+      ['Bizerte', 37.27, 9.87, 'africa'],
+      ['Tunis', 36.81, 10.18, 'africa'],
+      ['Tripoli', 32.89, 13.19, 'africa'],
+    ];
+    for (const [city, lat, lon, region] of cases) {
+      installFixture({ permissionState: 'denied', cachedCoords: { lat, lon }, timezone: 'UTC' });
+      assert.equal(userLocation.initialRegionFromCache(true), region, city);
+    }
+  });
+
   it('one in-flight position request is shared between region and precise consumers', async () => {
     const calls = installFixture({
       permissionState: 'granted',
@@ -292,5 +320,178 @@ describe('geolocation off the readiness path (#7778)', () => {
       prediction.predictionCandidatePool(pool), 'eu', 15,
     );
     assert.equal(rerankedPool[0]?.title, 'Germany coalition talks');
+  });
+});
+
+describe('user region classification: coordinates and timezone agree on every continent', () => {
+  let userLocation: Awaited<ReturnType<typeof loadUserLocation>>;
+
+  beforeEach(async () => {
+    userLocation = await loadUserLocation();
+  });
+
+  // [place, lat, lon, IANA zone, region]. Regions follow shared/iso2-to-region.json
+  // with the map views' choices: Mexico is 'america', the Caribbean and Central
+  // America 'latam', Turkey and the Caucasus 'mena', Egypt 'mena' and the Maghreb
+  // 'africa', Central Asia and Siberia 'asia'.
+  const places: Array<[string, number, number, string, string]> = [
+    ['Lisbon', 38.72, -9.14, 'Europe/Lisbon', 'eu'],
+    ['Madrid', 40.42, -3.70, 'Europe/Madrid', 'eu'],
+    ['Athens', 37.98, 23.73, 'Europe/Athens', 'eu'],
+    ['Thessaloniki', 40.64, 22.94, 'Europe/Athens', 'eu'],
+    ['Alexandroupoli', 40.85, 25.87, 'Europe/Athens', 'eu'],
+    ['Heraklion', 35.34, 25.13, 'Europe/Athens', 'eu'],
+    ['Rhodes', 36.43, 28.22, 'Europe/Athens', 'eu'],
+    ['Kos', 36.89, 27.29, 'Europe/Athens', 'eu'],
+    ['Mytilene', 39.10, 26.55, 'Europe/Athens', 'eu'],
+    ['Bucharest', 44.43, 26.10, 'Europe/Bucharest', 'eu'],
+    ['Constanța', 44.17, 28.63, 'Europe/Bucharest', 'eu'],
+    ['Varna', 43.21, 27.91, 'Europe/Sofia', 'eu'],
+    ['Burgas', 42.50, 27.47, 'Europe/Sofia', 'eu'],
+    ['Sevastopol', 44.62, 33.53, 'Europe/Simferopol', 'eu'],
+    ['Sochi', 43.60, 39.73, 'Europe/Moscow', 'eu'],
+    ['Vladikavkaz', 43.02, 44.68, 'Europe/Moscow', 'eu'],
+    ['Makhachkala', 42.98, 47.50, 'Europe/Moscow', 'eu'],
+    ['Astrakhan', 46.35, 48.04, 'Europe/Astrakhan', 'eu'],
+    ['Kazan', 55.79, 49.12, 'Europe/Moscow', 'eu'],
+    ['Moscow', 55.76, 37.62, 'Europe/Moscow', 'eu'],
+    ['Kyiv', 50.45, 30.52, 'Europe/Kyiv', 'eu'],
+    ['Nicosia', 35.17, 33.36, 'Asia/Nicosia', 'eu'],
+    ['Limassol', 34.68, 33.04, 'Asia/Nicosia', 'eu'],
+    ['Paphos', 34.77, 32.42, 'Asia/Nicosia', 'eu'],
+    ['Patmos', 37.31, 26.55, 'Europe/Athens', 'eu'],
+    ['Agathonisi', 37.46, 26.97, 'Europe/Athens', 'eu'],
+    ['Reykjavik', 64.15, -21.94, 'Atlantic/Reykjavik', 'eu'],
+    ['Ponta Delgada', 37.74, -25.67, 'Atlantic/Azores', 'eu'],
+    ['Funchal', 32.65, -16.91, 'Atlantic/Madeira', 'eu'],
+    ['Las Palmas', 28.12, -15.43, 'Atlantic/Canary', 'eu'],
+    ['Longyearbyen', 78.22, 15.65, 'Arctic/Longyearbyen', 'eu'],
+    ['Istanbul', 41.01, 28.98, 'Europe/Istanbul', 'mena'],
+    ['Edirne', 41.68, 26.56, 'Europe/Istanbul', 'mena'],
+    ['Izmir', 38.42, 27.14, 'Europe/Istanbul', 'mena'],
+    ['Bodrum', 37.03, 27.43, 'Europe/Istanbul', 'mena'],
+    ['Marmaris', 36.85, 28.27, 'Europe/Istanbul', 'mena'],
+    ['Trabzon', 41.00, 39.72, 'Europe/Istanbul', 'mena'],
+    ['Tbilisi', 41.72, 44.79, 'Asia/Tbilisi', 'mena'],
+    ['Baku', 40.41, 49.87, 'Asia/Baku', 'mena'],
+    ['Cairo', 30.04, 31.24, 'Africa/Cairo', 'mena'],
+    ['Jeddah', 21.49, 39.19, 'Asia/Riyadh', 'mena'],
+    ["Sana'a", 15.37, 44.19, 'Asia/Aden', 'mena'],
+    ['Southern Socotra', 12.35, 54.0, 'Asia/Aden', 'mena'],
+    ['Didim', 37.37, 27.27, 'Europe/Istanbul', 'mena'],
+    ['Dubai', 25.20, 55.27, 'Asia/Dubai', 'mena'],
+    ['Tehran', 35.69, 51.39, 'Asia/Tehran', 'mena'],
+    ['Mashhad', 36.30, 59.60, 'Asia/Tehran', 'mena'],
+    ['Tel Aviv', 32.08, 34.78, 'Asia/Jerusalem', 'mena'],
+    ['Khartoum', 15.50, 32.56, 'Africa/Khartoum', 'africa'],
+    ['Port Sudan', 19.62, 37.22, 'Africa/Khartoum', 'africa'],
+    ['Asmara', 15.32, 38.93, 'Africa/Asmara', 'africa'],
+    ['Djibouti', 11.59, 43.15, 'Africa/Djibouti', 'africa'],
+    ['Tunis', 36.81, 10.18, 'Africa/Tunis', 'africa'],
+    ['Algiers', 36.75, 3.06, 'Africa/Algiers', 'africa'],
+    ['Casablanca', 33.57, -7.59, 'Africa/Casablanca', 'africa'],
+    ['Lagos', 6.52, 3.38, 'Africa/Lagos', 'africa'],
+    ['Nairobi', -1.29, 36.82, 'Africa/Nairobi', 'africa'],
+    ['Cape Town', -33.92, 18.42, 'Africa/Johannesburg', 'africa'],
+    ['Praia', 14.93, -23.51, 'Atlantic/Cape_Verde', 'africa'],
+    ['Antananarivo', -18.88, 47.51, 'Indian/Antananarivo', 'africa'],
+    ['Port Louis', -20.16, 57.50, 'Indian/Mauritius', 'africa'],
+    ['Atyrau', 47.11, 51.92, 'Asia/Atyrau', 'asia'],
+    ['Ashgabat', 37.95, 58.38, 'Asia/Ashgabat', 'asia'],
+    ['Tashkent', 41.30, 69.24, 'Asia/Tashkent', 'asia'],
+    ['Almaty', 43.24, 76.89, 'Asia/Almaty', 'asia'],
+    ['Karachi', 24.86, 67.01, 'Asia/Karachi', 'asia'],
+    ['Kabul', 34.53, 69.17, 'Asia/Kabul', 'asia'],
+    ['Delhi', 28.61, 77.21, 'Asia/Kolkata', 'asia'],
+    ['Bangalore', 12.97, 77.59, 'Asia/Kolkata', 'asia'],
+    ['Chennai', 13.08, 80.27, 'Asia/Kolkata', 'asia'],
+    ['Kochi', 9.93, 76.27, 'Asia/Kolkata', 'asia'],
+    ['Colombo', 6.93, 79.86, 'Asia/Colombo', 'asia'],
+    ['Malé', 4.18, 73.51, 'Indian/Maldives', 'asia'],
+    ['Dhaka', 23.81, 90.41, 'Asia/Dhaka', 'asia'],
+    ['Bangkok', 13.76, 100.50, 'Asia/Bangkok', 'asia'],
+    ['Ho Chi Minh City', 10.82, 106.63, 'Asia/Ho_Chi_Minh', 'asia'],
+    ['Manila', 14.60, 120.98, 'Asia/Manila', 'asia'],
+    ['Kuala Lumpur', 3.14, 101.69, 'Asia/Kuala_Lumpur', 'asia'],
+    ['Singapore', 1.35, 103.82, 'Asia/Singapore', 'asia'],
+    ['Jakarta', -6.21, 106.85, 'Asia/Jakarta', 'asia'],
+    ['Denpasar', -8.65, 115.22, 'Asia/Makassar', 'asia'],
+    ['Jayapura', -2.53, 140.72, 'Asia/Jayapura', 'asia'],
+    ['Tokyo', 35.68, 139.69, 'Asia/Tokyo', 'asia'],
+    ['Vladivostok', 43.12, 131.89, 'Asia/Vladivostok', 'asia'],
+    ['Magadan', 59.56, 150.80, 'Asia/Magadan', 'asia'],
+    ['Yekaterinburg', 56.84, 60.61, 'Asia/Yekaterinburg', 'asia'],
+    ['Sydney', -33.87, 151.21, 'Australia/Sydney', 'oceania'],
+    ['Darwin', -12.46, 130.84, 'Australia/Darwin', 'oceania'],
+    ['Auckland', -36.85, 174.76, 'Pacific/Auckland', 'oceania'],
+    ['Port Moresby', -9.44, 147.18, 'Pacific/Port_Moresby', 'oceania'],
+    ['Hagåtña', 13.44, 144.79, 'Pacific/Guam', 'oceania'],
+    ['Suva', -18.14, 178.44, 'Pacific/Fiji', 'oceania'],
+    ['Papeete', -17.54, -149.57, 'Pacific/Tahiti', 'oceania'],
+    ['Apia', -13.83, -171.76, 'Pacific/Apia', 'oceania'],
+    ['Honolulu', 21.31, -157.86, 'Pacific/Honolulu', 'america'],
+    ['Anchorage', 61.22, -149.90, 'America/Anchorage', 'america'],
+    ['New York', 40.71, -74.01, 'America/New_York', 'america'],
+    ['Indianapolis', 39.77, -86.16, 'America/Indiana/Indianapolis', 'america'],
+    ['Key West', 24.56, -81.78, 'America/New_York', 'america'],
+    ['Miami', 25.76, -80.19, 'America/New_York', 'america'],
+    ['Toronto', 43.65, -79.38, 'America/Toronto', 'america'],
+    ['Mexico City', 19.43, -99.13, 'America/Mexico_City', 'america'],
+    ['Cancún', 21.16, -86.85, 'America/Cancun', 'america'],
+    ['Chetumal', 18.50, -88.30, 'America/Cancun', 'america'],
+    ['Xcalak', 18.27, -87.83, 'America/Cancun', 'america'],
+    ['Tapachula', 14.90, -92.26, 'America/Mexico_City', 'america'],
+    ['Nuuk', 64.18, -51.72, 'America/Nuuk', 'america'],
+    ['Tasiilaq', 65.61, -37.64, 'America/Nuuk', 'america'],
+    ['Guatemala City', 14.63, -90.51, 'America/Guatemala', 'latam'],
+    ['Flores', 16.93, -89.89, 'America/Guatemala', 'latam'],
+    ['Belize City', 17.50, -88.20, 'America/Belize', 'latam'],
+    ['Corozal', 18.39, -88.39, 'America/Belize', 'latam'],
+    ['Orange Walk', 18.08, -88.56, 'America/Belize', 'latam'],
+    ['San Pedro (Ambergris Caye)', 17.92, -87.96, 'America/Belize', 'latam'],
+    ['Roatán', 16.33, -86.53, 'America/Tegucigalpa', 'latam'],
+    ['Jizan', 16.90, 42.57, 'Asia/Riyadh', 'mena'],
+    ['Timbuktu', 16.77, -3.01, 'Africa/Bamako', 'africa'],
+    ['Hyderabad', 17.38, 78.49, 'Asia/Kolkata', 'asia'],
+    ['Hue', 16.46, 107.59, 'Asia/Ho_Chi_Minh', 'asia'],
+    ['San Pedro Sula', 15.50, -88.03, 'America/Tegucigalpa', 'latam'],
+    ['Havana', 23.11, -82.37, 'America/Havana', 'latam'],
+    ['Nassau', 25.05, -77.35, 'America/Nassau', 'latam'],
+    ['San Juan', 18.47, -66.11, 'America/Puerto_Rico', 'latam'],
+    ['Bogotá', 4.71, -74.07, 'America/Bogota', 'latam'],
+    ['São Paulo', -23.55, -46.63, 'America/Sao_Paulo', 'latam'],
+    ['Buenos Aires', -34.60, -58.38, 'America/Argentina/Buenos_Aires', 'latam'],
+    ['Santiago', -33.45, -70.67, 'America/Santiago', 'latam'],
+    ['Puerto Ayora', -0.74, -90.31, 'Pacific/Galapagos', 'latam'],
+    ['Hanga Roa', -27.15, -109.43, 'Pacific/Easter', 'latam'],
+    ['Stanley', -51.70, -57.85, 'Atlantic/Stanley', 'latam'],
+  ];
+
+  it('coordinates resolve each place to its region', () => {
+    const wrong = places
+      .map(([place, lat, lon, , region]) => [place, region, userLocation.coordsToRegion(lat, lon)])
+      .filter(([, want, got]) => want !== got);
+    assert.deepEqual(wrong, []);
+  });
+
+  it('the timezone resolves each place to the same region', () => {
+    const wrong = places
+      .map(([place, , , tz, region]) => [place, tz, region, userLocation.timezoneToRegion(tz)])
+      .filter(([, , want, got]) => want !== got);
+    assert.deepEqual(wrong, []);
+  });
+
+  it('a visitor without location permission gets the region from the timezone', () => {
+    for (const [tz, region] of [['Asia/Kolkata', 'asia'], ['America/Sao_Paulo', 'latam'], ['Asia/Bangkok', 'asia']]) {
+      installFixture({ permissionState: 'prompt', timezone: tz });
+      assert.equal(userLocation.initialRegionFromCache(true), region, tz);
+    }
+  });
+
+  it('zones with no region stay global', () => {
+    for (const tz of ['UTC', 'Etc/GMT+3', 'Antarctica/McMurdo', 'Atlantic/Nowhere']) {
+      assert.equal(userLocation.timezoneToRegion(tz), null, tz);
+    }
+    assert.equal(userLocation.coordsToRegion(-75, 0), 'global');
   });
 });

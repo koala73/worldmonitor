@@ -5,7 +5,9 @@ import { readBoundedResponseBytes } from './_china-exchange-transport.mjs';
 loadEnvFile(import.meta.url);
 
 const AAII_KEY = 'market:aaii-sentiment:v1';
-const AAII_TTL = 604800; // 7 days (weekly data)
+// Weekly survey: 21 days is 3x the cron and outlives health's 14-day stale gate,
+// so one missed run reports STALE_SEED instead of an empty panel.
+const AAII_TTL = 21 * 24 * 3600;
 
 const AAII_HTML_URL = 'https://www.aaii.com/sentimentsurvey';
 
@@ -438,7 +440,9 @@ async function fetchAaiiSentiment({ fetchDeadlineAtMs }) {
 
   // Compute rolling averages
   const last8 = weeks.slice(0, 8);
-  const avg8w = last8.length > 0 ? {
+  // Eight readings within 7.5 weeks leave no room for a skipped survey week.
+  const consecutive8 = last8.length === 8 && Date.parse(last8[0].date) - Date.parse(last8[7].date) < 7.5 * 7 * 86400000;
+  const avg8w = consecutive8 ? {
     bullish: +(last8.reduce((s, w) => s + w.bullish, 0) / last8.length).toFixed(1),
     bearish: +(last8.reduce((s, w) => s + w.bearish, 0) / last8.length).toFixed(1),
     neutral: +(last8.reduce((s, w) => s + w.neutral, 0) / last8.length).toFixed(1),

@@ -570,10 +570,20 @@ export function declareRecords(data) {
   return Object.values(data?.regions ?? {}).filter((region) => region?.exclusion === null).length;
 }
 
+// The dataset and its activation marker must become visible together. The
+// self-hosted redis-rest proxy only runs EVAL scripts it has pinned by exact
+// bytes: docker/redis-rest-proxy.mjs keeps a PINNED COPY of this script, and
+// tests/redis-rest-proxy-command-parity.test.mjs checks the two match.
+export const PUBLISH_NO2_ACTIVITY_LUA = `
+redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
+redis.call('SET', KEYS[2], '1')
+return 1
+`.trim();
+
 export async function publishNo2Atomically(_data, { canonicalKey, payload, ttlSeconds }, { url, token } = getRedisCredentials()) {
   const { result } = await redisCommand(url, token, [
     'EVAL',
-    "redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2]); redis.call('SET', KEYS[2], '1'); return 1",
+    PUBLISH_NO2_ACTIVITY_LUA,
     2, canonicalKey, NO2_ACTIVITY_ACTIVATION_KEY, payload, ttlSeconds,
   ], { label: 'NO2 dataset and activation publication' });
   if (result !== 1) throw new Error('NO2 dataset and activation publication was not confirmed');

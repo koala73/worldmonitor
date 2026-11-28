@@ -438,15 +438,6 @@ function extractMilitaryBranch(text: string): string | null {
 }
 
 /**
- * Enrich a single aircraft and determine military status
- */
-export async function enrichAircraft(icao24: string): Promise<EnrichedAircraftInfo | null> {
-  const details = await getAircraftDetails(icao24);
-  if (!details || !details.registration) return null;
-  return analyzeAircraftDetails(details);
-}
-
-/**
  * Get Wingbits service status
  */
 export function getWingbitsStatus(): { configured: boolean | null; cacheSize: number } {

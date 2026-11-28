@@ -43,6 +43,10 @@ describe('public API provider redistribution contract', () => {
   for (const [label, spec] of [
     ['MilitaryService JSON', () => readJson('docs/api/MilitaryService.openapi.json')],
     ['MilitaryService YAML', () => readYaml('docs/api/MilitaryService.openapi.yaml')],
+    // IntelligenceService embeds MilitaryFlight in its signal observations; the
+    // API Reference renders each service page from its own spec.
+    ['IntelligenceService JSON', () => readJson('docs/api/IntelligenceService.openapi.json')],
+    ['IntelligenceService YAML', () => readYaml('docs/api/IntelligenceService.openapi.yaml')],
     ['worldmonitor bundle', () => readYaml('docs/api/worldmonitor.openapi.yaml')],
   ]) {
     it(`${label} documents only redistributable military observation examples`, () => {

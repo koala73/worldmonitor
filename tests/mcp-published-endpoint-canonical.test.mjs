@@ -53,7 +53,7 @@ const PATH_END = '(?![A-Za-z0-9_\\-/]|\\.[A-Za-z0-9])';
 
 const WRONG_MCP_URLS = [
   {
-    label: 'an alias host that answers 410 canonical_endpoint_required',
+    label: 'an alias host, which is never published (retired aliases answer 410 canonical_endpoint_required)',
     re: new RegExp(`${SCHEME}(?:${ALIASES})\\.${APEX}${HOST_TAIL}(?:${PATHS})${PATH_END}`, 'g'),
   },
   {
@@ -187,7 +187,8 @@ describe('published MCP URLs are the canonical endpoint (#9722)', () => {
     for (const remote of registry.remotes) assert.equal(remote.url, MCP_CANONICAL_ENDPOINT);
 
     for (const file of [
-      'src/components/UnifiedSettings.ts',
+      // Settings → AI Agents renders its URL and install links from this catalog.
+      'src/config/mcp-agent-clients.ts',
       'pro-test/src/welcome/Agents.tsx',
       'claude-plugin/README.md',
       '.antigravity-plugin/README.md',

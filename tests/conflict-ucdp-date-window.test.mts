@@ -71,3 +71,13 @@ describe('deriveConflictHistory', () => {
     assert.equal(result.recordedFatalities, 50);
   });
 });
+
+describe('currentUcdpCountryName', () => {
+  it('drops the former name UCDP appends and keeps other names whole', async () => {
+    const { currentUcdpCountryName } = await import('../src/services/conflict/index.ts');
+    assert.deepEqual(
+      ['Yemen (North Yemen)', 'DR Congo (Zaire)', 'Russia (Soviet Union)', 'Ukraine', 'Bosnia-Herzegovina'].map(currentUcdpCountryName),
+      ['Yemen', 'DR Congo', 'Russia', 'Ukraine', 'Bosnia-Herzegovina'],
+    );
+  });
+});

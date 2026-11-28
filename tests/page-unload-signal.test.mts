@@ -5,6 +5,7 @@ import {
   _resetPageUnloadSignalForTests,
   installPageUnloadSignal,
   isPageUnloading,
+  markPageUnloading,
 } from '../src/bootstrap/page-unload-signal.ts';
 
 function fakeWindow() {
@@ -51,6 +52,16 @@ describe('page unload signal', () => {
     win.fire('pagehide');
     win.fire('pageshow');
     assert.equal(isPageUnloading(), false);
+  });
+
+  it('turns on when a first-party reload marks it, before any browser event', () => {
+    // WebKit can abort in-flight fetches before `beforeunload` reaches the
+    // listener, so our own reloads mark the page first (WORLDMONITOR-1AY).
+    const start = Date.now();
+    markPageUnloading(start);
+    assert.equal(isPageUnloading(start), true);
+    assert.equal(isPageUnloading(start + 2_900), true);
+    assert.equal(isPageUnloading(start + 3_200), false);
   });
 
   it('installs its listeners once', () => {

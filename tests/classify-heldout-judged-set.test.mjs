@@ -54,11 +54,13 @@ describe('held-out judged set', () => {
     }
   });
 
-  it('its "after" runs are the model and prompt production sends today', () => {
+  it('its current runs are the model and prompt production sends today', () => {
     // If this reds, the prompt or model changed: re-capture the held-out runs too
     // (`--fixture ${HELDOUT} --path relay|rpc --capture <name> --force`), or the
-    // out-of-sample numbers describe a classifier that no longer ships.
-    for (const name of ['relay-after', 'relay-after-rerun']) {
+    // out-of-sample numbers describe a classifier that no longer ships. Capture the
+    // relay as relay-current*: relay-after and relay-after-rerun are inputs to the
+    // frozen Jev experiment (scripts/lib/jev-heldout.mjs FROZEN.fixtureSha) and never move.
+    for (const name of ['relay-current', 'relay-current-rerun']) {
       assert.equal(heldout.runs[name].promptSha, promptSha(extractRelayPrompt(relaySrc)), name);
       assert.equal(heldout.runs[name].model, extractRelayOpenRouterModel(relaySrc), name);
     }
@@ -74,7 +76,14 @@ describe('held-out judged set', () => {
     assert.deepEqual(pick(score('relay-after')), { missed: 4, falseAlerts: 6 });
     assert.deepEqual(pick(score('relay-after-rerun')), { missed: 5, falseAlerts: 6 });
     assert.deepEqual(pick(score('rpc-before')), { missed: 0, falseAlerts: 58 });
-    assert.deepEqual(pick(score('rpc-after')), { missed: 3, falseAlerts: 12 });
+    assert.deepEqual(pick(score('rpc-after')), { missed: 3, falseAlerts: 11 });
+    // The #11432 prompt (critical needs the event to have happened) on the relay. The
+    // 2026-11-21 prompt (#11103) recorded 2 and 5 missed, 5 and 6 false alerts; three
+    // same-session runs of it on 2026-11-27 gave 8, 4 and 6 missed, 5 false alerts each.
+    // Each miss is a high labelled medium. One is clear-cut ("Survivors recount panic ... where
+    // 37 died"), which the committed old-prompt runs labelled medium once in two.
+    assert.deepEqual(pick(score('relay-current')), { missed: 8, falseAlerts: 4 });
+    assert.deepEqual(pick(score('relay-current-rerun')), { missed: 8, falseAlerts: 4 });
     // The old relay model returned no valid label for 11 titles; production skips those.
     assert.equal(score('relay-before').unlabelled, 11);
     assert.equal(score('relay-after').unlabelled, 0);

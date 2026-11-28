@@ -31,6 +31,7 @@
 
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { isDesktopRuntime } from './desktop-runtime';
+import { needsDesktopCheckoutHandoff, withDesktopCheckoutHandoff } from './desktop-checkout-handoff';
 import { invokeTauri } from './tauri-bridge';
 
 /**
@@ -77,6 +78,19 @@ function reportOpenFailure(url: string, reason: string): void {
     // The URL itself is withheld: portal session URLs are bearer-like.
     extra: { origin: originForTelemetry(url), reason },
   }));
+}
+
+/**
+ * A refused tab for a caller that stays on the page left the click dead
+ * (Sentry WORLDMONITOR-1ED). Offer the URL as a link the user can follow.
+ * Loaded on demand: the notice needs i18n, which this module's tsx tests
+ * cannot load, and only this path uses it.
+ */
+function offerBlockedLink(url: string): void {
+  if (typeof document === 'undefined') return;
+  void import('./blocked-open-notice')
+    .then((m) => m.showBlockedOpenNotice(url))
+    .catch(() => { /* chunk failed to load: the Sentry report above still stands */ });
 }
 
 /** Distinguishes "the native side said no" from "it never answered". */
@@ -215,7 +229,7 @@ export async function openExternalUrl(
   preopened?: Window | null,
   options?: OpenExternalUrlOptions,
 ): Promise<ExternalNavOutcome> {
-  const targetUrl = typeof url === 'string' ? url : url.toString();
+  let targetUrl = typeof url === 'string' ? url : url.toString();
   if (!isOpenableExternalUrl(targetUrl)) {
     reportOpenFailure(targetUrl, 'rejected-scheme');
     closeWindowQuietly(preopened);
@@ -227,6 +241,7 @@ export async function openExternalUrl(
     // reserved before it knew the runtime, so the OS browser doesn't come
     // forward over an orphaned blank WebView window.
     closeWindowQuietly(preopened);
+    if (needsDesktopCheckoutHandoff(targetUrl)) targetUrl = await withDesktopCheckoutHandoff(targetUrl);
     try {
       await invokeOpenUrlBounded(targetUrl);
       return 'native';
@@ -275,6 +290,7 @@ export async function openExternalUrl(
   // unsaved input, which opts out and gets the failure instead.
   if (options?.sameTabFallback === false) {
     reportOpenFailure(targetUrl, 'popup-blocked');
+    offerBlockedLink(targetUrl);
     return 'failed';
   }
   try {

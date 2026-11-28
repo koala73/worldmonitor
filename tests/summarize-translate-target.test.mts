@@ -74,7 +74,7 @@ describe('summarize-article translate target language', () => {
       return new Response('unexpected', { status: 500 });
     };
 
-    // Translate mode is free and skips the gateway's direct-LLM quota. Pre-fix,
+    // Translate mode skips the gateway's direct-LLM quota. Pre-fix,
     // `variant` went straight into the system prompt, so an anonymous caller
     // could send arbitrary instructions and bust the cache on every request.
     const response = await summarizeArticle(
@@ -87,9 +87,9 @@ describe('summarize-article translate target language', () => {
     assert.deepEqual(llmCalls, []);
   });
 
-  it('still translates into a supported language for an anonymous caller', async () => {
-    // The anonymous daily translate budget allows this call (its own suite:
-    // summarize-translate-hardening.test.mts).
+  it('still translates a Hebrew alert into English for an anonymous caller', async () => {
+    // The one translation that needs no Pro; the anonymous daily translate
+    // budget allows this call (its own suite: summarize-translate-hardening).
     __setTranslateBudgetLimiterForTests(async (_scope, limit) => ({ allowed: true, limit, reset: 0, degraded: false }));
     const llmCalls: string[] = [];
     globalThis.fetch = async (input, init) => {
@@ -97,7 +97,10 @@ describe('summarize-article translate target language', () => {
       return new Response('provider down', { status: 503 });
     };
 
-    const response = await summarizeArticle(anonymousContext(), translateRequest('fr'));
+    const response = await summarizeArticle(
+      anonymousContext(),
+      { ...translateRequest('en'), headlines: ['ירי רקטות וטילים'] },
+    );
 
     assert.notEqual(response.errorType, 'ValidationError');
     assert.notEqual(response.errorType, 'AuthError');

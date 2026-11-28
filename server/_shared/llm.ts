@@ -927,7 +927,7 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
         } else {
           record(false, { reason: timedOut ? 'timeout' : 'fetch_error' });
         }
-        if (timedOut && isOpenRouterProvider(providerName)) {
+        if (timedOut && hasIndependentFallback) {
           skipRemainingOpenRouter = true;
         }
         if (forcedProvider) return null;

@@ -16,7 +16,7 @@ const SITUATION_SECTIONS = situationSections(CHOKEPOINT_REGISTRY);
 export { SITUATION_PAGE_PATH };
 
 /** Bump when the page copy changes so its lastmod advances without touching every sibling. */
-export const SITUATION_CONTENT_VERSION = '2026-10-28';
+export const SITUATION_CONTENT_VERSION = '2026-11-26';
 
 /** Every file whose change alters this page's HTML, for its lastmod clock. */
 export const SITUATION_PAGE_INPUT_PATHS = Object.freeze([
@@ -41,9 +41,38 @@ export const CRISIS_REGIONS = Object.freeze([
 
 export const CRISIS_REGION_IDS = Object.freeze(CRISIS_REGIONS.map((region) => region.id));
 
-const H1 = 'Monitor the situation';
-export const TITLE = 'Monitor the Situation: Live World Board | World Monitor';
-export const DESCRIPTION = 'A free live board of the world right now: breaking headlines, crisis trackers by region, shipping chokepoint status and internet outages, all timestamped.';
+// The publisher is in the heading, the title and the description because an
+// answer engine that read only those credited a product called "Monitor the
+// Situation" and never said World Monitor.
+const H1 = 'Monitor the situation with World Monitor';
+export const TITLE = 'Monitor the Situation: World Monitor Live Conflict Board';
+export const DESCRIPTION = `World Monitor's free live board: conflict trackers for ${listPhrase(CRISIS_REGIONS.map((region) => regionName(region)))}, with headlines, chokepoints and outages.`;
+
+function regionName(region) {
+  return region.id === 'europe' || region.id === 'asia' || region.id === 'africa' ? region.label : `the ${region.label}`;
+}
+
+function listPhrase(items) {
+  return items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`;
+}
+
+/** The registry's trackers grouped by region, in page order, regions without a tracker left out. */
+function crisesByRegion(crises) {
+  return CRISIS_REGIONS
+    .map((region) => ({ region, crises: crises.filter((crisis) => crisis.region === region.id) }))
+    .filter(({ crises: members }) => members.length > 0);
+}
+
+/**
+ * One sentence naming every tracker under its region, built from the registry
+ * so a reader (or an answer engine) can confirm Sudan or the Sahel is covered
+ * without scrolling, and so the sentence cannot drift from the cards below.
+ */
+function coverageSentence(crises, renderName) {
+  const groups = crisesByRegion(crises)
+    .map(({ region, crises: members }) => `${regionName(region)} (${members.map(renderName).join(', ')})`);
+  return `World Monitor tracks ${crises.length} conflicts and crises on one live map: ${groups.join('; ')}.`;
+}
 
 const OBSERVATION_PERIOD_RE = /^\d{4}-\d{2}(-\d{2})?$/;
 const MONTH_FORMAT = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -80,10 +109,7 @@ function renderCrisisCard(crisis, pulse, escapeHtml) {
 }
 
 export function renderActiveSituations({ crises, livePulse, escapeHtml }) {
-  const regions = CRISIS_REGIONS
-    .map((region) => ({ region, crises: crises.filter((crisis) => crisis.region === region.id) }))
-    .filter(({ crises: members }) => members.length > 0);
-  return regions.map(({ region, crises: members }) => `        <section class="region" id="${region.id}">
+  return crisesByRegion(crises).map(({ region, crises: members }) => `        <section class="region" id="${region.id}">
           <h3>${escapeHtml(region.label)}</h3>
           <ul class="situations">
 ${members.map((crisis) => renderCrisisCard(crisis, livePulse?.crises?.[crisis.slug] ?? null, escapeHtml)).join('\n')}
@@ -91,10 +117,14 @@ ${members.map((crisis) => renderCrisisCard(crisis, livePulse?.crises?.[crisis.sl
         </section>`).join('\n');
 }
 
-const FAQ = Object.freeze([
+const faqEntries = (crises) => Object.freeze([
   {
     question: 'Is there a website to monitor the situation?',
-    answer: 'Yes. World Monitor is a free live board of what is happening in the world now. The map and its panels need no account, and this page lists the current situations with the time each reading was taken: headlines, 14 crisis trackers by region, shipping chokepoint status and internet outages.',
+    answer: 'Yes. World Monitor is a free live board of what is happening in the world now. The map and its panels need no account, and this page lists the current situations with the time each reading was taken: headlines, ' + crises.length + ' crisis trackers by region, shipping chokepoint status and internet outages.',
+  },
+  {
+    question: 'Which conflicts does World Monitor track?',
+    answer: coverageSentence(crises, (crisis) => crisis.shortTitle) + ' Each tracker has a fixed country scope, a dated monthly conflict summary and a link to the same view on the live map.',
   },
   {
     question: 'How do I monitor the situation in the Middle East?',
@@ -122,12 +152,13 @@ function faqPageLd(faqs) {
   };
 }
 
-function renderFaq(escapeHtml) {
-  return FAQ.map((faq) => `      <h3>${escapeHtml(faq.question)}</h3>
+function renderFaq(faqs, escapeHtml) {
+  return faqs.map((faq) => `      <h3>${escapeHtml(faq.question)}</h3>
       <p>${escapeHtml(faq.answer)}</p>`).join('\n');
 }
 
 const EXTRA_STYLES = `
+      .coverage { max-width: 760px; }
       .headlines { margin: 16px 0 0; padding-left: 22px; }
       .headlines li { padding: 6px 0; border-bottom: 1px solid var(--line); color: var(--text); }
       .headlines li:last-child { border-bottom: 0; }
@@ -144,6 +175,7 @@ const EXTRA_STYLES = `
       .routine li { margin-bottom: 8px; }`;
 
 export function renderSituationPage({ baseUrl, lastmod, tpl, crises, livePulse, hubRows, snapshotPath }) {
+  const faqs = faqEntries(crises);
   const { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument } = tpl;
   const url = absoluteUrl(baseUrl, SITUATION_PAGE_PATH);
   const sections = Object.fromEntries(SITUATION_SECTIONS.map((section) => [
@@ -153,12 +185,14 @@ export function renderSituationPage({ baseUrl, lastmod, tpl, crises, livePulse, 
   const body = `      <p class="eyebrow">Live board</p>
       <h1>${escapeHtml(H1)}</h1>
       <p class="lede">World Monitor is a free live board of what is happening in the world now: conflicts, shipping chokepoints, internet outages and breaking headlines, with the time each reading was taken. The <a href="/dashboard">live map</a> shows the same data with event-level detail and needs no account.</p>
+      <p class="coverage">${coverageSentence(crises, (crisis) => `<a href="/crises/${escapeHtml(crisis.slug)}/">${escapeHtml(crisis.shortTitle)}</a>`)}</p>
 ${sections.headlines}
       <h2 id="active-situations">Active situations</h2>
       <p>The ${crises.length} crisis trackers below have a fixed country scope and a dated monthly conflict summary from the UN OCHA <a href="https://data.humdata.org/hapi">Humanitarian API (HDX HAPI)</a>. Each links to its tracker page and to the same view on the live map. The figures are the ${escapeHtml(String(livePulse.capturedAt))} snapshot and are not forecasts.</p>
 ${renderActiveSituations({ crises, livePulse, escapeHtml })}
 ${sections.chokepoints}
 ${sections.outages}
+      <p>For a lighter signal, the <a href="/blog/glossary/pentagon-pizza-index/">Pentagon Pizza Index</a> compares how busy pizza places near the Pentagon are against their usual level for the hour. It is an OSINT folk indicator, not a forecast.</p>
       <h2 id="how-to">How to monitor the situation</h2>
       <ol class="routine">
         <li>Open the <a href="/dashboard">live map</a>. The map and its panels are free and need no account.</li>
@@ -170,7 +204,7 @@ ${sections.outages}
       <h2 id="meaning">What does "monitor the situation" mean?</h2>
       <p>To monitor the situation is to keep watching a developing event, usually a conflict, a disaster or a market shock, as new reports arrive. The phrase spread online as a joke about people who refresh the news constantly without being able to change anything. This page is the version with sources: every reading above names where it came from and when it was taken, and nothing on it is a forecast.</p>
       <h2 id="faq">Questions</h2>
-${renderFaq(escapeHtml)}
+${renderFaq(faqs, escapeHtml)}
       <p class="source">Published readings: ${escapeHtml(snapshotPath)}. Live readings replace them at request time from the World Monitor public API; a section whose source is unavailable keeps its published reading. Chokepoint scoring: <a href="/docs/methodology/chokepoints">methodology</a>. Crisis scope: <a href="https://github.com/koala73/worldmonitor/blob/main/shared/crawlable-crises.json">crisis registry</a>.</p>`;
   return pageDocument({
     baseUrl,
@@ -191,7 +225,7 @@ ${renderFaq(escapeHtml)}
         inLanguage: 'en-US',
         dateModified: lastmod,
       },
-      faqPageLd(FAQ),
+      faqPageLd(faqs),
     ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },

@@ -23,7 +23,6 @@ const PAGE2 = JSON.parse(readFileSync(new URL('./fixtures/open511-bc-page-2.json
 const ADAPTER_SOURCE = readFileSync(new URL('../scripts/lib/open511.mjs', import.meta.url), 'utf8');
 const SEEDER_SOURCE = readFileSync(new URL('../scripts/seed-open511.mjs', import.meta.url), 'utf8');
 const RELAY_SOURCE = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
-const TEST_SOURCE = readFileSync(new URL(import.meta.url), 'utf8');
 
 test.afterEach(() => {
   limiterTesting.reset();
@@ -35,11 +34,6 @@ function jsonResponse(body, { status = 200, headers = {} } = {}) {
     headers: { 'content-type': 'application/json', ...headers },
   });
 }
-
-test('seeder module is not imported by this test file', () => {
-  assert.equal(/from ['"][^'"]*seed-open511/.test(TEST_SOURCE), false);
-  assert.equal(TEST_SOURCE.includes('seed-open511.mjs'), true, 'fixture: this file must still mention the seeder as text');
-});
 
 test('adapter is Open511 /events?status=ACTIVE, not vendor /api/v2/get', () => {
   assert.match(ADAPTER_SOURCE, /events\?status=ACTIVE|searchParams\.set\('status'/);

@@ -1,0 +1,7 @@
+---
+title: "航道中断告警（出站，已签名）"
+description: "受监测航道发生中断时，World Monitor 向已注册的 Shipping v2 Webhook 发送的签名 POST 请求。本页列出 X-WM-Signature 等请求头、事件载荷字段，以及接收方用 HMAC-SHA256 校验签名、确认投递确实来自 World Monitor 的方法。"
+openapi: "api/worldmonitor.openapi.yaml webhook chokepoint.disruption"
+---
+
+所有投递事件共用这些请求头与签名。完整的投递约定见 [Shipping v2 投递格式](/zh/api-shipping-v2)。

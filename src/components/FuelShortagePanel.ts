@@ -1,7 +1,7 @@
 import { CountrySectionError } from '@/services/country-brief-error';
 import { Panel } from './Panel';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
-import { iso2ToCountryName } from '@/utils/country-codes';
+import { iso2ToCountryName, toIso2 } from '@/utils/country-codes';
 import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 
@@ -13,6 +13,9 @@ import type {
 import {
   deriveShortageEvidenceQuality,
   countEvidenceSources,
+  isShortageReconfirmed,
+  newestShortageConfirmation,
+  SHORTAGE_RECONFIRM_DAYS,
   type EvidenceQuality,
 } from '@/shared/shortage-evidence';
 import {
@@ -22,6 +25,9 @@ import {
 } from '@/shared/fuel-shortage-registry-store';
 import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 import { bindActivationKeys } from '@/utils/activation';
+import { t } from '@/services/i18n';
+import type { ResolvedScope } from '@/services/tab-focus';
+import { PanelScopeFilter, focusedEmptyHtml, scopeTagHtml, type ScopeRow } from './panel-scope-filter';
 
 const getSupplyChainClient = createLazyClient(() => new SupplyChainServiceClient(getRpcBaseUrl(), {
   fetch: rpcFetch,
@@ -40,6 +46,39 @@ const PRODUCT_GLYPH: Record<string, string> = {
   jet:         '✈️',
   heating_oil: '🔥',
 };
+
+const PRODUCT_LABEL: Record<string, string> = {
+  petrol:      'Petrol',
+  diesel:      'Diesel',
+  jet:         'Jet fuel',
+  heating_oil: 'Heating oil',
+};
+
+const CAUSE_LABEL: Record<string, string> = {
+  upstream_refinery: 'Upstream refinery',
+  logistics:         'Logistics',
+  policy:            'Policy',
+  chokepoint:        'Chokepoint',
+  sanction:          'Sanctions',
+  war:               'War',
+  import_cut:        'Import cut',
+};
+
+const IMPACT_LABEL: Record<string, string> = {
+  stations_closed:   'Stations closed',
+  rationing:         'Rationing',
+  flights_cancelled: 'Flights cancelled',
+  import_cut:        'Import cut',
+  price_spike:       'Price spike',
+};
+
+function enumLabel(labels: Record<string, string>, key: string): string {
+  if (labels[key]) return labels[key];
+  const words = key.replace(/_/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const QUALITY_DOT: Record<EvidenceQuality, string> = {
   strong:   '●●●',
@@ -115,10 +154,9 @@ function buildBootstrapResponse(
     const projected = projectRawShortage(raw);
     if (projected) shortages.push(projected);
   }
-  if (shortages.length === 0) return null;
   return {
     shortages,
-    fetchedAt: registry.updatedAt ?? '',
+    fetchedAt: newestShortageConfirmation(shortages) || registry.updatedAt || '',
     classifierVersion: registry.classifierVersion ?? 'v1',
     upstreamUnavailable: false,
   };
@@ -130,6 +168,10 @@ export class FuelShortagePanel extends Panel {
   private detail: GetFuelShortageDetailResponse | null = null;
   private detailLoading = false;
   private detailError: string | null = null;
+  // Dashboard focus (#10453): each entry carries the ISO code of its country.
+  private readonly scopeFilter: PanelScopeFilter;
+  /** A refresh is in flight: the loading indicator must stay until data lands. */
+  private refreshing = false;
   private openDetailHandler = (ev: Event): void => {
     const id = (ev as CustomEvent<{ shortageId?: string }>).detail?.shortageId;
     if (!id || !this.element?.isConnected) return;
@@ -147,6 +189,7 @@ export class FuelShortagePanel extends Panel {
         'carries the full evidence source list — see /docs/methodology/shortages for the ' +
         'threshold spec + classifier version.',
     });
+    this.scopeFilter = new PanelScopeFilter({ content: this.content, onChange: () => this.render() });
     if (typeof window !== 'undefined') {
       window.addEventListener('energy:open-fuel-shortage-detail', this.openDetailHandler);
     }
@@ -174,6 +217,25 @@ export class FuelShortagePanel extends Panel {
     super.destroy?.();
   }
 
+  public override applyScope(scope: ResolvedScope | null): void {
+    if (!this.scopeFilter.setScope(scope)) return;
+    // The next successful load draws with the new focus; redrawing now would
+    // erase a load failure or the loading state.
+    if (this.data && !this.showingLoadFailure && !this.refreshing) this.render();
+  }
+
+  public override showLoading(message?: string): void {
+    this.refreshing = true;
+    this.scopeFilter?.hideStrip();
+    super.showLoading(message);
+  }
+
+  public override showError(message?: string, onRetry?: () => void, autoRetrySeconds?: number): void {
+    this.refreshing = false;
+    this.scopeFilter.hideStrip();
+    super.showError(message, onRetry, autoRetrySeconds);
+  }
+
   public async fetchData(): Promise<void> {
     try {
       const { registry } = getCachedFuelShortageRegistry();
@@ -182,7 +244,7 @@ export class FuelShortagePanel extends Panel {
         this.data = hydrated;
         this.render();
         void getSupplyChainClient().listFuelShortages({ country: '', product: '', severity: '' }).then(live => {
-          if (!this.element?.isConnected || !live?.shortages?.length) return;
+          if (!this.element?.isConnected || live?.upstreamUnavailable || !Array.isArray(live?.shortages)) return;
           this.data = live;
           this.render();
           const shortagesRecord: Record<string, FuelShortageEntry> =
@@ -198,7 +260,7 @@ export class FuelShortagePanel extends Panel {
 
       const live = await getSupplyChainClient().listFuelShortages({ country: '', product: '', severity: '' });
       if (!this.element?.isConnected) return;
-      if (live.upstreamUnavailable || !live.shortages?.length) {
+      if (live.upstreamUnavailable || !Array.isArray(live.shortages)) {
         this.showError('Fuel shortage registry unavailable', () => void this.fetchData());
         return;
       }
@@ -252,12 +314,27 @@ export class FuelShortagePanel extends Panel {
 
   private render(): void {
     if (!this.data) return;
+    this.refreshing = false;
+
+    // The focus narrows first (chosen countries, then neighbours); the
+    // summary counts the focused set.
+    const view = this.scopeFilter.view(this.data.shortages, (s) => toIso2(s.country));
+    if (this.data.shortages.length === 0) this.scopeFilter.hideStrip();
+    else this.scopeFilter.renderStrip(view);
+    const scoped = view.rows.map((row) => row.item);
 
     // Sort confirmed before watch; within each tier, strongest evidence first,
     // then most recently confirmed. Readers scan high-impact + high-trust rows
-    // first — the classifier's confidence ordering is the tie-breaker.
-    const rows = [...this.data.shortages]
-      .sort((a, b) => {
+    // first — the classifier's confidence ordering is the tie-breaker. Under a
+    // focus, chosen countries come before neighbours.
+    const rows = [...view.rows]
+      .sort((rowA, rowB) => {
+        if (rowA.rank !== rowB.rank) return rowA.rank - rowB.rank;
+        const a = rowA.item;
+        const b = rowB.item;
+        const aStale = isShortageReconfirmed(a.lastConfirmed) ? 0 : 1;
+        const bStale = isShortageReconfirmed(b.lastConfirmed) ? 0 : 1;
+        if (aStale !== bStale) return aStale - bStale;
         const aConf = a.severity === 'confirmed' ? 0 : 1;
         const bConf = b.severity === 'confirmed' ? 0 : 1;
         if (aConf !== bConf) return aConf - bConf;
@@ -267,18 +344,20 @@ export class FuelShortagePanel extends Panel {
         if (qualityRank[aQ] !== qualityRank[bQ]) return qualityRank[aQ] - qualityRank[bQ];
         return b.lastConfirmed.localeCompare(a.lastConfirmed);
       })
-      .map(s => this.renderRow(s))
+      .map(row => this.renderRow(row.item, row))
       .join('');
 
-    const confirmed = this.data.shortages.filter(s => s.severity === 'confirmed').length;
-    const watch = this.data.shortages.filter(s => s.severity === 'watch').length;
-    const summary = `${confirmed} confirmed · ${watch} watch`;
+    const confirmed = scoped.filter(s => s.severity === 'confirmed').length;
+    const watch = scoped.filter(s => s.severity === 'watch').length;
+    const stale = scoped.filter(s => !isShortageReconfirmed(s.lastConfirmed)).length;
+    const summary = `${confirmed} confirmed · ${watch} watch`
+      + (stale ? ` · ${stale} not reconfirmed in ${SHORTAGE_RECONFIRM_DAYS} days` : '');
 
     const attribution = attributionFooterHtml({
       sourceType: 'classifier',
       method: 'evidence-threshold + LLM double-check',
       sampleSize: this.data.shortages.length,
-      sampleLabel: 'active shortages',
+      sampleLabel: 'shortages',
       updatedAt: this.data.fetchedAt,
       classifierVersion: this.data.classifierVersion,
       creditName: 'Regulator advisories + IEA + major wire',
@@ -290,19 +369,19 @@ export class FuelShortagePanel extends Panel {
     const html = unsafeRawHtml(`
       <div class="fs-wrap">
         <div class="fs-summary">${escapeHtml(summary)}</div>
-        <div class="table-scroll" role="group" tabindex="${this.selectedId ? '-1' : '0'}" aria-labelledby="${this.panelId}Title">
+        ${view.emptyByFocus ? focusedEmptyHtml(t('focus.filter.emptyFuelShortages')) : `<div class="table-scroll" role="group" tabindex="${this.selectedId ? '-1' : '0'}" aria-labelledby="${this.panelId}Title">
           <table class="wm-table fs-table" role="table">
             <thead role="rowgroup">
               <tr role="row">
                 <th scope="col" role="columnheader">Country · Product</th>
-                <th scope="col" role="columnheader">Since</th>
+                <th scope="col" role="columnheader">Last confirmed</th>
                 <th scope="col" role="columnheader">Evidence</th>
                 <th scope="col" role="columnheader">Severity</th>
               </tr>
             </thead>
             <tbody role="rowgroup">${rows}</tbody>
           </table>
-        </div>
+        </div>`}
         ${attribution}
         ${drawer}
       </div>
@@ -331,6 +410,8 @@ export class FuelShortagePanel extends Panel {
           .fs-table .fs-val[data-label]::before { content: attr(data-label) ' '; color: var(--text-dim, #888); }
         }
         .fs-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
+        .fs-stale { color: var(--text-dim, #888); font-style: italic; white-space: normal; }
+        .fs-stale > span { white-space: nowrap; }
         .fs-quality { font-family: monospace; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); }
         .fs-drawer { position: absolute; inset: 0; background: var(--panel-bg, #0f1218); padding: 12px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; }
         .fs-drawer-close { position: absolute; top: 8px; right: 10px; background: transparent; border: 0; color: var(--text-dim, #888); cursor: pointer; font-size: calc(14px * var(--wm-panel-effective-scale, 1)); }
@@ -351,16 +432,21 @@ export class FuelShortagePanel extends Panel {
     else this.setSafeContent(html);
   }
 
-  private renderRow(s: FuelShortageEntry): string {
+  private renderRow(s: FuelShortageEntry, row?: ScopeRow<FuelShortageEntry>): string {
     const glyph = PRODUCT_GLYPH[s.product] ?? '•';
     const quality = deriveShortageEvidenceQuality(s.evidence);
+    const reconfirmed = isShortageReconfirmed(s.lastConfirmed);
+    const ageDays = Math.floor((Date.now() - Date.parse(s.lastConfirmed)) / DAY_MS);
+    const confirmedCell = reconfirmed || !Number.isFinite(ageDays)
+      ? escapeHtml(s.lastConfirmed.slice(0, 10) || '—')
+      : `<span class="fs-stale" title="Not reconfirmed in ${SHORTAGE_RECONFIRM_DAYS} days"><span>${escapeHtml(s.lastConfirmed.slice(0, 10))}</span> <span>· ${ageDays}d ago</span></span>`;
     return `
       <tr class="fs-row" role="row" data-shortage-id="${escapeHtml(s.id)}" tabindex="${this.selectedId ? '-1' : '0'}">
         <td role="cell">
-          <div class="fs-name">${glyph} ${escapeHtml(s.country)} · ${escapeHtml(s.product)}</div>
-          <div class="fs-sub">${escapeHtml(s.causeChain.join(' · ') || '—')}</div>
+          <div class="fs-name">${glyph} ${escapeHtml(s.country)} · ${escapeHtml(enumLabel(PRODUCT_LABEL, s.product))} ${scopeTagHtml(row)}</div>
+          <div class="fs-sub">${escapeHtml(s.causeChain.map(c => enumLabel(CAUSE_LABEL, c)).join(' · ') || '—')}</div>
         </td>
-        <td role="cell" class="fs-val" data-label="Since">${escapeHtml(s.firstSeen.slice(0, 10))}</td>
+        <td role="cell" class="fs-val" data-label="Last confirmed">${confirmedCell}</td>
         <td role="cell"><span class="fs-quality" title="Evidence quality: ${escapeHtml(quality)}">${QUALITY_DOT[quality]}</span></td>
         <td role="cell">${severityChip(s.severity)}</td>
       </tr>`;
@@ -395,14 +481,14 @@ export class FuelShortagePanel extends Panel {
     return `
       <div class="fs-drawer">
         <button class="fs-drawer-close" aria-label="Close">✕</button>
-        <h3>${escapeHtml(iso2ToCountryName(s.country))} · ${escapeHtml(s.product)} ${severityChip(s.severity)}</h3>
+        <h3>${escapeHtml(iso2ToCountryName(s.country))} · ${escapeHtml(enumLabel(PRODUCT_LABEL, s.product))} ${severityChip(s.severity)}</h3>
         <div class="fs-kv">
           <div class="fs-kv-key">Description</div>  <div>${escapeHtml(s.shortDescription)}</div>
           <div class="fs-kv-key">First seen</div>   <div>${escapeHtml(s.firstSeen.slice(0, 10))}</div>
           <div class="fs-kv-key">Last confirmed</div><div>${escapeHtml(s.lastConfirmed.slice(0, 10))}</div>
-          <div class="fs-kv-key">Resolved</div>     <div>${s.resolvedAt ? escapeHtml(s.resolvedAt.slice(0, 10)) : 'Active'}</div>
-          <div class="fs-kv-key">Impact</div>       <div>${escapeHtml(s.impactTypes.join(', ') || '—')}</div>
-          <div class="fs-kv-key">Cause chain</div>  <div>${escapeHtml(s.causeChain.join(' → ') || '—')}</div>
+          <div class="fs-kv-key">Resolved</div>     <div>${s.resolvedAt ? escapeHtml(s.resolvedAt.slice(0, 10)) : isShortageReconfirmed(s.lastConfirmed) ? 'Active' : `Not marked resolved; not reconfirmed in ${SHORTAGE_RECONFIRM_DAYS} days`}</div>
+          <div class="fs-kv-key">Impact</div>       <div>${escapeHtml(s.impactTypes.map(i => enumLabel(IMPACT_LABEL, i)).join(', ') || '—')}</div>
+          <div class="fs-kv-key">Cause chain</div>  <div>${escapeHtml(s.causeChain.map(c => enumLabel(CAUSE_LABEL, c)).join(' → ') || '—')}</div>
           <div class="fs-kv-key">Evidence</div>     <div>${counts.authoritative} regulator/operator · ${counts.press} press · quality: ${escapeHtml(quality)}</div>
           ${ev?.classifierVersion ? `<div class="fs-kv-key">Classifier</div><div>${escapeHtml(ev.classifierVersion)} · confidence ${Math.round((ev.classifierConfidence ?? 0) * 100)}%</div>` : ''}
         </div>

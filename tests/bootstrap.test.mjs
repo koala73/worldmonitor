@@ -21,7 +21,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
 function hasHydrationConsumer(source, key) {
-  if (source.includes(`getHydratedData('${key}')`) || source.includes(`ensureHydrated('${key}')`)) {
+  if (
+    source.includes(`getHydratedData('${key}')`)
+    || source.includes(`ensureHydrated('${key}')`)
+    || source.includes(`ensureHydrated('${key}',`)
+  ) {
     return true;
   }
   const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -482,13 +486,34 @@ describe('Bootstrap tier definitions', () => {
     const allSrc = srcFiles.map((f) => readFileSync(f, 'utf-8')).join('\n');
 
     const stale = [...PENDING_CONSUMERS].filter((key) =>
-      allSrc.includes(`getHydratedData('${key}')`) || allSrc.includes(`ensureHydrated('${key}')`));
+      allSrc.includes(`getHydratedData('${key}')`)
+      || allSrc.includes(`ensureHydrated('${key}')`)
+      || allSrc.includes(`ensureHydrated('${key}',`));
 
     assert.deepEqual(
       stale,
       [],
       `PENDING_CONSUMERS entries have real hydration consumers and must be removed: ${stale.join(', ')}`,
     );
+  });
+
+  // The published `worldmonitor` CLI (npm 0.2.2) loads only `?tier=slow&public=1`
+  // for these keys and reads them from that response. Installed copies never see a
+  // source change here, so moving one off the slow tier empties that CLI view until
+  // users upgrade. Move a key only after a CLI release fetches it some other way.
+  const PUBLISHED_CLI_SLOW_TIER_KEYS = [
+    'sectors', 'etfFlows', 'climateAnomalies', 'climateDisasters', 'co2Monitoring', 'oceanIce',
+    'radiationWatch', 'thermalEscalation', 'crossSourceSignals', 'wildfires', 'naturalEvents',
+    'cryptoQuotes', 'defiTokens', 'aiTokens', 'otherTokens', 'gulfQuotes', 'stablecoinMarkets',
+    'unrestEvents', 'ucdpEvents', 'techEvents',
+    'securityAdvisories', 'sanctionsPressure', 'fearGreedIndex', 'diseaseOutbreaks',
+    'economicStress', 'fuelShortages',
+  ];
+
+  it('keeps every key the published CLI reads from the slow tier in that tier', () => {
+    const slow = tierKeys('slow');
+    const moved = PUBLISHED_CLI_SLOW_TIER_KEYS.filter((k) => !slow.has(k));
+    assert.deepEqual(moved, [], `published CLI reads these from ?tier=slow but they left it: ${moved.join(', ')}`);
   });
 
   it('on-demand keys are NOT served by the tier bundles every client downloads', () => {
@@ -504,7 +529,7 @@ describe('Bootstrap tier definitions', () => {
 describe('Adaptive backoff adopters', () => {
   it('ServiceStatusPanel.fetchStatus returns Promise<boolean>', () => {
     const src = readFileSync(join(root, 'src/components/ServiceStatusPanel.ts'), 'utf-8');
-    assert.ok(src.includes('fetchStatus(): Promise<boolean>'), 'fetchStatus should return Promise<boolean> for adaptive backoff');
+    assert.match(src, /fetchStatus\([^)]*\):\s*Promise<boolean>/, 'fetchStatus should return Promise<boolean> for adaptive backoff');
     assert.ok(src.includes('lastServicesJson'), 'Missing lastServicesJson for change detection');
   });
 

@@ -59,7 +59,7 @@ export function classifySitemapUrl(value) {
   if (pathname === '/') return 'landing';
   // Keep in lockstep with nonDefaultLandingLocales() in
   // shared/indexable-landing-locales.ts.
-  if (/^\/(?:es|pt|ru|fr|de|ar)\/?$/.test(pathname)) return 'landing';
+  if (/^\/(?:es|pt|ru|fr|de|ar|id|ja)\/?$/.test(pathname)) return 'landing';
   if (pathname === '/dashboard') return 'dashboard';
   if (pathname === '/pro') return 'product';
   if (/\.(?:md|txt)$/.test(pathname)) return 'machine-readable';

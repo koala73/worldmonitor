@@ -20,6 +20,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -28,6 +29,7 @@ import {
   PUBLISH_PHYSICAL_PREMIUM_LUA,
   PUBLISH_DIVERGENCE_LUA,
 } from '../scripts/seed-physical-premiums.mjs';
+import { PUBLISH_NO2_ACTIVITY_LUA } from '../scripts/seed-no2-activity.mjs';
 import {
   RESERVE_LUA,
   SETTLE_LUA,
@@ -46,6 +48,8 @@ import { COMPARE_AND_DELETE_SCRIPT } from '../shared/compare-and-delete-script.c
 import { SEED_LOCK_RENEW_SCRIPT, SEED_LOCK_FENCED_SET_SCRIPT } from '../scripts/_seed-utils.mjs';
 import { recordHistoryCost } from '../scripts/lib/intel-history-cost.mjs';
 import { createTenderReceipt, writeTenderReceipt } from '../scripts/_global-tender-receipts.mjs';
+import { createDurableTransitTracker } from '../shared/chokepoint-transit-store.js';
+import { readTransitWindow } from '../shared/chokepoint-transit-window.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
@@ -62,7 +66,10 @@ function extract(pattern, label) {
 }
 
 const allowedCommandsSrc = extract(/const ALLOWED_COMMANDS = new Set\(\[[\s\S]*?\]\);/, 'ALLOWED_COMMANDS');
-const scriptConstsSrc = [...proxySrc.matchAll(/const [A-Z_]+_SCRIPT = \[[\s\S]*?\]\.join\('\\n'\);/g)].map((m) => m[0]);
+// `[A-Z0-9_]+`, not `[A-Z_]+`: a pinned script whose name carries a digit
+// (NO2_ACTIVITY_PUBLISH_SCRIPT) was silently dropped from the harness, so the
+// gate under test threw ReferenceError instead of evaluating it.
+const scriptConstsSrc = [...proxySrc.matchAll(/const [A-Z0-9_]+_SCRIPT = \[[\s\S]*?\]\.join\('\\n'\);/g)].map((m) => m[0]);
 const allowedEvalSrc = extract(/const ALLOWED_EVAL_SCRIPTS = new Set\(\[[\s\S]*?\]\);/, 'ALLOWED_EVAL_SCRIPTS');
 const legacyReplacementsSrc = extract(/const LEGACY_EVAL_REPLACEMENTS = new Map\(\[[\s\S]*?\]\);/, 'LEGACY_EVAL_REPLACEMENTS');
 const isAllowedEvalSrc = extract(/function isAllowedEval\([\s\S]*?\n\}/, 'isAllowedEval');
@@ -281,6 +288,26 @@ describe('redis-rest-proxy command gate', () => {
     assert.equal(accepts(gate, [emitted[0], `${emitted[1]} `, ...emitted.slice(2)]), false);
   });
 
+  it('admits the sent-alert history write the notification relay actually sends', async (t) => {
+    const gate = buildGate();
+    const require = createRequire(import.meta.url);
+    const { createSentAlertLog, SENT_ALERT_WRITE_SCRIPT } = require('../scripts/lib/sent-alert-history.cjs');
+    let emitted;
+    t.mock.method(globalThis, 'fetch', async (_url, options) => {
+      emitted = JSON.parse(options.body);
+      return Response.json([{ result: 1 }]);
+    });
+    await createSentAlertLog({ upstashUrl: 'https://redis.fixture', upstashToken: 'fixture' })
+      .noteSentAlert('user_fixture', { title: 'A delivered headline', channels: ['email'] });
+
+    assert.equal(emitted.length, 1, 'one command per record');
+    const [command] = emitted;
+    assert.equal(command[1], SENT_ALERT_WRITE_SCRIPT);
+    assert.equal(accepts(gate, command), true, 'self-hosted proxy must accept the actual writer command');
+    assert.equal(accepts(gate, [command[0], `${command[1]} `, ...command.slice(2)]), false,
+      'a one-character script variant must stay blocked');
+  });
+
   it('pins the physical-premium history append by exact bytes', () => {
     const gate = buildGate();
     assert.equal(gate.ALLOWED_EVAL_SCRIPTS.has(APPEND_HISTORY_LUA), true);
@@ -332,6 +359,51 @@ describe('redis-rest-proxy command gate', () => {
       false,
       'a one-character script variant must stay blocked',
     );
+  });
+
+  it('pins the atomic NO2 activity publication by exact bytes', () => {
+    const gate = buildGate();
+    assert.equal(gate.ALLOWED_EVAL_SCRIPTS.has(PUBLISH_NO2_ACTIVITY_LUA), true);
+    assert.equal(
+      accepts(gate, ['EVAL', PUBLISH_NO2_ACTIVITY_LUA, '2', 'economic:no2-activity:v1', 'activation', '{}', '604800']),
+      true,
+    );
+    assert.equal(
+      accepts(gate, ['EVAL', `${PUBLISH_NO2_ACTIVITY_LUA} `, '2', 'economic:no2-activity:v1', 'activation', '{}', '604800']),
+      false,
+      'a one-character script variant must stay blocked',
+    );
+  });
+
+  it('admits the EVAL commands emitted by the relay transit helpers', async () => {
+    const gate = buildGate();
+    const now = 1_790_000_000_000;
+    const hour = 60 * 60 * 1000;
+    const waterway = 'Fixture Strait';
+    const commands = [];
+    const capture = (result) => async (script, keys, args) => {
+      commands.push(['EVAL', script, String(keys.length), ...keys, ...args.map(String)]);
+      return result;
+    };
+
+    const tracker = createDurableTransitTracker({
+      gates: { [waterway]: { a: [[1, 1, 0.1]], b: [[2, 2, 0.1]] } },
+      maxTransitMs: 18 * hour,
+      cooldownMs: hour / 2,
+      evaluate: capture([1, '{}']),
+    });
+    tracker.observe('123456789', 1, 1, 'tanker', now);
+    await tracker.flush(now);
+    const gateUpdates = commands.length;
+    assert.ok(gateUpdates > 0, 'the tracker must emit a gate update');
+
+    const crossings = new Map([[waterway, [{ mmsi: '123456789', type: 'tanker', ts: now }]]]);
+    await readTransitWindow(crossings, now, capture([]));
+    assert.ok(commands.length > gateUpdates, 'the window reader must emit an EVAL');
+
+    for (const command of commands) {
+      assert.equal(accepts(gate, command), true, `the proxy must admit the transit EVAL for ${command[3]}`);
+    }
   });
 
   it('pins every military-bases version-switch script by exact bytes', () => {

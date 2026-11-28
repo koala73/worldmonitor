@@ -22,7 +22,7 @@ The production policies use the same origin patterns:
 | Pattern | Matches |
 | --- | --- |
 | HTTPS app hosts | `worldmonitor.app`, `www.`, `app.`, `api.`, `tech.`, `finance.`, `commodity.`, `happy.`, `energy.` |
-| `worldmonitor-*-eliewm.vercel.app` | Vercel preview deploys (literal `-eliewm` suffix) |
+| Own preview hostname | On a Vercel preview deployment only, its exact `VERCEL_URL` and `VERCEL_BRANCH_URL`. No `*.vercel.app` name pattern is trusted: any Vercel account can claim a matching project name. |
 | `localhost:*` / `127.0.0.1:*` | Local development only when `NODE_ENV !== "production"` |
 | `tauri.localhost:*` / `*.tauri.localhost:*` | Desktop app (Tauri v2) |
 | `tauri://localhost` / `asset://localhost` | Desktop app (Tauri v2 asset protocol) |

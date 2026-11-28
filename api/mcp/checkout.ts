@@ -8,18 +8,36 @@
  * rate-limit ladder and the already-subscribed / pending-payment guards all
  * apply unchanged. The agent receives a checkout URL; the user pays in a
  * browser. Nothing here charges or handles payment details.
+ *
+ * API Starter is the one exception to "always a checkout": an individual Pro
+ * holder moves to it in place (a prorated change on the same subscription),
+ * so the tool first asks the switch relay for a quote and, when the account
+ * has a Pro to switch, refuses with the dashboard step instead of selling a
+ * second subscription. The quote is never confirmed from here.
  */
 
 import catalog from '../../shared/product-catalog.generated.json';
+import mcpOffers from '../../shared/mcp-offer-plans.generated.json';
 import { MCP_ATTRIBUTION_SOURCE } from '../../shared/mcp-attribution';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { rpcError } from './rpc';
+import type { McpPlanFeature } from './types';
 
 export const START_UPGRADE_TOOL = 'start_upgrade';
 
 const CHECKOUT_RELAY_USER_AGENT = 'worldmonitor-mcp-edge/1.0';
 const CHECKOUT_RELAY_TIMEOUT_MS = 15_000;
+// The quote and a following checkout share one edge response, which must
+// start within 25 s: 8 s here plus the checkout's 15 s. A timeout reads as
+// unknown, so a Pro-entitled caller gets a retryable 503, not a checkout.
+const SWITCH_PREVIEW_RELAY_TIMEOUT_MS = 8_000;
+
+/** Plans a Pro holder reaches by switching in place, not through checkout. */
+const API_STARTER_SWITCH_PLANS: ReadonlySet<string> = new Set(['api_starter', 'api_starter_annual']);
+/** Entitlement plans that may come from an individual Pro the server would switch. */
+const API_STARTER_SWITCH_SOURCE_PLANS: ReadonlySet<string> = new Set(['pro_monthly', 'pro_monthly_mcp', 'pro_annual']);
+const SWITCH_URL = 'https://www.worldmonitor.app/dashboard?settings=account';
 
 interface CatalogPlan {
   planKey: string;
@@ -28,10 +46,20 @@ interface CatalogPlan {
   currentForCheckout: boolean;
 }
 
-const PLANS = catalog.facts.plans as CatalogPlan[];
-const PRODUCTS = catalog.products as Record<string, { planKey: string }>;
+interface McpOfferPlan extends CatalogPlan {
+  dodoProductId: string;
+  priceCents: number;
+}
 
-/** The plans `start_upgrade` accepts: every self-serve plan currently sold. */
+/** Plans sold only through MCP (catalog `offerChannel: "mcp"`), never listed publicly. */
+const MCP_OFFER_PLANS = mcpOffers.plans as McpOfferPlan[];
+const PLANS: CatalogPlan[] = [...(catalog.facts.plans as CatalogPlan[]), ...MCP_OFFER_PLANS];
+const PRODUCTS: Record<string, { planKey: string }> = {
+  ...(catalog.products as Record<string, { planKey: string }>),
+  ...Object.fromEntries(MCP_OFFER_PLANS.map((plan) => [plan.dodoProductId, { planKey: plan.planKey }])),
+};
+
+/** The plans `start_upgrade` accepts: every self-serve plan currently sold, MCP-only plans included. */
 export const MCP_CHECKOUT_PLANS: readonly string[] = PLANS
   .filter((plan) => plan.selfServe && plan.currentForCheckout)
   .map((plan) => plan.planKey);
@@ -45,8 +73,9 @@ export function checkoutProductIdForPlan(plan: string): string | undefined {
 // One step up within the same product line. Pro Business, API Business and
 // Enterprise have no self-serve step above them, so they get no
 // recommendation; in-place plan changes stay with the billing portal.
+// A free account is offered the MCP-only Pro price when one is on sale.
 const NEXT_PLAN_BY_TIER_GROUP: Record<string, string> = {
-  free: 'pro_monthly',
+  free: MCP_OFFER_PLANS.find((plan) => plan.tierGroup === 'pro' && plan.currentForCheckout)?.planKey ?? 'pro_monthly',
   pro: 'pro_business_monthly',
   api_starter: 'api_business',
 };
@@ -60,6 +89,37 @@ export function recommendedPlanFor(planKey: string | undefined): string | undefi
   const tierGroup = PLANS.find((plan) => plan.planKey === planKey)?.tierGroup;
   const next = tierGroup === undefined ? undefined : NEXT_PLAN_BY_TIER_GROUP[tierGroup];
   return next !== undefined && MCP_CHECKOUT_PLANS.includes(next) ? next : undefined;
+}
+
+// The cheapest self-serve plan in the caller's line that carries the feature.
+// Pro is the one step up for a free account in general, but Pro lacks these
+// features, so a free account is pointed at Pro Business instead.
+const FEATURE_PLAN_BY_TIER_GROUP: Record<McpPlanFeature, Record<string, string>> = {
+  travelRiskAssessment: {
+    free: 'pro_business_monthly',
+    pro: 'pro_business_monthly',
+    api_starter: 'api_business',
+  },
+};
+
+/** The plan to offer a caller whose plan lacks `feature`, as `recommendedPlanFor` does for a tier. */
+export function recommendedPlanForFeature(planKey: string | undefined, feature: McpPlanFeature): string | undefined {
+  const tierGroup = PLANS.find((plan) => plan.planKey === planKey)?.tierGroup;
+  const next = tierGroup === undefined ? undefined : FEATURE_PLAN_BY_TIER_GROUP[feature][tierGroup];
+  return next !== undefined && MCP_CHECKOUT_PLANS.includes(next) ? next : undefined;
+}
+
+/**
+ * The sentence that names an MCP-only plan's price in a denial, or undefined
+ * for any other plan. ChatGPT replaces `nextStep` wholesale (host-policy.ts),
+ * so the price never reaches an inform-only host.
+ */
+export function mcpOfferSentence(plan: string | undefined): string | undefined {
+  const offer = MCP_OFFER_PLANS.find((candidate) => candidate.planKey === plan);
+  if (!offer) return undefined;
+  const price = (offer.priceCents / 100).toFixed(2);
+  return `Pro is $${price} a month for accounts that connect through MCP: `
+    + `call ${START_UPGRADE_TOOL} with plan "${offer.planKey}" to get a checkout link.`;
 }
 
 export interface StartUpgradeResult {
@@ -84,6 +144,25 @@ export type McpCheckoutOutcome =
   | { kind: 'unavailable'; cause: string };
 
 export type McpCreateCheckout = (input: { userId: string; productId: string }) => Promise<McpCheckoutOutcome>;
+
+/**
+ * What the switch relay's quote says about the account:
+ * - switch-in-place: it holds a Pro the server switches (a quote, or a refusal
+ *   sent only after the server picked that subscription);
+ * - resume-first: that Pro is set to cancel;
+ * - not-switchable: no Pro to switch, so API Starter is sold as before;
+ * - unknown: no answer (an older Convex without the relay, a timeout).
+ */
+export type McpApiStarterSwitchVerdict =
+  | { kind: 'switch-in-place' }
+  | { kind: 'resume-first' }
+  | { kind: 'not-switchable' }
+  | { kind: 'unknown'; cause: string };
+
+export type McpPreviewApiStarterSwitch = (input: { userId: string }) => Promise<McpApiStarterSwitchVerdict>;
+
+const SWITCH_NOT_SWITCHABLE_ERRORS: ReadonlySet<string> = new Set(['NO_UPGRADEABLE_PRO', 'ALREADY_API_PLAN', 'ACCOUNT_DELETION_IN_PROGRESS']);
+const SWITCH_HOLDER_ERRORS: ReadonlySet<string> = new Set(['UPGRADE_RATE_LIMITED', 'UPGRADE_IN_PROGRESS', 'DODO_PLAN_CHANGE_ERROR']);
 
 function convexSiteUrl(): string {
   return process.env.CONVEX_SITE_URL
@@ -133,6 +212,9 @@ export async function relayMcpCheckout(
         userId: input.userId,
         productId: input.productId,
         attributionSource: MCP_ATTRIBUTION_SOURCE,
+        // Server-set, unlike attributionSource, which the web checkout
+        // forwards from the browser. Convex sells MCP-only plans on this alone.
+        checkoutChannel: 'mcp',
       }),
       signal: AbortSignal.timeout(CHECKOUT_RELAY_TIMEOUT_MS),
     });
@@ -171,14 +253,113 @@ export async function relayMcpCheckout(
   return { kind: 'unavailable', cause: `relay-${response.status}` };
 }
 
+/**
+ * Production switch-quote relay: the same Convex route the dashboard's
+ * /api/api-starter-switch uses, with confirm:false only. Nothing changes and
+ * nothing is charged; a Pro holder's quote spends one plan-change admission.
+ */
+export async function relayApiStarterSwitchPreview(
+  input: { userId: string },
+  fetchImpl: typeof fetch = (...args) => globalThis.fetch(...args),
+): Promise<McpApiStarterSwitchVerdict> {
+  const siteUrl = convexSiteUrl();
+  const secret = process.env.CONVEX_TENANT_RELAY_SECRET ?? '';
+  if (!siteUrl || !secret) return { kind: 'unknown', cause: 'relay-unconfigured' };
+
+  let response: Response;
+  let data: Record<string, unknown> = {};
+  try {
+    response = await fetchImpl(`${siteUrl}/relay/api-starter-switch`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${secret}`,
+        'User-Agent': CHECKOUT_RELAY_USER_AGENT,
+      },
+      body: JSON.stringify({ userId: input.userId, confirm: false }),
+      signal: AbortSignal.timeout(SWITCH_PREVIEW_RELAY_TIMEOUT_MS),
+    });
+    const parsed: unknown = await response.json().catch(() => null);
+    if (parsed && typeof parsed === 'object') data = parsed as Record<string, unknown>;
+  } catch (err) {
+    return { kind: 'unknown', cause: err instanceof Error ? err.name : 'fetch-failed' };
+  }
+
+  if (response.ok) {
+    return data.kind === 'preview' && typeof data.toPlanKey === 'string' && API_STARTER_SWITCH_PLANS.has(data.toPlanKey)
+      ? { kind: 'switch-in-place' }
+      : { kind: 'unknown', cause: 'unexpected-reply' };
+  }
+  const code = readString(data.error) ?? '';
+  if (code === 'PRO_CANCEL_SCHEDULED') return { kind: 'resume-first' };
+  if (SWITCH_NOT_SWITCHABLE_ERRORS.has(code)) return { kind: 'not-switchable' };
+  if (SWITCH_HOLDER_ERRORS.has(code)) return { kind: 'switch-in-place' };
+  return { kind: 'unknown', cause: `relay-${response.status}` };
+}
+
 const BILLING_PORTAL_HINT = 'worldmonitor.app → Settings → Manage Billing';
+
+/**
+ * The refusal for an API Starter request from a Pro holder, or null when the
+ * account may buy API Starter through checkout.
+ */
+async function apiStarterSwitchRefusal(
+  previewSwitch: McpPreviewApiStarterSwitch | undefined,
+  userId: string,
+  callerPlanKey: string | undefined,
+  id: unknown,
+  corsHeaders: Record<string, string>,
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<Response | null> {
+  let verdict: McpApiStarterSwitchVerdict;
+  try {
+    verdict = await (previewSwitch ?? relayApiStarterSwitchPreview)({ userId });
+  } catch (err) {
+    verdict = { kind: 'unknown', cause: err instanceof Error ? err.name : 'Error' };
+  }
+  switch (verdict.kind) {
+    case 'switch-in-place':
+      return rpcError(id, -32002, 'This account has a Pro subscription, which moves to API Starter in place.', corsHeaders, {
+        reason: 'switch-in-place',
+        switchUrl: SWITCH_URL,
+        nextStep: 'Pro moves to API Starter as a prorated change on the same subscription, not through a new checkout, and this tool does not charge. '
+          + `Ask the user to open ${SWITCH_URL}, which opens Settings, Account, and choose Switch to API Starter; they confirm the prorated charge there.`,
+      });
+    case 'resume-first':
+      return rpcError(id, -32002, 'This account has a Pro subscription that is set to cancel.', corsHeaders, {
+        reason: 'pro-cancel-scheduled',
+        switchUrl: SWITCH_URL,
+        nextStep: `The Pro subscription is set to cancel at the end of this period. Ask the user to resume it in the billing portal (${BILLING_PORTAL_HINT}), `
+          + `then switch to API Starter at ${SWITCH_URL}, which opens Settings, Account.`,
+      });
+    case 'not-switchable':
+      return null;
+    case 'unknown':
+      // A caller entitled through an individual Pro may hold one: selling it
+      // a second subscription is worse than asking it to retry.
+      if (callerPlanKey === undefined || !API_STARTER_SWITCH_SOURCE_PLANS.has(callerPlanKey)) return null;
+      captureSilentError(new Error(`start_upgrade switch preview unavailable: ${verdict.cause}`), {
+        tags: { route: 'api/mcp', step: 'start-upgrade-switch-preview', tool: START_UPGRADE_TOOL },
+        fingerprint: ['api/mcp', 'start-upgrade-switch-preview', verdict.cause],
+        ctx,
+      });
+      return rpcError(
+        id,
+        -32603,
+        'Checkout service temporarily unavailable. Retry in a moment.',
+        { ...corsHeaders, 'Retry-After': '5' },
+        undefined,
+        503,
+      );
+  }
+}
 
 function alreadySubscribedNextStep(subscription: McpCheckoutSubscription | null, plan: string): string {
   const target = plan.startsWith('pro_business') ? 'pro_business' : plan.startsWith('api_business') ? 'api_business' : null;
   const existing = subscription?.planKey ?? '';
-  if (target === 'pro_business' && (existing === 'pro_monthly' || existing === 'pro_annual')) {
-    return 'Pro and Pro Business are separate products, not a plan change. Ask the user to cancel Pro in the billing portal '
-      + `(${BILLING_PORTAL_HINT}); Pro access runs to the end of the paid term. Then call start_upgrade again.`;
+  if (target === 'pro_business' && (existing === 'pro_monthly' || existing === 'pro_monthly_mcp' || existing === 'pro_annual')) {
+    return 'Pro moves to Pro Business as a prorated upgrade on the same subscription, not through a new checkout. '
+      + 'Ask the user to open worldmonitor.app/pro and choose Pro Business while signed in; they confirm the prorated charge there.';
   }
   if (target === 'api_business' && existing.startsWith('api_starter')) {
     return `API Starter moves to API Business as a prorated plan change in the billing portal (${BILLING_PORTAL_HINT}), not through a new checkout.`;
@@ -200,7 +381,18 @@ export async function startUpgradeCheckout(
   id: unknown,
   corsHeaders: Record<string, string>,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
+  apiStarterSwitch: {
+    previewSwitch?: McpPreviewApiStarterSwitch;
+    /** The caller's entitlement plan key; not proof of an own subscription. */
+    callerPlanKey?: string;
+  } = {},
 ): Promise<StartUpgradeResult | Response> {
+  if (API_STARTER_SWITCH_PLANS.has(plan)) {
+    const refusal = await apiStarterSwitchRefusal(
+      apiStarterSwitch.previewSwitch, userId, apiStarterSwitch.callerPlanKey, id, corsHeaders, ctx,
+    );
+    if (refusal) return refusal;
+  }
   let outcome: McpCheckoutOutcome;
   try {
     outcome = await (createCheckout ?? relayMcpCheckout)({ userId, productId });

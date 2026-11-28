@@ -5,7 +5,7 @@
 // turn an index page into the document URLs to read, newest first.
 import {
   cleanHtml, text, blocks, rows, number, observation, publicUrl,
-  validDay, ymd, EN_MONTHS, EN_MONTH_RE, addUnique, decodeTitle,
+  validDay, ymd, EN_MONTHS, EN_MONTH_RE, addUnique, decodeTitle, csv, pad2,
 } from './regional-energy-feeds.mjs';
 
 const monthIndex = name => {
@@ -292,7 +292,8 @@ export function parseZeraPrices(html) {
   const asOf = source.match(/As Of:\s*(\d{2})-(\d{2})-(20\d{2})/);
   if (!asOf) throw new Error('Missing ZERA price date');
   const period = ymd(asOf[3], asOf[2], asOf[1]);
-  const tokens = [...source.matchAll(/bdt-price-table-(heading|integer-part|period)[^"<>]*"\s*>([^<]{0,80})</g)]
+  // The class attribute may be quoted or, on the minified page, bare, and other attributes may follow it.
+  const tokens = [...source.matchAll(/bdt-price-table-(heading|integer-part|period)(?=[\s">])[^<>]*>([^<]{0,80})</g)]
     .map(m => ({ kind: m[1], value: text(m[2]) }));
   const points = new Map();
   let product = null, price = null;
@@ -608,3 +609,219 @@ export function parseUrseaReferencePrices(html) {
   return [...points.values()];
 }
 
+
+// ---- Western Australia FuelWatch: daily station retail prices (CSV, #10838) ----
+// The CC BY 4.0 "FuelWatch Historic Fuel Prices" dataset (data.wa.gov.au) is one
+// CSV per month, rewritten each night with the previous day's station prices.
+// The FuelWatch RSS feed is not used: it is marked "All Rights Reserved".
+
+export const FUELWATCH_HOST = 'warsydprdstafuelwatch.blob.core.windows.net';
+const FUELWATCH_UTC_OFFSET_MS = 8 * 3600000;
+/** This month's file in Perth time, then last month's (a new file appears only after its first day). */
+export function fuelWatchCsvUrls(nowMs = Date.now()) {
+  const perth = new Date(nowMs + FUELWATCH_UTC_OFFSET_MS);
+  const months = [[perth.getUTCFullYear(), perth.getUTCMonth()], [perth.getUTCFullYear(), perth.getUTCMonth() - 1]];
+  return months.map(([y, m]) => {
+    const first = new Date(Date.UTC(y, m, 1));
+    return `https://${FUELWATCH_HOST}/historical-reports/FuelWatchRetail-${pad2(first.getUTCMonth() + 1)}-${first.getUTCFullYear()}.csv`;
+  });
+}
+
+const FUELWATCH_PRODUCTS = ['ULP', 'PULP', '98 RON', 'Diesel'];
+const FUELWATCH_HEADLINE = ['ULP', 'Diesel'];
+const FUELWATCH_COLUMNS = ['PUBLISH_DATE', 'TRADING_NAME', 'PRODUCT_DESCRIPTION', 'PRODUCT_PRICE', 'ADDRESS', 'LOCATION'];
+const FUELWATCH_MAX_UNREADABLE = 0.05;
+const median = values => {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return +(sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2).toFixed(4);
+};
+
+// Prices are cents per litre. Each station appears once per product per day; the
+// feed publishes the median of stations on the newest day the file holds.
+export function parseFuelWatchPrices(source, nowMs = Date.now(), { minStations = 400 } = {}) {
+  const { header, records, ragged } = csv(String(source), ',', { skipRagged: true });
+  if (FUELWATCH_COLUMNS.some(c => !header.includes(c))) throw new Error('Changed FuelWatch price columns');
+  const today = new Date(nowMs + FUELWATCH_UTC_OFFSET_MS).toISOString().slice(0, 10);
+  const days = new Map();
+  let considered = ragged, unreadable = ragged;
+  for (const r of records) {
+    if (!FUELWATCH_PRODUCTS.includes(r.PRODUCT_DESCRIPTION)) continue;
+    considered++;
+    const d = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(r.PUBLISH_DATE);
+    const price = /^\d+(?:\.\d+)?$/.test(r.PRODUCT_PRICE) ? Number(r.PRODUCT_PRICE) : NaN;
+    let day = null;
+    try { day = d && ymd(d[3], d[2], d[1]); } catch { day = null; }
+    if (!day || !(price > 0)) { unreadable++; continue; }
+    if (day > today) continue;
+    if (!days.has(day)) days.set(day, new Map());
+    days.get(day).set(`${r.PRODUCT_DESCRIPTION}|${r.TRADING_NAME}|${r.ADDRESS}|${r.LOCATION}`, { product: r.PRODUCT_DESCRIPTION, price });
+  }
+  if (!considered || unreadable / considered > FUELWATCH_MAX_UNREADABLE) throw new Error('Unreadable FuelWatch rows');
+  // The newest day whose ULP and diesel samples are complete, so a partly
+  // written last day falls back to the day before it.
+  const complete = day => FUELWATCH_HEADLINE.every(product =>
+    [...days.get(day).values()].filter(s => s.product === product).length >= minStations);
+  const period = [...days.keys()].sort().reverse().find(complete);
+  if (!period) throw new Error('FuelWatch station sample is incomplete');
+  const stations = [...days.get(period).values()];
+  const points = new Map();
+  for (const product of FUELWATCH_PRODUCTS) {
+    const prices = stations.filter(s => s.product === product).map(s => s.price / 100);
+    if (prices.length < minStations) continue;
+    addUnique(points, positive(observation('fuel.retail_price', period, median(prices), 'AUD/l', `${product}; median of stations`), 0.5, 10, 'FuelWatch price'));
+  }
+  return [...points.values()];
+}
+
+// ---- Argentina Secretaría de Energía: declared pump prices per station (CSV, #11154) ----
+
+const SEARG_HOST = 'datos.energia.gob.ar';
+export const SEARG_CSV_URL = `https://${SEARG_HOST}/dataset/1c181390-5045-475e-94dc-410429be4b17/resource/80ac25de-a44a-4445-9215-090cf55cfda5/download/precios-en-surtidor-resolucin-3142016.csv`;
+// CNG (idproducto 6) is priced per cubic metre and is left out.
+const SEARG_PRODUCTS = new Map([
+  ['2', 'Nafta (súper) entre 92 y 95 Ron'],
+  ['3', 'Nafta (premium) de más de 95 Ron'],
+  ['19', 'Gas Oil Grado 2'],
+  ['21', 'Gas Oil Grado 3'],
+]);
+const SEARG_HEADLINE = ['2', '19'];
+const SEARG_COLUMNS = ['idempresa', 'idproducto', 'producto', 'idtipohorario', 'tipohorario', 'precio', 'fecha_vigencia'];
+const SEARG_DAYTIME = ['2', 'Diurno'];
+const SEARG_WINDOW_MS = 30 * 86400000;
+const SEARG_MAX_UNREADABLE = 0.05;
+// Argentina has no daylight saving time.
+const SEARG_OFFSET = '-03:00';
+
+const seargMedian = values => {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return +(sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2).toFixed(2);
+};
+
+// Each row is a station's latest declaration for one product and tariff, so
+// abandoned stations keep rows from years back. The national figure is the
+// median daytime price over stations that declared within 30 days of the
+// newest declaration, dated by that declaration's day in Argentina.
+export function parseSeArgentinaPrices(source, nowMs = Date.now(), { minStations = 200 } = {}) {
+  // Free-text address and company cells make a stray ragged row plausible in an
+  // export this size; those rows count as unreadable instead of failing the file.
+  const { header, records, ragged } = csv(String(source), ',', { skipRagged: true });
+  if (SEARG_COLUMNS.some(c => !header.includes(c))) throw new Error('Changed Secretaría de Energía price columns');
+  const latest = new Map();
+  let considered = ragged, unreadable = ragged;
+  for (const r of records) {
+    const product = SEARG_PRODUCTS.get(r.idproducto);
+    if (!product) continue;
+    if (r.producto !== product) throw new Error(`Changed Secretaría de Energía product ${r.idproducto}`);
+    const daytime = r.idtipohorario === SEARG_DAYTIME[0];
+    if (daytime !== (r.tipohorario === SEARG_DAYTIME[1])) throw new Error('Changed Secretaría de Energía tariff codes');
+    if (!daytime) continue;
+    considered++;
+    const when = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}(?::\d{2})?)$/.exec(r.fecha_vigencia);
+    const ms = when ? Date.parse(`${when[1]}T${when[2]}${SEARG_OFFSET}`) : NaN;
+    const price = r.precio === '' ? NaN : Number(r.precio);
+    if (!Number.isFinite(ms) || !(price > 0)) { unreadable++; continue; }
+    if (ms > nowMs) continue;
+    const key = `${r.idproducto}|${r.idempresa}`;
+    if (!latest.has(key) || latest.get(key).ms < ms) latest.set(key, { product: r.idproducto, ms, price });
+  }
+  if (!considered || unreadable / considered > SEARG_MAX_UNREADABLE) throw new Error('Unreadable Secretaría de Energía rows');
+  const declarations = [...latest.values()];
+  const newest = Math.max(...declarations.map(d => d.ms));
+  if (!Number.isFinite(newest)) throw new Error('Secretaría de Energía station sample is incomplete');
+  const period = validDay(new Date(newest - 3 * 3600000).toISOString().slice(0, 10));
+  const points = new Map();
+  for (const [id, product] of SEARG_PRODUCTS) {
+    const prices = declarations.filter(d => d.product === id && d.ms >= newest - SEARG_WINDOW_MS).map(d => d.price);
+    if (prices.length < minStations) {
+      if (SEARG_HEADLINE.includes(id)) throw new Error('Secretaría de Energía station sample is incomplete');
+      continue;
+    }
+    addUnique(points, positive(observation('fuel.retail_price', period, seargMedian(prices), 'ARS/l', `${product}; median of stations`), 1, 1e7, 'Secretaría de Energía price'));
+  }
+  return [...points.values()];
+}
+
+// ---- Taiwan MOEA Energy Administration oil111: county pump and LPG surveys (#10113) ----
+// The oil111 site's open-data declaration (/oil111/opendataannouncement) licenses
+// its data free of charge, non-exclusively and irrevocably, with attribution.
+// Each county row splits its survey into plain (A), offshore (B) and mountain (C)
+// stations; a group's mean is weighted by its surveyed-station count.
+
+export const OIL111_HOST = 'www2.moeaea.gov.tw';
+export const OIL111_REQUESTS = [
+  { product: 'Unleaded 92', path: 'Gasoline', oil: '01', unit: 'week', title: '各縣市92無鉛汽油週均價' },
+  { product: 'Unleaded 95', path: 'Gasoline', oil: '02', unit: 'week', title: '各縣市95無鉛汽油週均價' },
+  { product: 'Unleaded 98', path: 'Gasoline', oil: '03', unit: 'week', title: '各縣市98無鉛汽油週均價' },
+  { product: 'Super diesel', path: 'Gasoline', oil: '04', unit: 'week', title: '各縣市超級柴油週均價' },
+  { product: 'LPG 20 kg cylinder', path: 'LPG', oil: '05', unit: 'month' },
+].map(r => ({ ...r, url: `https://${OIL111_HOST}/oil111/${r.path}/CountyCityAvg/load`, form: `unit=${r.unit}&oil=${r.oil}&start=lastone` }));
+const OIL111_COUNTIES = {
+  臺北市: 'Taipei City', 基隆市: 'Keelung City', 新北市: 'New Taipei City', 宜蘭縣: 'Yilan County',
+  新竹市: 'Hsinchu City', 新竹縣: 'Hsinchu County', 桃園市: 'Taoyuan City', 苗栗縣: 'Miaoli County',
+  臺中市: 'Taichung City', 彰化縣: 'Changhua County', 南投縣: 'Nantou County', 嘉義市: 'Chiayi City',
+  嘉義縣: 'Chiayi County', 雲林縣: 'Yunlin County', 臺南市: 'Tainan City', 高雄市: 'Kaohsiung City',
+  澎湖縣: 'Penghu County', 屏東縣: 'Pingtung County', 臺東縣: 'Taitung County', 花蓮縣: 'Hualien County',
+  金門縣: 'Kinmen County', 連江縣: 'Lienchiang County',
+};
+const OIL111_MIN_COUNTIES = 15;
+const OIL111_GROUPS = ['A', 'B', 'C'];
+
+// Mean of the groups with surveyed stations, weighted by their station counts.
+// Every count is present; only an explicit zero marks a group without stations.
+function oil111Mean(row, countKey, [min, max]) {
+  let total = 0, count = 0;
+  for (const g of OIL111_GROUPS) {
+    const n = row[`${g}${countKey}`], price = row[`${g}avg`];
+    if (!Number.isInteger(n) || n < 0) throw new Error('Changed oil111 survey groups');
+    if (n === 0) continue;
+    if (!Number.isFinite(price)) throw new Error('Changed oil111 survey groups');
+    if (price < min || price > max) throw new Error('Implausible oil111 price');
+    total += price * n;
+    count += n;
+  }
+  return count ? +(total / count).toFixed(2) : null;
+}
+
+/** One survey response as a national mean and one mean per county, in TWD/l or TWD per 20 kg cylinder. */
+export function parseOil111Survey(payload, request, nowMs = Date.now()) {
+  const data = payload?.data;
+  const rows = data?.[request.path === 'LPG' ? 'dataarray' : 'gasoline'];
+  if (payload?.res !== '01' || !Array.isArray(rows) || (request.title && data.title !== request.title)) throw new Error(`Changed oil111 ${request.product} survey`);
+  let period;
+  if (request.unit === 'week') {
+    const m = /^(\d{4})\/(\d{2})\/(\d{2}) ~ (\d{4})\/(\d{2})\/(\d{2})$/.exec(data.start ?? '');
+    if (!m) throw new Error(`Changed oil111 ${request.product} week`);
+    const start = ymd(m[1], m[2], m[3]);
+    period = ymd(m[4], m[5], m[6]);
+    if (Date.parse(period) - Date.parse(start) !== 6 * 86400000) throw new Error(`Changed oil111 ${request.product} week`);
+  } else {
+    const m = /^(\d{4})\/(\d{2})$/.exec(data.start ?? '');
+    if (!m) throw new Error(`Changed oil111 ${request.product} month`);
+    period = ymd(m[1], m[2], 1);
+  }
+  const today = new Date(nowMs + 8 * 3600000).toISOString().slice(0, 10);
+  if (period > today) throw new Error(`Future oil111 ${request.product} survey`);
+  const [unit, min, max] = request.path === 'LPG' ? ['TWD/20kg', 200, 3000] : ['TWD/l', 5, 100];
+  const plausible = (point) => positive(point, min, max, 'oil111 price');
+  const points = new Map();
+  const national = oil111Mean(data, 'num', [min, max]);
+  if (national == null) throw new Error(`Missing oil111 ${request.product} national mean`);
+  addUnique(points, plausible(observation('fuel.retail_price', period, national, unit, request.product)));
+  let counties = 0;
+  const seen = new Set();
+  for (const row of rows) {
+    const county = Object.hasOwn(OIL111_COUNTIES, row?.City) ? OIL111_COUNTIES[row.City] : undefined;
+    if (!county) throw new Error(`Changed oil111 county ${row?.City}`);
+    if (seen.has(county)) throw new Error(`Duplicate oil111 county ${row.City}`);
+    seen.add(county);
+    if (row.SurDate !== data.start) throw new Error(`Changed oil111 ${request.product} survey`);
+    const mean = oil111Mean(row, 'snum', [min, max]);
+    if (mean == null) continue; // No station in this county sells the grade or reported it.
+    counties++;
+    addUnique(points, plausible(observation('fuel.retail_price', period, mean, unit, `${request.product}; ${county}`)));
+  }
+  if (counties < OIL111_MIN_COUNTIES) throw new Error(`Incomplete oil111 ${request.product} county survey`);
+  return [...points.values()];
+}

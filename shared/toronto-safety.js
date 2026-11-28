@@ -77,7 +77,3 @@ export const TORONTO_SAFETY_CANONICAL_KEYS = Object.freeze(
 export function torontoSafetySourceById(id) {
   return TORONTO_SAFETY_SOURCES.find((source) => source.id === id);
 }
-
-export function torontoSafetySourcesForSemantic(semantic) {
-  return TORONTO_SAFETY_SOURCES.filter((source) => source.semantic === semantic);
-}

@@ -1,0 +1,25 @@
+{
+  "rows": [
+    {
+      "keys": [
+        "split query",
+        "https://www.worldmonitor.app/crises/"
+      ],
+      "clicks": 0,
+      "impressions": 15,
+      "ctr": 0.0,
+      "position": 20.0
+    },
+    {
+      "keys": [
+        "split query",
+        "https://www.worldmonitor.app/countries/"
+      ],
+      "clicks": 0,
+      "impressions": 10,
+      "ctr": 0.0,
+      "position": 25.0
+    }
+  ],
+  "responseAggregationType": "byPage"
+}
