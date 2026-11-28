@@ -51,6 +51,8 @@ export interface ProBusinessUpgradeFlowOptions {
   /** Structured ConvexError kind, e.g. PRO_CANCEL_SCHEDULED. */
   errorKind: (err: unknown) => string | null | undefined;
   reportError: (action: string, err: unknown) => void;
+  /** Runs when the user dismisses one of this flow's dialogs; a confirm never calls it. */
+  onDismiss?: () => void;
 }
 
 /** Resolves after the first dialog is shown, or after the fallback ran. */
@@ -60,6 +62,7 @@ export async function runProBusinessUpgradeFlow(options: ProBusinessUpgradeFlowO
     return;
   }
 
+  const onDismiss = (): void => { options.onDismiss?.(); };
   const showResult = (title: string, body: string, onConfirm: () => void = () => {}, confirmLabel = 'Done'): void => {
     options.showDialog({
       id: RESULT_DIALOG_ID,
@@ -68,7 +71,7 @@ export async function runProBusinessUpgradeFlow(options: ProBusinessUpgradeFlowO
       confirmLabel,
       dismissLabel: 'Close',
       onConfirm,
-      onDismiss: () => {},
+      onDismiss,
     });
   };
 
@@ -116,7 +119,7 @@ export async function runProBusinessUpgradeFlow(options: ProBusinessUpgradeFlowO
         }
       })();
     },
-    onDismiss: () => {},
+    onDismiss,
   });
 }
 
