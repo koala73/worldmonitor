@@ -49,6 +49,14 @@ RUN node docker/build-handlers.mjs
 # under a real URL, which is worse than a missing page. (docker/Dockerfile is the
 # one with an explicit `location ^~ /pro` block, in nginx.conf.template.)
 # build:pro installs pro-test's own lockfile.
+# Self-hosting switches (#11477), read by Vite as VITE_* env during the build.
+# Declared here so changing one does not invalidate the npm ci layer, and
+# before build:pro because VITE_ANALYTICS_ENABLED also strips the Umami tag
+# from the /pro pages. See SELF_HOSTING.md "Privacy switches".
+ARG VITE_ANALYTICS_ENABLED=true
+ARG VITE_LIVE_MEDIA_PANELS_ENABLED=true
+ARG VITE_COUNTRY_OVERRIDES_URL
+ARG VITE_PMTILES_URL
 RUN npm run build:pro
 
 # Build the Vite frontend (outputs to dist/)

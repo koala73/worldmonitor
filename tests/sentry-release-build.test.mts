@@ -131,7 +131,7 @@ describe('Sentry build and event release contract', () => {
       process.env.VERCEL_ENV = target;
       const configs = [
         await loadDashboard({ mode: 'production', command: 'build' }),
-        (await import(`${marketingConfigUrl}?target=${target}`)).default,
+        (await import(`${marketingConfigUrl}?target=${target}`)).default({ mode: 'production', command: 'build' }),
       ];
       for (const [index, config] of configs.entries()) {
         assert.equal(JSON.parse(String(config.define?.__BUILD_HASH__)), sha);

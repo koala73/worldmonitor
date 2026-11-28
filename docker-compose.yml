@@ -21,6 +21,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # Build-time privacy switches; they apply only with --build (SELF_HOSTING.md).
+      args:
+        VITE_ANALYTICS_ENABLED: "${VITE_ANALYTICS_ENABLED:-true}"
+        VITE_LIVE_MEDIA_PANELS_ENABLED: "${VITE_LIVE_MEDIA_PANELS_ENABLED:-true}"
+        VITE_COUNTRY_OVERRIDES_URL: "${VITE_COUNTRY_OVERRIDES_URL:-}"
+        VITE_PMTILES_URL: "${VITE_PMTILES_URL:-}"
     image: ghcr.io/koala73/worldmonitor-selfhosted:${WM_IMAGE_TAG:-main}
     container_name: worldmonitor
     ports:

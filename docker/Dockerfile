@@ -20,8 +20,8 @@ COPY . .
 # are optional ws accelerators the frontend build never loads.
 RUN npm ci --include=dev --ignore-scripts
 
-# Build-time configuration. Pass via --build-arg. Other VITE_* vars (e.g. VITE_PMTILES_URL)
-# can be added here or via --build-arg for custom builds; see .env.example for the full list.
+# Build-time configuration. Pass via --build-arg. Other VITE_* vars can be
+# added here for custom builds; see .env.example for the full list.
 ARG VITE_VARIANT=full
 ARG VITE_WS_API_URL=https://api.worldmonitor.app
 
@@ -42,6 +42,10 @@ RUN node scripts/generate-inventory-facts.mjs
 # docker/nginx.conf.template routes `location ^~ /pro` + `/pro/assets/` — so
 # unlike /blog (deliberately skipped here) the image must build pro-test or it
 # serves a 404 behind a live route. build:pro installs pro-test's own lockfile.
+ARG VITE_ANALYTICS_ENABLED=true
+ARG VITE_LIVE_MEDIA_PANELS_ENABLED=true
+ARG VITE_COUNTRY_OVERRIDES_URL
+ARG VITE_PMTILES_URL
 RUN npm run build:pro
 
 # tsc + vite build directly like the sidecar image's builder. `npm run build`
