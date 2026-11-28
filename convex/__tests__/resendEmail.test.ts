@@ -187,19 +187,36 @@ describe("Resend 429 retry (account-wide 10 req/s limit)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  test("broadcast send and segment create survive a transient 429", async () => {
-    process.env.RESEND_API_KEY = "re_test";
-    const t = convexTest(schema, modules);
+  test("segment create survives a transient 429", async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(rateLimited())
-      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "bc_1" }), { status: 200 }))
       .mockResolvedValueOnce(rateLimited())
       .mockResolvedValueOnce(new Response(JSON.stringify({ id: "seg_9" }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
-    await expect(t.action(internal.broadcast.sendBroadcast.sendProLaunchBroadcast, { broadcastId: "bc_1" }))
-      .resolves.toMatchObject({ status: "queued" });
     expect(await createSegment("re_test", "seg-name")).toBe("seg_9");
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("broadcast SEND is never retried: a stop during the wait could not be honoured", async () => {
+    process.env.RESEND_API_KEY = "re_test";
+    const t = convexTest(schema, modules);
+    const fetchMock = vi.fn(async () => rateLimited());
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(t.action(internal.broadcast.sendBroadcast.sendProLaunchBroadcast, { broadcastId: "bc_1" }))
+      .rejects.toThrow(/Resend 429/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(sleeps).toEqual([]);
+  });
+
+  test("an address suppressed during the 429 wait is not sent to", async () => {
+    const fetchMock = vi.fn(async () => rateLimited());
+    vi.stubGlobal("fetch", fetchMock);
+    const runQuery = vi.fn()
+      .mockResolvedValueOnce(false) // before the first POST
+      .mockResolvedValueOnce(true); // unsubscribed while waiting
+    const result = await sendResendEmail({ runQuery } as never, { ...base, purpose: "marketing" });
+    expect(result).toEqual({ sent: false, reason: "suppressed" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(runQuery).toHaveBeenCalledTimes(2);
   });
 });
 

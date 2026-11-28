@@ -107,14 +107,28 @@ function retryDelayMs(res: Response, attempt: number): number {
 
 /**
  * Run a Resend request, retrying it on HTTP 429. `doFetch` must build a fresh
- * request (and timeout signal) on every call.
+ * request (and timeout signal) on every call. `stillWanted`, when given, runs
+ * after each wait; returning false stops and yields `null`, so a condition
+ * that changed during the wait (a new suppression) is honoured.
+ *
+ * Do not wrap a call that SENDS a broadcast: the campaign stop and cutoff
+ * checks live in the caller, and a retry here would fire after a stop.
  */
-export async function fetchResendWithRateLimitRetry(doFetch: () => Promise<Response>): Promise<Response> {
+export async function fetchResendWithRateLimitRetry(doFetch: () => Promise<Response>): Promise<Response>;
+export async function fetchResendWithRateLimitRetry(
+  doFetch: () => Promise<Response>,
+  stillWanted: () => Promise<boolean>,
+): Promise<Response | null>;
+export async function fetchResendWithRateLimitRetry(
+  doFetch: () => Promise<Response>,
+  stillWanted?: () => Promise<boolean>,
+): Promise<Response | null> {
   for (let attempt = 0; ; attempt++) {
     const res = await doFetch();
     if (res.status !== 429 || attempt >= RESEND_RATE_LIMIT_RETRY_DELAYS_MS.length) return res;
     await res.body?.cancel().catch(() => undefined);
     await retrySleep(retryDelayMs(res, attempt));
+    if (stillWanted && !(await stillWanted())) return null;
   }
 }
 
@@ -136,11 +150,11 @@ export async function sendResendEmail(
   ctx: SuppressionReader,
   input: ResendEmailInput,
 ): Promise<ResendEmailResult> {
-  const suppressed = await ctx.runQuery(internal.emailSuppressions.isEmailSuppressed, {
+  const isSuppressed = () => ctx.runQuery(internal.emailSuppressions.isEmailSuppressed, {
     email: input.to,
     purpose: input.purpose,
   });
-  if (suppressed) {
+  if (await isSuppressed()) {
     console.log(`[resendEmail] skipped ${input.purpose} send to a suppressed address`);
     return { sent: false, reason: "suppressed" };
   }
@@ -157,7 +171,11 @@ export async function sendResendEmail(
     headers: { ...headers, ...(input.idempotencyKey ? { "Idempotency-Key": input.idempotencyKey } : {}) },
     body: JSON.stringify(buildResendEmailPayload(input)),
     signal: AbortSignal.timeout(input.timeoutMs ?? DEFAULT_TIMEOUT_MS),
-  }));
+  }), async () => !(await isSuppressed()));
+  if (res === null) {
+    console.log(`[resendEmail] skipped ${input.purpose} send: address was suppressed during a 429 retry wait`);
+    return { sent: false, reason: "suppressed" };
+  }
   if (!res.ok) {
     const errorBody = typeof res.text === "function" ? await res.text().catch(() => "") : "";
     throw new ResendSendError(res.status, errorBody);

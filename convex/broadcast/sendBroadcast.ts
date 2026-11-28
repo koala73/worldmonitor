@@ -252,7 +252,11 @@ export const sendProLaunchBroadcast = internalAction({
     const body: Record<string, unknown> = {};
     if (scheduledAt) body.scheduled_at = scheduledAt;
 
-    const res = await fetchResendWithRateLimitRetry(() => fetch(
+    // Single attempt on purpose, 429 included: the campaign stop and send
+    // cutoff are checked by the caller, so an in-action retry could fire a
+    // broadcast after an operator stop. A failed send goes through the
+    // runbook's send-broadcast-failed recovery, which re-checks the gate.
+    const res = await fetch(
       `${RESEND_API_BASE}/broadcasts/${encodeURIComponent(broadcastId)}/send`,
       {
         signal: AbortSignal.timeout(10_000),
@@ -264,7 +268,7 @@ export const sendProLaunchBroadcast = internalAction({
         },
         body: JSON.stringify(body),
       },
-    ));
+    );
 
     if (!res.ok) {
       const errBody = await res.text().catch(() => "<no body>");
