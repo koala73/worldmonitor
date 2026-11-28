@@ -61,7 +61,7 @@ function legsFor(direction: string): Leg[] {
     return ['departure', 'arrival'];
 }
 
-interface AVSFlight {
+export interface AVSFlight {
     // A codeshare row names its operating flight here, in lower case.
     flight?: { iata?: string; icao?: string; codeshared?: { flight_iata?: string; airline_iata?: string; airline_icao?: string; airline_name?: string } | null };
     airline?: { iata?: string; icao?: string; name?: string };
@@ -184,7 +184,7 @@ function operatingNumber(f: AVSFlight): string {
  * number, and the operating row is often missing from the page, so the first
  * row of a flight stands in for it until the operating row arrives.
  */
-function normalizeFlights(rows: AVSFlight[], now: number): FlightInstance[] {
+export function normalizeFlights(rows: AVSFlight[], now: number): FlightInstance[] {
     const byFlight = new Map<string, FlightInstance>();
     const flights: FlightInstance[] = [];
     const operatingFirst = [...rows.filter(f => !operatorOf(f)), ...rows.filter(f => operatorOf(f))];
