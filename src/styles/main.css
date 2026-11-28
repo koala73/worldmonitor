@@ -28203,6 +28203,7 @@ body.map-width-resizing {
 .upgrade-pro-offer-line { color: var(--text); }
 
 .manage-billing-btn,
+.upgrade-to-pro-business-btn,
 .switch-to-yearly-btn,
 .switch-to-api-starter-btn {
   width: 100%;
@@ -28219,14 +28220,16 @@ body.map-width-resizing {
 
 .manage-billing-btn:hover { color: var(--text); }
 
-/* Pro Monthly → Pro Yearly and Pro → API Starter: Manage Billing's outline,
-   one step brighter because they are the section's actions. */
+/* Pro → Pro Business, Pro Monthly → Pro Yearly and Pro → API Starter: Manage
+   Billing's outline, one step brighter because they are the section's actions. */
+.upgrade-to-pro-business-btn,
 .switch-to-yearly-btn,
 .switch-to-api-starter-btn {
   color: var(--text);
   margin-bottom: 8px;
 }
 
+.upgrade-to-pro-business-btn:hover,
 .switch-to-yearly-btn:hover,
 .switch-to-api-starter-btn:hover { border-color: var(--text-dim); }
 

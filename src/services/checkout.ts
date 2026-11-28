@@ -496,6 +496,38 @@ export async function startProAnnualSwitch(
   });
 }
 
+/**
+ * In-place Pro → Pro Business upgrade (prorated Dodo plan change). Reached
+ * from Settings (an active Pro) and from the checkout 409 when a Pro
+ * subscriber starts a Pro Business checkout. `fallback` runs when no quote
+ * comes back; the plan check lives in the lazy chunk to keep this one small.
+ */
+export async function startProBusinessUpgrade(
+  planKey: unknown,
+  fallback: () => void,
+  /** Settings returns focus to its upgrade button; the checkout 409 path passes nothing. */
+  onDismiss?: () => void,
+): Promise<void> {
+  // A failed chunk load (stale deploy, flaky network) still reaches the fallback.
+  const upgradeModule = await import('./pro-business-upgrade-dialog').catch(() => null);
+  if (!upgradeModule) {
+    fallback();
+    return;
+  }
+  await upgradeModule.runProBusinessUpgradeFlow({
+    planKey,
+    planDisplayName: resolvePlanDisplayName(planKey),
+    fallback,
+    requestUpgrade: requestProBusinessUpgrade,
+    currentUserId: () => getCurrentClerkUser()?.id,
+    openPortal: openPortalFromDialog,
+    showDialog: showCheckoutConfirmDialog,
+    errorKind: extractBillingErrorKind,
+    reportError: reportPlanChangeError,
+    ...(onDismiss ? { onDismiss } : {}),
+  });
+}
+
 async function isProBusinessCheckoutTarget(productId: string): Promise<boolean> {
   try {
     const { DODO_PRODUCTS } = await import('@/config/products');
@@ -835,25 +867,8 @@ export async function startCheckout(
         }
         // An active Pro moves to Pro Business in place (prorated Dodo plan
         // change); the guided dialog stays the fallback when no preview comes back.
-        // The plan check lives in the lazy chunk to keep this one small.
         if (isProBusinessUpgrade) {
-          // A failed chunk load (stale deploy, flaky network) still gets the guided dialog.
-          const upgradeModule = await import('./pro-business-upgrade-dialog').catch(() => null);
-          if (!upgradeModule) {
-            showGuidedDuplicateDialog();
-            return false;
-          }
-          await upgradeModule.runProBusinessUpgradeFlow({
-            planKey,
-            planDisplayName,
-            fallback: showGuidedDuplicateDialog,
-            requestUpgrade: requestProBusinessUpgrade,
-            currentUserId: () => getCurrentClerkUser()?.id,
-            openPortal: openPortalFromDialog,
-            showDialog: showCheckoutConfirmDialog,
-            errorKind: extractBillingErrorKind,
-            reportError: reportPlanChangeError,
-          });
+          await startProBusinessUpgrade(planKey, showGuidedDuplicateDialog);
         } else {
           showGuidedDuplicateDialog();
         }

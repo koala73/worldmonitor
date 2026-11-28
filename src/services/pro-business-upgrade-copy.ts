@@ -67,6 +67,11 @@ export function buildUpgradePreviewBody(planDisplayName: string, preview: ProBus
   );
 }
 
+/** Settings → Account entry for an active Pro owner. English only, like the dialog it opens. */
+export const UPGRADE_ENTRY_LABEL = 'Upgrade to Pro Business';
+export const UPGRADE_UNAVAILABLE_BODY =
+  'We could not price the upgrade right now. Try again in a few minutes, or email support@worldmonitor.app.';
+
 export const UPGRADE_SUCCESS_TITLE = 'Upgraded to Pro Business';
 export const UPGRADE_SUCCESS_BODY =
   'Your plan changes as soon as the payment confirms, usually within a minute. Reload to see Pro Business features.';

@@ -119,6 +119,19 @@ describe('runProBusinessUpgradeFlow', () => {
     assert.equal(anon.fellBack(), true);
     assert.deepEqual(anon.calls, []);
   });
+
+  it('reports a dismissed dialog to the caller, and never a confirmed one', async () => {
+    let dismissed = 0;
+    const h = harness({ onDismiss: () => { dismissed += 1; } });
+    await runProBusinessUpgradeFlow(h.options);
+    h.dialogs[0]!.onDismiss();
+    assert.equal(dismissed, 1);
+    h.dialogs[0]!.onConfirm();
+    await settle();
+    assert.equal(dismissed, 1, 'a confirm must not run onDismiss');
+    h.dialogs[1]!.onDismiss();
+    assert.equal(dismissed, 2, 'closing the result dialog returns focus too');
+  });
 });
 
 const SWITCH_QUOTE = {
