@@ -342,10 +342,74 @@ function formatMoney(amountMinor: number, currency: string): string {
 }
 
 /**
- * Build the Amount/Discount rows for the admin notification.
- * Compares the actual recurring charge against the catalog list price to
- * surface the discount delta — that's the signal "did this user pay full
- * price or use a code", which the raw subscription_id never communicated.
+ * The settled charge behind an admin alert, read from the `payment.succeeded`
+ * row. Subscription events carry only the renewal price: once a one-cycle code
+ * like BLACKFRIDAY is spent, `recurring_pre_tax_amount` is the list price and
+ * the discount fields are gone, so the charge, its tax and the code exist only
+ * on the payment (Black Friday 2026: $144 purchases alerted as $359.99).
+ */
+export const alertChargeValidator = v.object({
+  amount: v.number(),
+  currency: v.string(),
+  tax: v.optional(v.number()),
+  discountId: v.optional(v.string()),
+});
+type AlertCharge = Infer<typeof alertChargeValidator>;
+
+// The payment shares the subscription event's timestamp in practice; the
+// window only has to separate one charge on a subscription from the next.
+const CHARGE_MATCH_WINDOW_MS = 10 * 60_000;
+// payment.succeeded usually lands within a second of the subscription event,
+// after the alert job has started, so an alert that misses it looks once more.
+export const CHARGE_RETRY_MS = 30_000;
+
+export const findAlertCharge = internalQuery({
+  args: { userId: v.string(), subscriptionId: v.string(), at: v.number() },
+  handler: async (ctx, args): Promise<AlertCharge | null> => {
+    const rows = await ctx.db
+      .query("paymentEvents")
+      .withIndex("by_userId_occurredAt", (q) =>
+        q.eq("userId", args.userId)
+          .gte("occurredAt", args.at - CHARGE_MATCH_WINDOW_MS)
+          .lte("occurredAt", args.at + CHARGE_MATCH_WINDOW_MS))
+      .collect();
+    const charges = rows.filter((r) =>
+      r.type === "charge" && r.status === "succeeded" && r.dodoSubscriptionId === args.subscriptionId);
+    const charge = charges[charges.length - 1];
+    if (!charge) return null;
+    const raw = charge.rawPayload as { tax?: unknown; discount_id?: unknown } | null;
+    return {
+      amount: charge.amount,
+      currency: charge.currency,
+      tax: typeof raw?.tax === "number" ? raw.tax : undefined,
+      discountId: typeof raw?.discount_id === "string" && raw.discount_id ? raw.discount_id : undefined,
+    };
+  },
+});
+
+/** The charge for an alert, or null when it is not recorded (or cannot be looked up). */
+async function lookUpAlertCharge(
+  ctx: ActionCtx,
+  args: { userId: string; subscriptionId?: string; eventAt?: number },
+): Promise<AlertCharge | null> {
+  if (!args.subscriptionId || typeof args.eventAt !== "number") return null;
+  return await ctx.runQuery(internal.payments.subscriptionEmails.findAlertCharge, {
+    userId: args.userId,
+    subscriptionId: args.subscriptionId,
+    at: args.eventAt,
+  });
+}
+
+function chargedMoney(charge: AlertCharge): string {
+  const tax = charge.tax && charge.tax > 0 ? ` (incl. ${formatMoney(charge.tax, charge.currency)} tax)` : "";
+  return `${formatMoney(charge.amount, charge.currency)}${tax}`;
+}
+
+/**
+ * Build the Amount/Discount rows for the admin notification: what the
+ * customer was charged, how it compares to the catalog list price (did they
+ * pay full price or use a code), and the renewal when it differs. Without a
+ * recorded charge only the renewal price is known, and it is labelled as such.
  */
 function buildPriceRowsHtml(args: {
   planKey: string;
@@ -353,25 +417,29 @@ function buildPriceRowsHtml(args: {
   currency?: string;
   taxInclusive?: boolean;
   discountId?: string;
+  charge?: AlertCharge;
 }): string {
   const rows: string[] = [];
   const currency = args.currency ?? "USD";
-  const paid = args.recurringPreTaxAmount;
+  const renewal = args.recurringPreTaxAmount;
+  const renewalTaxNote = args.taxInclusive ? " (tax incl.)" : " (pre-tax)";
   const listCents = PRODUCT_CATALOG[args.planKey]?.priceCents;
+  const charge = args.charge;
 
-  if (typeof paid === "number") {
-    const taxNote = args.taxInclusive ? " (tax incl.)" : " (pre-tax)";
+  if (charge) {
+    const paid = charge.amount - (charge.tax ?? 0);
     rows.push(
-      `<tr><td style="color: #888; padding-right: 16px;">Amount Paid:</td><td style="color: #fff;">${formatMoney(paid, currency)}${taxNote}</td></tr>`,
+      `<tr><td style="color: #888; padding-right: 16px;">Amount Paid:</td><td style="color: #fff;">${chargedMoney(charge)}</td></tr>`,
     );
     // List Price / Saved comparison is USD-only. PRODUCT_CATALOG.priceCents is
     // hard-coded in USD, so subtracting it from a non-USD `paid` (Dodo's
     // adaptive-currency mode bills EUR/GBP/etc.) would produce a meaningless
     // delta with the wrong currency label. Skip the comparison rows in that
     // case rather than show misleading numbers — Amount Paid + Discount are
-    // still rendered.
+    // still rendered. The list price is pre-tax, so it is compared with the
+    // charge less its tax.
     if (
-      currency.toUpperCase() === "USD" &&
+      charge.currency.toUpperCase() === "USD" &&
       typeof listCents === "number" &&
       listCents > 0 &&
       listCents !== paid
@@ -387,10 +455,20 @@ function buildPriceRowsHtml(args: {
         );
       }
     }
-  }
-  if (args.discountId) {
+    if (typeof renewal === "number" && (renewal !== paid || currency.toUpperCase() !== charge.currency.toUpperCase())) {
+      rows.push(
+        `<tr><td style="color: #888; padding-right: 16px;">Renews At:</td><td style="color: #fff;">${formatMoney(renewal, currency)}${renewalTaxNote}</td></tr>`,
+      );
+    }
+  } else if (typeof renewal === "number") {
     rows.push(
-      `<tr><td style="color: #888; padding-right: 16px;">Discount:</td><td style="color: #fff; font-size: 12px;">${args.discountId}</td></tr>`,
+      `<tr><td style="color: #888; padding-right: 16px;">Renewal Price:</td><td style="color: #fff;">${formatMoney(renewal, currency)}${renewalTaxNote}</td></tr>`,
+    );
+  }
+  const discountId = charge?.discountId ?? args.discountId;
+  if (discountId) {
+    rows.push(
+      `<tr><td style="color: #888; padding-right: 16px;">Discount:</td><td style="color: #fff; font-size: 12px;">${escapeHtml(discountId)}</td></tr>`,
     );
   }
   return rows.join("");
@@ -540,6 +618,11 @@ const sendSubscriptionEmailsArgs = {
   currency: v.optional(v.string()),
   taxInclusive: v.optional(v.boolean()),
   discountId: v.optional(v.string()),
+  // The subscription.active event time, used to find the payment.succeeded
+  // row for the admin alert. Optional so jobs queued before it still validate.
+  eventAt: v.optional(v.number()),
+  // Filled in by the alert job once it has looked the charge up.
+  charge: v.optional(alertChargeValidator),
   // #6330: set only when the Dodo checkout email differs from the login
   // email in `userEmail`. Adds the sign-in line to the welcome, a pointer
   // email to the checkout inbox, and the Billing Email row for admin.
@@ -557,6 +640,7 @@ export function adminNewSubscriptionHtml(args: ObjectType<typeof sendSubscriptio
     currency: args.currency,
     taxInclusive: args.taxInclusive,
     discountId: args.discountId,
+    charge: args.charge,
   });
   return `<div style="font-family: monospace; padding: 20px; background: #0a0a0a; color: #e0e0e0;">
         <p style="color: #4ade80; font-size: 16px; font-weight: bold;">New Subscription</p>
@@ -620,21 +704,60 @@ export const sendSubscriptionEmails = internalAction({
     // it compares to list price) instead of the opaque subscription_id, which
     // is rarely the question being asked when this email lands.
     if (!await canSend()) return;
-    try {
-      await sendEmail(
-        ctx,
-        apiKey,
-        ADMIN_EMAIL,
-        `[WM] New User Subscribed to ${planName}`,
-        adminNewSubscriptionHtml(args),
-        { replyTo: null },
+    await sendAdminNewSubscriptionAlert(ctx, apiKey, args, { final: false });
+  },
+});
+
+/**
+ * Send the admin new-subscription alert with the recorded charge. When the
+ * payment has not landed yet, the first attempt hands off to
+ * `sendAdminNewSubscriptionAlertRetry` instead of reporting the renewal price
+ * as if it were the payment; the retry sends whatever it finds.
+ */
+async function sendAdminNewSubscriptionAlert(
+  ctx: ActionCtx,
+  apiKey: string,
+  args: ObjectType<typeof sendSubscriptionEmailsArgs>,
+  opts: { final: boolean },
+): Promise<void> {
+  const planName = PLAN_DISPLAY[args.planKey] ?? args.planKey;
+  try {
+    const charge = args.charge ?? await lookUpAlertCharge(ctx, args);
+    if (!charge && !opts.final && args.subscriptionId && typeof args.eventAt === "number") {
+      await ctx.scheduler.runAfter(
+        CHARGE_RETRY_MS,
+        internal.payments.subscriptionEmails.sendAdminNewSubscriptionAlertRetry,
+        args,
       );
-      console.log(`[subscriptionEmails] Admin notification sent for ${args.userEmail}`);
-    } catch (err) {
-      console.error(
-        `[subscriptionEmails] Admin notification failed (continuing): ${err instanceof Error ? err.message : String(err)}`,
-      );
+      return;
     }
+    await sendEmail(
+      ctx,
+      apiKey,
+      ADMIN_EMAIL,
+      `[WM] New User Subscribed to ${planName}`,
+      adminNewSubscriptionHtml({ ...args, charge: charge ?? undefined }),
+      { replyTo: null },
+    );
+    console.log(`[subscriptionEmails] Admin notification sent for ${args.userEmail}`);
+  } catch (err) {
+    console.error(
+      `[subscriptionEmails] Admin notification failed (continuing): ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+/** The second and last look for the charge behind a new-subscription alert. */
+export const sendAdminNewSubscriptionAlertRetry = internalAction({
+  args: sendSubscriptionEmailsArgs,
+  handler: async (ctx, args) => {
+    if (!await ctx.runQuery(internal.payments.subscriptionEmails.canSendBillingEmail, { userId: args.userId })) return;
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      console.error("[subscriptionEmails] RESEND_API_KEY not set");
+      return;
+    }
+    await sendAdminNewSubscriptionAlert(ctx, apiKey, args, { final: true });
   },
 });
 
@@ -691,6 +814,12 @@ const sendPlanUpgradeAdminEmailArgs = {
   newAmount: v.optional(v.number()),
   newCurrency: v.optional(v.string()),
   newDiscounted: v.optional(v.boolean()),
+  // Used to find the switch's own charge (prorated, with any code applied).
+  // Optional so jobs queued before these fields still validate.
+  subscriptionId: v.optional(v.string()),
+  eventAt: v.optional(v.number()),
+  charge: v.optional(alertChargeValidator),
+  chargeRetried: v.optional(v.boolean()),
 };
 type PlanUpgradeEmailArgs = ObjectType<typeof sendPlanUpgradeAdminEmailArgs>;
 
@@ -717,6 +846,10 @@ export function adminPlanUpgradeHtml(args: PlanUpgradeEmailArgs): string {
   if (renewal) {
     rows.push(adminRow("Renews At", `${priceWithPeriod(renewal.amount, renewal.currency, args.toPlanKey)} (list price)`));
   }
+  if (args.charge) {
+    rows.push(adminRow("Charged Now", chargedMoney(args.charge)));
+    if (args.charge.discountId) rows.push(adminRow("Discount", args.charge.discountId));
+  }
   const change = planPriceChange(args);
   if (change) rows.push(adminRow("Change", change));
   if (args.userEmail) rows.push(adminRow("Email", args.userEmail));
@@ -739,7 +872,23 @@ export const sendPlanUpgradeAdminEmail = internalAction({
       console.error("[subscriptionEmails] RESEND_API_KEY not set");
       return;
     }
-    await sendEmail(ctx, apiKey, ADMIN_EMAIL, planUpgradeSubject(args), adminPlanUpgradeHtml(args), { replyTo: null });
+    const charge = args.charge ?? await lookUpAlertCharge(ctx, args);
+    if (!charge && !args.chargeRetried && args.subscriptionId && typeof args.eventAt === "number") {
+      await ctx.scheduler.runAfter(
+        CHARGE_RETRY_MS,
+        internal.payments.subscriptionEmails.sendPlanUpgradeAdminEmail,
+        { ...args, chargeRetried: true },
+      );
+      return;
+    }
+    await sendEmail(
+      ctx,
+      apiKey,
+      ADMIN_EMAIL,
+      planUpgradeSubject(args),
+      adminPlanUpgradeHtml({ ...args, charge: charge ?? undefined }),
+      { replyTo: null },
+    );
     console.log(`[subscriptionEmails] Plan upgrade notification sent for ${args.userId}`);
   },
 });

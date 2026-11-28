@@ -1554,7 +1554,7 @@ export async function handleSubscriptionActive(
       accessEndsAt: undefined,
       cancelScheduledAt,
     });
-    await notifyPlanUpgrade(ctx, existing, planKey, data);
+    await notifyPlanUpgrade(ctx, existing, planKey, data, eventTimestamp);
   } else {
     await ctx.db.insert("subscriptions", {
       userId,
@@ -1789,6 +1789,10 @@ export async function handleSubscriptionActive(
         currency: data.currency,
         taxInclusive: data.tax_inclusive,
         discountId: data.discount_id ?? undefined,
+        // Lets the admin alert find this purchase's payment.succeeded row:
+        // the charge (e.g. $144 with BLACKFRIDAY) is not on this event.
+        subscriptionId: data.subscription_id,
+        eventAt: eventTimestamp,
         // Present only when the buyer typed a different address at checkout:
         // triggers the sign-in line in the welcome, a pointer email to the
         // checkout inbox, and the Billing Email row in the admin alert.
@@ -2246,6 +2250,7 @@ async function notifyPlanUpgrade(
   previous: Doc<"subscriptions">,
   toPlanKey: string,
   data: DodoSubscriptionData,
+  eventTimestamp: number,
 ): Promise<void> {
   if (classifyPlanChange(previous.planKey, toPlanKey) !== "upgrade" || !process.env.RESEND_API_KEY) return;
   const userEmail = data.customer?.email?.trim() || await resolveBillingRecipient(ctx, previous);
@@ -2261,6 +2266,10 @@ async function notifyPlanUpgrade(
     // period only; the email then names the list renewal beside it. With more
     // cycles left the next renewal is still discounted, so no list-price claim.
     newDiscounted: Boolean(data.discount_id) && data.discount_cycles_remaining === 1,
+    // The switch charge (prorated, with any code applied) is only on the
+    // payment.succeeded that follows; the email job looks it up.
+    subscriptionId: data.subscription_id,
+    eventAt: eventTimestamp,
   });
 }
 
@@ -2310,7 +2319,7 @@ export async function handleSubscriptionPlanChanged(
     rawPayload: data,
     updatedAt: eventTimestamp,
   });
-  await notifyPlanUpgrade(ctx, existing, newPlanKey, data);
+  await notifyPlanUpgrade(ctx, existing, newPlanKey, data, eventTimestamp);
 
   // Business Pro grants are tied to the owner's dodoSubscriptionId staying on
   // the API Business tier — status/currentPeriodEnd alone don't change on a plan
