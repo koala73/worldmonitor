@@ -13,12 +13,12 @@ for (const [name, data, dataType, count] of [
 ]) {
   test(`omission receipt distinguishes ${name} without exposing response values`, async () => {
     const logs = [];
-    let date;
+    let hasDate;
     const result = await seedIntlDelays({
       apiKey: 'credential-secret', airports: [airport],
       logger: { log() {}, warn: line => logs.push(line) },
       fetchFn: async url => {
-        date = new URL(url).searchParams.get('flight_date');
+        hasDate = new URL(url).searchParams.has('flight_date');
         return Response.json({ data, pagination: { limit: 100, offset: 0, count: 0, total: 12, secret: 'response-secret' } });
       },
     });
@@ -28,10 +28,11 @@ for (const [name, data, dataType, count] of [
     const receipt = logs.find(line => line.startsWith('{'));
     assert.ok(receipt, 'structured omission receipt must be emitted');
     assert.deepEqual(JSON.parse(receipt), {
-      event: 'aviationstack_omission', iata: 'CTU', requestDate: date, requestLimit: 100,
+      event: 'aviationstack_omission', iata: 'CTU', requestLimit: 100,
       httpStatus: 200, dataType, rawCount: count, operatingCount: 0,
       pagination: { limit: 100, offset: 0, count: 0, total: 12 },
     });
+    assert.equal(hasDate, false, 'the hub page is the local day, as list-airport-flights requests it');
     assert.ok(receipt.length < 512);
     assert.ok(!logs.join('').includes('secret'));
   });

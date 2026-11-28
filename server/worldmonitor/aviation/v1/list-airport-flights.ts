@@ -7,7 +7,7 @@ import type {
     Carrier,
     AirportRef,
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { getRelayBaseUrl, getRelayHeaders, IATA_RE, requireLiveAviationAccess } from './_shared';
 import { aviationStackBudgetCycle, reserveAviationStackCalls } from './_avstack-budget';
@@ -18,13 +18,26 @@ import { aviationStackBudgetCycle, reserveAviationStackCalls } from './_avstack-
 // expired. Any TTL at or below a caller's polling interval buys nothing — it
 // only guarantees the paid call. 900s breaks that resonance for any poller
 // faster than 15min, and departure boards do not move meaningfully inside it.
-const CACHE_TTL = 900;
+// Arrivals hold for an hour: at the seeded hubs the departure leg is already an
+// hourly board, so a fresher arrival leg beside it buys four paid calls an hour
+// for a board that is no fresher overall.
+const LEG_CACHE_TTL: Record<'departure' | 'arrival', number> = { departure: 900, arrival: 3600 };
 // Always fetch a full page upstream and cache it once per airport+leg, then
 // slice to the caller's requested limit in memory. Threading req.limit into the
 // cache key (and the upstream query) meant limit 30 vs 31 vs 50 were separate
 // PAID AviationStack calls for identical data — a cache-key explosion that
 // multiplied spend. The page covers any limit ≤ 100.
 const UPSTREAM_PAGE = 100;
+
+// scripts/seed-aviation.mjs buys this same dep_iata page for each of its hubs
+// about once an hour and stores it here, so departures at those hubs need no
+// paid call. Older than this, the seeder has stopped refreshing it (budget,
+// outage) and the leg falls back to its own call.
+const DEPARTURE_BOARD_MAX_AGE_MS = 90 * 60 * 1000;
+
+export function departureBoardKey(airport: string): string {
+    return `aviation:avstack:departures:v1:${airport}`;
+}
 
 // A leg is one upstream query. AviationStack ANDs dep_iata with arr_iata — set
 // together they describe a ROUTE (A→B), not a both-directions board — so an
@@ -209,7 +222,20 @@ interface LegResult {
  * every three warm keys were duplicate departure payloads bought at
  * AviationStack's metered expense.
  */
+async function readDepartureBoard(airport: string, now: number): Promise<LegResult | null> {
+    const board = await getCachedJson(departureBoardKey(airport), true) as { fetchedAt?: unknown; rows?: unknown } | null;
+    if (!board || typeof board.fetchedAt !== 'number' || !Array.isArray(board.rows)) return null;
+    const age = now - board.fetchedAt;
+    if (!(age >= 0 && age <= DEPARTURE_BOARD_MAX_AGE_MS)) return null;
+    return { flights: normalizeFlights(board.rows as AVSFlight[], board.fetchedAt), source: 'aviationstack' };
+}
+
 async function fetchLeg(airport: string, leg: Leg, now: number): Promise<LegResult> {
+    if (leg === 'departure') {
+        const board = await readDepartureBoard(airport, now);
+        if (board) return board;
+    }
+
     // Cache key is limit-independent (see UPSTREAM_PAGE) — one upstream call
     // serves every limit for this airport+leg.
     const cacheKey = `aviation:flights:${airport}:${leg}:v4:${aviationStackBudgetCycle()}`;
@@ -218,7 +244,7 @@ async function fetchLeg(airport: string, leg: Leg, now: number): Promise<LegResu
     let unavailableSource = 'unavailable';
 
     const result = await cachedFetchJson<{ flights: FlightInstance[]; source: 'aviationstack' }>(
-        cacheKey, CACHE_TTL, async () => {
+        cacheKey, LEG_CACHE_TTL[leg], async () => {
             const relayBase = getRelayBaseUrl();
             if (!relayBase) {
                 unavailableSource = 'none';

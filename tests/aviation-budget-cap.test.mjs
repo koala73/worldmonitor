@@ -22,7 +22,7 @@ import {
   aviationStackBudgetCycle,
   avstackBudgetKey as serverAvstackBudgetKey,
 } from '../server/worldmonitor/aviation/v1/_avstack-budget.ts';
-import { avstackBudgetKey as seederAvstackBudgetKey } from '../scripts/seed-aviation.mjs';
+import { AVIATIONSTACK_LIST, avstackBudgetKey as seederAvstackBudgetKey } from '../scripts/seed-aviation.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -33,7 +33,8 @@ const root = resolve(__dirname, '..');
 
 describe('aviation budget: reserveAviationStackCalls enforces ceilings', () => {
   let reserveAviationStackCalls;
-  let counter; // simulated Redis INCRBY/DECRBY state
+  let counter; // simulated shared cycle counter (the key the seeder also writes)
+  let store; // every simulated Redis key
 
   before(async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'http://localhost:0';
@@ -46,17 +47,23 @@ describe('aviation budget: reserveAviationStackCalls enforces ceilings', () => {
 
   beforeEach(() => {
     counter = 0;
-    mock.method(globalThis, 'fetch', async (_url, opts) => {
-      const cmds = JSON.parse(opts.body); // [[ 'INCRBY', key, n ], [ 'EXPIRE', ... ]]
-      const results = cmds.map((cmd) => {
-        const [verb, , n] = cmd;
-        if (verb === 'INCRBY') { counter += Number(n); return { result: counter }; }
-        if (verb === 'DECRBY') { counter -= Number(n); return { result: counter }; }
-        return { result: 1 }; // EXPIRE
-      });
-      return { ok: true, json: async () => results };
-    });
+    store = new Map();
+    mock.method(globalThis, 'fetch', async (_url, opts) => ({ ok: true, json: async () => applyCommands(opts) }));
   });
+
+  function applyCommands(opts) {
+    const sharedKey = serverAvstackBudgetKey();
+    const cmds = JSON.parse(opts.body); // [[ 'INCRBY', key, n ], [ 'EXPIRE', ... ]]
+    return cmds.map((cmd) => {
+      const [verb, key, n] = cmd;
+      const delta = verb === 'INCRBY' ? Number(n) : verb === 'DECRBY' ? -Number(n) : null;
+      if (delta === null) return { result: 1 }; // EXPIRE
+      const value = (store.get(key) ?? 0) + delta;
+      store.set(key, value);
+      if (key === sharedKey) counter = value;
+      return { result: value };
+    });
+  }
 
   afterEach(() => {
     mock.restoreAll();
@@ -91,6 +98,46 @@ describe('aviation budget: reserveAviationStackCalls enforces ceilings', () => {
     // ...but not past the hard cap.
     assert.equal(await reserveAviationStackCalls(3, 'seed'), false);
     assert.equal(counter, 8);
+  });
+
+  it('does not count seeder spend against the request ceiling', async () => {
+    // Production on 2026-11-27: the shared counter read 7,112 under three days
+    // into the cycle, about 3.9k of it seeder spend, so every request-time call
+    // compared 7,112 > 7,000 and returned source "budget" until the next cycle.
+    process.env.AVIATIONSTACK_MONTHLY_BUDGET = '10';
+    process.env.AVIATIONSTACK_REQUEST_BUDGET = '5';
+
+    assert.equal(await reserveAviationStackCalls(6, 'seed'), true);
+    assert.equal(await reserveAviationStackCalls(1, 'request'), true, 'request spend is 0 of 5');
+    assert.equal(counter, 7, 'request calls still count toward the plan-wide cap');
+  });
+
+  it('stops request-time calls at the plan-wide cap even under the request ceiling', async () => {
+    process.env.AVIATIONSTACK_MONTHLY_BUDGET = '10';
+    process.env.AVIATIONSTACK_REQUEST_BUDGET = '5';
+
+    assert.equal(await reserveAviationStackCalls(9, 'seed'), true);
+    assert.equal(await reserveAviationStackCalls(1, 'request'), true);
+    assert.equal(await reserveAviationStackCalls(1, 'request'), false);
+    assert.equal(counter, 10, 'a denied request is refunded from the shared counter');
+    assert.equal(await reserveAviationStackCalls(1, 'seed'), false);
+  });
+
+  it('still blocks at the plan-wide cap when only the request counter errors', async () => {
+    process.env.AVIATIONSTACK_MONTHLY_BUDGET = '10';
+    process.env.AVIATIONSTACK_REQUEST_BUDGET = '5';
+    const sharedKey = serverAvstackBudgetKey();
+    store.set(sharedKey, 10);
+    counter = 10;
+    mock.restoreAll();
+    mock.method(globalThis, 'fetch', async (_url, opts) => {
+      const cmds = JSON.parse(opts.body);
+      const results = applyCommands(opts).map((r, i) => (cmds[i][1] === sharedKey ? r : { error: 'WRONGTYPE' }));
+      return { ok: true, json: async () => results };
+    });
+
+    assert.equal(await reserveAviationStackCalls(1, 'request'), false, 'a known breach is not failed open');
+    assert.equal(counter, 10, 'the shared reservation is refunded');
   });
 
   it('treats a zero MONTHLY budget as disabled (always allow, no Redis I/O)', async () => {
@@ -255,10 +302,13 @@ describe('aviation budget: call sites are wired to the cap', () => {
     assert.ok(hardCap > 0 && hardCap <= 50_000, `hard cap ${hardCap} must sit under the 50,000/cycle plan`);
     assert.equal(seederDefault, hardCap, 'seeder mirror must default to the same hard cap');
     assert.ok(requestCap < hardCap, `request ceiling ${requestCap} must leave the seeder headroom under ${hardCap}`);
-    // 56 airports x 24 sweeps x 30d — what the seeder structurally needs.
+    // One call per hub per hourly sweep over the longest (31-day) cycle. Request
+    // spend has its own counter, so it can reach its full ceiling and the
+    // seeder must still fit in what remains.
+    const seederNeed = AVIATIONSTACK_LIST.length * 24 * 31;
     assert.ok(
-      hardCap - requestCap >= 40_320,
-      `only ${hardCap - requestCap} reserved for the seeder, which needs ~40,320/cycle`,
+      hardCap - requestCap >= seederNeed,
+      `only ${hardCap - requestCap} reserved for the seeder, which needs ${seederNeed}/cycle`,
     );
   });
 

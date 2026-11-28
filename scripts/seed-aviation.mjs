@@ -464,6 +464,71 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
 
 const AVIATIONSTACK_URL = 'https://api.aviationstack.com/v1/flights';
 
+// Each sweep's page per hub doubles as that hub's departure board, so
+// list-airport-flights can serve departures without a paid call of its own.
+// The request path asks for the same `dep_iata` + `limit=100` page; keep the
+// key, TTL and row fields in lockstep with DEPARTURE_BOARD_* in
+// server/worldmonitor/aviation/v1/list-airport-flights.ts.
+const DEPARTURE_BOARD_TTL = INTL_TTL;
+
+export function departureBoardKey(iata) {
+  return `aviation:avstack:departures:v1:${iata}`;
+}
+
+const BOARD_FIELDS = {
+  airline: ['iata', 'icao', 'name'],
+  departure: ['iata', 'icao', 'airport', 'timezone', 'scheduled', 'estimated', 'actual', 'gate', 'terminal', 'delay'],
+  arrival: ['iata', 'icao', 'airport', 'timezone', 'scheduled', 'estimated', 'actual'],
+  aircraft: ['icao24', 'iata'],
+};
+const CODESHARE_FIELDS = ['flight_iata', 'airline_iata', 'airline_icao', 'airline_name'];
+
+function pick(source, fields) {
+  if (!source || typeof source !== 'object') return undefined;
+  const out = {};
+  for (const field of fields) if (source[field] != null) out[field] = source[field];
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+// Keeps only the fields the request path's normalizer reads: about half the
+// bytes of a raw page, which matters at 56 boards per sweep.
+export function trimBoardRows(rows) {
+  return rows.map((row) => {
+    const out = {};
+    if (row?.flight_status != null) out.flight_status = row.flight_status;
+    const flight = pick(row?.flight, ['iata']);
+    const codeshared = pick(row?.flight?.codeshared, CODESHARE_FIELDS);
+    if (flight || codeshared) out.flight = { ...flight, ...(codeshared ? { codeshared } : {}) };
+    for (const [section, fields] of Object.entries(BOARD_FIELDS)) {
+      const picked = pick(row?.[section], fields);
+      if (picked) out[section] = picked;
+    }
+    return out;
+  });
+}
+
+// One SET per board: a full sweep is ~3.4 MB, too large for one pipeline body.
+// A failed write only costs the request path a paid call, so it never fails
+// the intl publish.
+export async function writeDepartureBoards(boards, fetchFn = (...args) => globalThis.fetch(...args)) {
+  if (boards.length === 0) return;
+  const { url, token } = getRedisCredentials();
+  const results = await Promise.allSettled(boards.map(async ({ iata, fetchedAt, rows }) => {
+    const resp = await fetchFn(`${url}/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+      body: JSON.stringify([['SET', departureBoardKey(iata), JSON.stringify({ fetchedAt, rows }), 'EX', DEPARTURE_BOARD_TTL]]),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    // Upstash reports a rejected command inside an HTTP 200 body.
+    const [reply] = await resp.json();
+    if (reply?.result !== 'OK') throw new Error(reply?.error || 'SET not acknowledged');
+  }));
+  const failed = results.filter((r) => r.status === 'rejected').length;
+  console.log(`[Intl] departure boards written: ${boards.length - failed}/${boards.length}`);
+}
+
 // Delay severity from the average delay of the delayed flights, with the
 // delayed share only able to lift a band when the delays themselves are
 // material and the sample is big enough to mean something (#10873, #3936).
@@ -500,8 +565,11 @@ async function fetchAviationStackSingle(
   logger = console,
 ) {
   const { iata } = airport;
-  const today = new Date().toISOString().slice(0, 10);
-  const url = `${AVIATIONSTACK_URL}?access_key=${apiKey}&dep_iata=${iata}&flight_date=${today}&limit=100`;
+  // No flight_date: AviationStack then answers for the hub's local day, which a
+  // UTC date misses whenever the two differ (HND before 09:00 local got the
+  // previous evening). It is also the exact query list-airport-flights issues,
+  // so this page can stand in for that paid call.
+  const url = `${AVIATIONSTACK_URL}?access_key=${apiKey}&dep_iata=${iata}&limit=100`;
   try {
     const resp = await fetchFn(url, {
       headers: { 'User-Agent': CHROME_UA },
@@ -518,7 +586,8 @@ async function fetchAviationStackSingle(
       const authFailed = AVIATIONSTACK_AUTH_ERROR_CODES.has(json.error.code);
       return { iata, status: 'failed', alert: null, flightCount: 0, authFailed };
     }
-    const flights = operatingFlights(Array.isArray(json?.data) ? json.data : []);
+    const rows = Array.isArray(json?.data) ? json.data : [];
+    const flights = operatingFlights(rows);
     if (flights.length === 0) {
       const dataType = json.data === undefined ? 'missing'
         : json.data === null ? 'null' : Array.isArray(json.data) ? 'array' : typeof json.data;
@@ -527,7 +596,7 @@ async function fetchAviationStackSingle(
         return [key, Number.isSafeInteger(value) && value >= 0 ? value : null];
       }));
       logger.warn(JSON.stringify({
-        event: 'aviationstack_omission', iata, requestDate: today, requestLimit: 100,
+        event: 'aviationstack_omission', iata, requestLimit: 100,
         httpStatus: resp.status, dataType,
         rawCount: Array.isArray(json.data) ? json.data.length : null,
         operatingCount: flights.length, pagination,
@@ -541,6 +610,7 @@ async function fetchAviationStackSingle(
       status: alert ? 'disruption' : 'normal',
       alert,
       flightCount: flights.length,
+      board: { iata, fetchedAt: Date.now(), rows: trimBoardRows(rows) },
     };
   } catch (err) {
     logger.warn(`[Aviation] ${iata}: fetch error: ${err?.message || err}`);
@@ -690,12 +760,13 @@ export async function seedIntlDelays({
 } = {}) {
   if (!apiKey) {
     logger.log('[Intl] No AVIATIONSTACK_API key — skipping');
-    return { alerts: [], coverage: [], healthy: false, skipped: true };
+    return { alerts: [], coverage: [], boards: [], healthy: false, skipped: true };
   }
 
   const t0 = Date.now();
   const alerts = [];
   const coverage = [];
+  const boards = [];
   let succeeded = 0, failed = 0, omitted = 0, authFailed = 0;
 
   for (let i = 0; i < airports.length; i += AVIATION_BATCH_CONCURRENCY) {
@@ -717,6 +788,7 @@ export async function seedIntlDelays({
         else if (r.value.status === 'omitted') omitted++;
         else succeeded++;
         if (r.value.alert) alerts.push(r.value.alert);
+        if (r.value.board) boards.push(r.value.board);
       } else {
         failed++;
         coverage.push({ iata: chunk[j].iata, status: 'failed', flightCount: 0, updatedAt: Date.now() });
@@ -727,7 +799,7 @@ export async function seedIntlDelays({
   const unavailable = failed + omitted;
   const healthy = airports.length < 5 || unavailable <= succeeded;
   logger.log(`[Intl] ${alerts.length} alerts (${succeeded} covered, ${omitted} omitted, ${failed} failed, healthy: ${healthy}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-  return { alerts, coverage, healthy, skipped: false, authFailed };
+  return { alerts, coverage, boards, healthy, skipped: false, authFailed };
 }
 
 export async function runChinaAviationStackSmoke({
@@ -1782,8 +1854,13 @@ export async function reserveAviationStackBudget(count) {
   }
 }
 
-export async function fetchIntl() {
+export async function fetchIntl({ writeBoards = writeDepartureBoards } = {}) {
   const result = await seedIntlDelays();
+  // Hubs that answered are good boards even when the sweep as a whole is not.
+  try { await writeBoards(result.boards); }
+  catch (err) { console.warn(`[Intl] departure board write failed: ${err?.message || err}`); }
+  // ~3.4 MB of rows has no business riding through runSeed into afterPublish.
+  delete result.boards;
   if (!result.healthy || result.skipped) {
     const why = result.skipped
       ? 'no AVIATIONSTACK_API key'
@@ -1815,6 +1892,8 @@ export async function fetchIntl() {
   ));
   if (unavailableHubs.length > 0 && await reserveAviationStackBudget(unavailableHubs.length)) {
     const retry = await seedIntlDelays({ airports: unavailableHubs });
+    try { await writeBoards(retry.boards); }
+    catch (err) { console.warn(`[Intl] departure board write failed: ${err?.message || err}`); }
     const recovered = new Map(retry.coverage
       .filter((row) => row.status === 'normal' || row.status === 'disruption')
       .map((row) => [row.iata, row]));
