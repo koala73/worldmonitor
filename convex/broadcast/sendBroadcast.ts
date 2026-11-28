@@ -53,6 +53,7 @@ import {
   renderBlackFridayEmail,
   type BlackFridayVersion,
 } from "./blackFridayEmailContent";
+import { fetchResendWithRateLimitRetry } from "../lib/resendEmail";
 
 const RESEND_API_BASE = "https://api.resend.com";
 const USER_AGENT = "WorldMonitor-PROLaunchSender/1.0 (+https://worldmonitor.app)";
@@ -61,7 +62,7 @@ const USER_AGENT = "WorldMonitor-PROLaunchSender/1.0 (+https://worldmonitor.app)
  * Create a Resend Broadcast (a draft: nothing is sent) and return its id.
  * The one `POST /broadcasts` call site, shared by every campaign's content.
  */
-async function createResendBroadcast(
+export async function createResendBroadcast(
   apiKey: string,
   caller: string,
   content: {
@@ -74,7 +75,7 @@ async function createResendBroadcast(
     text: string;
   },
 ): Promise<string> {
-  const res = await fetch(`${RESEND_API_BASE}/broadcasts`, {
+  const res = await fetchResendWithRateLimitRetry(() => fetch(`${RESEND_API_BASE}/broadcasts`, {
     signal: AbortSignal.timeout(10_000),
     method: "POST",
     headers: {
@@ -91,7 +92,7 @@ async function createResendBroadcast(
       html: content.html,
       text: content.text,
     }),
-  });
+  }));
 
   if (!res.ok) {
     const body = await res.text().catch(() => "<no body>");
@@ -251,7 +252,7 @@ export const sendProLaunchBroadcast = internalAction({
     const body: Record<string, unknown> = {};
     if (scheduledAt) body.scheduled_at = scheduledAt;
 
-    const res = await fetch(
+    const res = await fetchResendWithRateLimitRetry(() => fetch(
       `${RESEND_API_BASE}/broadcasts/${encodeURIComponent(broadcastId)}/send`,
       {
         signal: AbortSignal.timeout(10_000),
@@ -263,7 +264,7 @@ export const sendProLaunchBroadcast = internalAction({
         },
         body: JSON.stringify(body),
       },
-    );
+    ));
 
     if (!res.ok) {
       const errBody = await res.text().catch(() => "<no body>");
