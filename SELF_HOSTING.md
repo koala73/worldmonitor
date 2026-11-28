@@ -451,7 +451,7 @@ images keep the defaults.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `VITE_ANALYTICS_ENABLED` | `true` | `false` never loads the Umami script. |
+| `VITE_ANALYTICS_ENABLED` | `true` | `false` never loads the Umami script, and the build removes its tag from the static pages (`/pro`, `/agent` and the generated pages under `public/`). |
 | `VITE_LIVE_MEDIA_PANELS_ENABLED` | `true` | `false` ships Live News and Live Webcams turned off. A visitor can still turn them on in Settings, and a browser that already saved its panel layout keeps it. |
 | `VITE_COUNTRY_OVERRIDES_URL` | `https://maps.worldmonitor.app/country-boundary-overrides.geojson` | `/data/country-boundary-overrides.geojson` serves the copy bundled in the image from your own origin. |
 | `VITE_PMTILES_URL` | unset (OpenFreeMap tiles) | URL of your own PMTiles basemap. |
@@ -471,6 +471,12 @@ The basemap still uses third-party origins. Without `VITE_PMTILES_URL` it loads
 OpenFreeMap or CARTO tiles. With it, tiles come from your URL, but the map
 labels and icons still load from `protomaps.github.io`. Panels and map layers
 a visitor turns on, such as weather radar, can also fetch from their providers.
+
+`VITE_ANALYTICS_ENABLED` is a build setting, so it does not reach the brief
+magazine pages under `/api/brief/`, which the API renders per request with the
+Umami tag. They render only a brief that
+`scripts/seed-digest-notifications.mjs` stored in Redis, and the Compose stack
+does not run that script, so a default self-hosted install serves none.
 
 ## 🔨 Building from Source
 

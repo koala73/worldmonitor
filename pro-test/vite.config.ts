@@ -5,6 +5,7 @@ import path from 'path';
 import { defineConfig } from 'vite';
 import pkg from '../package.json';
 import { getSentryBuildMetadata } from '../shared/sentry-build-metadata';
+import { isAnalyticsBuildEnabled, stripUmamiScriptTags } from '../shared/analytics-static-pages';
 
 // Mirrors the root config's gate. WORLDMONITOR-11Y and -107 are marketing-bundle
 // events that arrived with zero usable frames, so covering only the dashboard
@@ -31,6 +32,9 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    ...(isAnalyticsBuildEnabled(process.env)
+      ? []
+      : [{ name: 'wm-strip-static-umami-tags', transformIndexHtml: stripUmamiScriptTags }]),
     ...(uploadSourceMapsToSentry
       ? [sentryVitePlugin({
           org: 'elie-habib',

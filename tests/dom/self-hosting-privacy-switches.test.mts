@@ -31,6 +31,7 @@ async function appendedScriptSources(): Promise<string[]> {
 
 describe('VITE_ANALYTICS_ENABLED', () => {
   it('loads the Umami script when unset', async () => {
+    vi.stubEnv('VITE_ANALYTICS_ENABLED', undefined);
     expect(await appendedScriptSources()).toContain(UMAMI_SCRIPT_SRC);
   });
 
@@ -53,6 +54,7 @@ describe('VITE_LIVE_MEDIA_PANELS_ENABLED', () => {
   ];
 
   it('enables the live media panels by default when unset', async () => {
+    vi.stubEnv('VITE_LIVE_MEDIA_PANELS_ENABLED', undefined);
     const panels = await import('@/config/panels');
     for (const [variant, key] of LIVE_MEDIA_DEFAULTS) {
       expect(panels.getInitialPanelSettingsForVariant(variant)[key]?.enabled, `${variant}/${key}`).toBe(true);
@@ -84,6 +86,7 @@ describe('VITE_COUNTRY_OVERRIDES_URL', () => {
   }
 
   it('fetches overrides from the CDN when unset', async () => {
+    vi.stubEnv('VITE_COUNTRY_OVERRIDES_URL', undefined);
     expect(await requestedUrls()).toContain(CDN_OVERRIDES_URL);
   });
 

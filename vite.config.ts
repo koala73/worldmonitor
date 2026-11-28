@@ -12,6 +12,7 @@ import pkg from './package.json';
 import { getSentryBuildMetadata } from './shared/sentry-build-metadata';
 import { closeExternalProxyRules, installE2eOutboundFetchGuard } from './shared/e2e-dev-network-guard';
 import { removeSourceMaps, shouldEmitPublicSourceMaps, viteSourcemapSetting } from './shared/source-map-policy';
+import { isAnalyticsBuildEnabled, stripUmamiScriptTagsInDir } from './shared/analytics-static-pages';
 import { appendChunkOwnership, chunkHasFirstPartyModule } from './shared/chunk-ownership';
 import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
 import { CLIENT_COMPAT } from './src/bootstrap/client-compat';
@@ -251,6 +252,25 @@ function stripPrivateSourceMapsPlugin(): Plugin {
         if (removed.length > 0) {
           console.warn(`[wm-strip-private-source-maps] removed ${removed.length} source map(s) from ${outDir}`);
         }
+      },
+    },
+  };
+}
+
+function stripStaticUmamiTagsPlugin(): Plugin {
+  let outDir = 'dist';
+  return {
+    name: 'wm-strip-static-umami-tags',
+    apply: 'build',
+    configResolved(config) {
+      outDir = resolve(config.root, config.build.outDir);
+    },
+    closeBundle: {
+      order: 'post',
+      sequential: true,
+      async handler() {
+        const rewritten = await stripUmamiScriptTagsInDir(outDir);
+        console.log(`[wm-strip-static-umami-tags] removed the Umami tag from ${rewritten.length} page(s) in ${outDir}`);
       },
     },
   };
@@ -1186,6 +1206,7 @@ export default defineConfig(({ mode, command }) => {
       devApiSourceGuardPlugin(),
       brotliPrecompressPlugin(),
       ...(emitPublicSourceMaps ? [] : [stripPrivateSourceMapsPlugin()]),
+      ...(isAnalyticsBuildEnabled(process.env) ? [] : [stripStaticUmamiTagsPlugin()]),
       VitePWA({
         registerType: 'autoUpdate',
         injectRegister: false,
