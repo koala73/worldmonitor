@@ -72,6 +72,15 @@ export const MCP_PRESETS: McpPreset[] = [
     defaultTitle: 'Parallel Search',
   },
   {
+    name: 'Keenable Search',
+    icon: '🔎',
+    description: 'Free web search and page fetching with no account or API key required',
+    serverUrl: 'https://api.keenable.ai/mcp?keenable_title=worldmonitor',
+    defaultTool: 'search_web_pages',
+    defaultArgs: { query: 'latest major geopolitical developments', max_results: 5 },
+    defaultTitle: 'Keenable Search',
+  },
+  {
     name: 'Perigon News',
     icon: '📰',
     description: 'Real-time global news search with journalist, company, and topic filters',
